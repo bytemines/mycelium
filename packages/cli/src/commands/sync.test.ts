@@ -1,0 +1,435 @@
+/**
+ * Tests for sync command module
+ * Tests written FIRST following TDD
+ */
+
+import { describe, it, expect, beforeEach, afterEach, vi, type MockedFunction } from "vitest";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as os from "node:os";
+import type {
+  ToolId,
+  McpServerConfig,
+  MergedConfig,
+  SyncResult,
+  ToolSyncStatus,
+} from "@mycelium/core";
+
+// Mock the dependencies
+vi.mock("../core/config-merger.js", () => ({
+  loadAndMergeAllConfigs: vi.fn(),
+}));
+
+vi.mock("../core/symlink-manager.js", () => ({
+  syncSkillsToTool: vi.fn(),
+}));
+
+vi.mock("../core/mcp-injector.js", () => ({
+  injectMcpsToTool: vi.fn(),
+  filterMcpsForTool: vi.fn(),
+  resolveEnvVarsInMcps: vi.fn(),
+}));
+
+vi.mock("../core/memory-scoper.js", () => ({
+  syncMemoryToTool: vi.fn(),
+  getMemoryFilesForTool: vi.fn(),
+}));
+
+// Import the module under test (doesn't exist yet - tests will fail)
+import { syncAll, syncTool, loadEnvFile } from "./sync.js";
+
+// Import mocked modules
+import { loadAndMergeAllConfigs } from "../core/config-merger.js";
+import { syncSkillsToTool } from "../core/symlink-manager.js";
+import {
+  injectMcpsToTool,
+  filterMcpsForTool,
+  resolveEnvVarsInMcps,
+} from "../core/mcp-injector.js";
+import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
+
+describe("Sync Command", () => {
+  // Sample merged config for testing
+  const sampleMergedConfig: MergedConfig = {
+    mcps: {
+      "whark-trading": {
+        command: "uvx",
+        args: ["whark-mcp"],
+        env: { WHARK_API_KEY: "${WHARK_API_KEY}" },
+        enabled: true,
+      },
+      playwright: {
+        command: "npx",
+        args: ["@anthropic/mcp-playwright"],
+        enabled: true,
+      },
+      "claude-only": {
+        command: "node",
+        args: ["claude.js"],
+        tools: ["claude-code"],
+        enabled: true,
+      },
+    },
+    skills: {
+      "superpowers": {
+        name: "superpowers",
+        path: "/Users/test/.mycelium/skills/superpowers",
+        manifest: { name: "superpowers", enabled: true },
+      },
+    },
+    memory: {
+      scopes: {
+        shared: { syncTo: ["claude-code", "codex"], path: "", files: [] },
+        coding: { syncTo: ["claude-code"], path: "", files: [] },
+        personal: { syncTo: ["openclaw"], path: "", files: [] },
+      },
+    },
+    sources: {},
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Default mock implementations
+    (loadAndMergeAllConfigs as MockedFunction<typeof loadAndMergeAllConfigs>).mockResolvedValue(
+      sampleMergedConfig
+    );
+
+    (syncSkillsToTool as MockedFunction<typeof syncSkillsToTool>).mockResolvedValue({
+      success: true,
+      created: ["superpowers"],
+      updated: [],
+      removed: [],
+      unchanged: [],
+      errors: [],
+    });
+
+    (filterMcpsForTool as MockedFunction<typeof filterMcpsForTool>).mockImplementation(
+      (mcps, _toolId) => mcps
+    );
+
+    (resolveEnvVarsInMcps as MockedFunction<typeof resolveEnvVarsInMcps>).mockImplementation(
+      (mcps, _envVars) => mcps
+    );
+
+    (injectMcpsToTool as MockedFunction<typeof injectMcpsToTool>).mockResolvedValue(undefined);
+
+    (syncMemoryToTool as MockedFunction<typeof syncMemoryToTool>).mockResolvedValue({
+      success: true,
+      filesWritten: 1,
+    });
+
+    (getMemoryFilesForTool as MockedFunction<typeof getMemoryFilesForTool>).mockResolvedValue([
+      { scope: "shared", filename: "shared.md", path: "/path/to/shared.md" },
+    ]);
+  });
+
+  describe("syncAll", () => {
+    it("syncs to all enabled tools", async () => {
+      const enabledTools: Record<ToolId, { enabled: boolean }> = {
+        "claude-code": { enabled: true },
+        codex: { enabled: true },
+        "gemini-cli": { enabled: false },
+        opencode: { enabled: false },
+        openclaw: { enabled: false },
+        aider: { enabled: false },
+      };
+
+      const result = await syncAll("/test/project", enabledTools);
+
+      expect(result.success).toBe(true);
+      // Should have synced to claude-code and codex (2 enabled tools)
+      expect(result.tools.length).toBe(2);
+      expect(result.tools.map((t) => t.tool)).toContain("claude-code");
+      expect(result.tools.map((t) => t.tool)).toContain("codex");
+    });
+
+    it("skips disabled tools", async () => {
+      const enabledTools: Record<ToolId, { enabled: boolean }> = {
+        "claude-code": { enabled: true },
+        codex: { enabled: false },
+        "gemini-cli": { enabled: false },
+        opencode: { enabled: false },
+        openclaw: { enabled: false },
+        aider: { enabled: false },
+      };
+
+      const result = await syncAll("/test/project", enabledTools);
+
+      // Should only sync to claude-code
+      expect(result.tools.length).toBe(1);
+      expect(result.tools[0].tool).toBe("claude-code");
+      expect(result.tools.map((t) => t.tool)).not.toContain("codex");
+    });
+
+    it("returns SyncResult with tool statuses", async () => {
+      const enabledTools: Record<ToolId, { enabled: boolean }> = {
+        "claude-code": { enabled: true },
+        codex: { enabled: false },
+        "gemini-cli": { enabled: false },
+        opencode: { enabled: false },
+        openclaw: { enabled: false },
+        aider: { enabled: false },
+      };
+
+      const result = await syncAll("/test/project", enabledTools);
+
+      expect(result).toHaveProperty("success");
+      expect(result).toHaveProperty("tools");
+      expect(result).toHaveProperty("errors");
+      expect(result).toHaveProperty("warnings");
+
+      // Check tool status structure
+      const toolStatus = result.tools[0];
+      expect(toolStatus).toHaveProperty("tool");
+      expect(toolStatus).toHaveProperty("status");
+      expect(toolStatus).toHaveProperty("skillsCount");
+      expect(toolStatus).toHaveProperty("mcpsCount");
+      expect(toolStatus).toHaveProperty("memoryFiles");
+    });
+
+    it("handles errors gracefully and continues with other tools", async () => {
+      const enabledTools: Record<ToolId, { enabled: boolean }> = {
+        "claude-code": { enabled: true },
+        codex: { enabled: true },
+        "gemini-cli": { enabled: false },
+        opencode: { enabled: false },
+        openclaw: { enabled: false },
+        aider: { enabled: false },
+      };
+
+      // Make claude-code fail but codex succeed
+      let callCount = 0;
+      (syncSkillsToTool as MockedFunction<typeof syncSkillsToTool>).mockImplementation(
+        async (_skills, toolDir) => {
+          callCount++;
+          if (toolDir.includes("claude")) {
+            throw new Error("Failed to sync skills to claude");
+          }
+          return {
+            success: true,
+            created: ["superpowers"],
+            updated: [],
+            removed: [],
+            unchanged: [],
+            errors: [],
+          };
+        }
+      );
+
+      const result = await syncAll("/test/project", enabledTools);
+
+      // Should have attempted both tools
+      expect(result.tools.length).toBe(2);
+
+      // Claude should have error status
+      const claudeStatus = result.tools.find((t) => t.tool === "claude-code");
+      expect(claudeStatus?.status).toBe("error");
+      expect(claudeStatus?.error).toBeDefined();
+
+      // Codex should have synced status
+      const codexStatus = result.tools.find((t) => t.tool === "codex");
+      expect(codexStatus?.status).toBe("synced");
+
+      // Overall success should be false due to claude error
+      expect(result.success).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it("resolves env vars from .env.local before injecting MCPs", async () => {
+      const enabledTools: Record<ToolId, { enabled: boolean }> = {
+        "claude-code": { enabled: true },
+        codex: { enabled: false },
+        "gemini-cli": { enabled: false },
+        opencode: { enabled: false },
+        openclaw: { enabled: false },
+        aider: { enabled: false },
+      };
+
+      const mockEnvVars = { WHARK_API_KEY: "test-key-123" };
+
+      // Track what was passed to resolveEnvVarsInMcps
+      let capturedEnvVars: Record<string, string> | undefined;
+      (resolveEnvVarsInMcps as MockedFunction<typeof resolveEnvVarsInMcps>).mockImplementation(
+        (mcps, envVars) => {
+          capturedEnvVars = envVars;
+          return mcps;
+        }
+      );
+
+      await syncAll("/test/project", enabledTools, mockEnvVars);
+
+      // Verify resolveEnvVarsInMcps was called with env vars
+      expect(resolveEnvVarsInMcps).toHaveBeenCalled();
+      expect(capturedEnvVars).toEqual(mockEnvVars);
+    });
+  });
+
+  describe("syncTool", () => {
+    it("syncs skills to specific tool", async () => {
+      const toolId: ToolId = "claude-code";
+
+      await syncTool(toolId, sampleMergedConfig);
+
+      expect(syncSkillsToTool).toHaveBeenCalled();
+      // Verify it was called with the skills and tool's skills directory
+      const callArgs = (syncSkillsToTool as MockedFunction<typeof syncSkillsToTool>).mock
+        .calls[0];
+      expect(callArgs[0]).toEqual(Object.values(sampleMergedConfig.skills));
+    });
+
+    it("syncs MCPs to specific tool", async () => {
+      const toolId: ToolId = "claude-code";
+
+      await syncTool(toolId, sampleMergedConfig);
+
+      // Verify filterMcpsForTool was called to get tool-specific MCPs
+      expect(filterMcpsForTool).toHaveBeenCalledWith(sampleMergedConfig.mcps, toolId);
+
+      // Verify injectMcpsToTool was called
+      expect(injectMcpsToTool).toHaveBeenCalled();
+    });
+
+    it("syncs memory to specific tool", async () => {
+      const toolId: ToolId = "claude-code";
+
+      await syncTool(toolId, sampleMergedConfig);
+
+      expect(syncMemoryToTool).toHaveBeenCalledWith(toolId);
+    });
+
+    it("returns ToolSyncStatus with correct counts", async () => {
+      const toolId: ToolId = "claude-code";
+
+      // Mock to return specific counts
+      (syncSkillsToTool as MockedFunction<typeof syncSkillsToTool>).mockResolvedValue({
+        success: true,
+        created: ["skill1", "skill2"],
+        updated: ["skill3"],
+        removed: [],
+        unchanged: [],
+        errors: [],
+      });
+
+      (filterMcpsForTool as MockedFunction<typeof filterMcpsForTool>).mockReturnValue({
+        mcp1: { command: "test1", enabled: true },
+        mcp2: { command: "test2", enabled: true },
+      });
+
+      (getMemoryFilesForTool as MockedFunction<typeof getMemoryFilesForTool>).mockResolvedValue([
+        { scope: "shared", filename: "shared.md", path: "/path/shared.md" },
+        { scope: "coding", filename: "coding.md", path: "/path/coding.md" },
+      ]);
+
+      const result = await syncTool(toolId, sampleMergedConfig);
+
+      expect(result.tool).toBe(toolId);
+      expect(result.status).toBe("synced");
+      expect(result.skillsCount).toBe(3); // 2 created + 1 updated
+      expect(result.mcpsCount).toBe(2);
+      expect(result.memoryFiles).toHaveLength(2);
+    });
+
+    it("returns error status when skill sync fails", async () => {
+      const toolId: ToolId = "claude-code";
+
+      (syncSkillsToTool as MockedFunction<typeof syncSkillsToTool>).mockRejectedValue(
+        new Error("Skill sync failed")
+      );
+
+      const result = await syncTool(toolId, sampleMergedConfig);
+
+      expect(result.status).toBe("error");
+      expect(result.error).toBe("Skill sync failed");
+    });
+
+    it("returns error status when MCP injection fails", async () => {
+      const toolId: ToolId = "claude-code";
+
+      (injectMcpsToTool as MockedFunction<typeof injectMcpsToTool>).mockRejectedValue(
+        new Error("MCP injection failed")
+      );
+
+      const result = await syncTool(toolId, sampleMergedConfig);
+
+      expect(result.status).toBe("error");
+      expect(result.error).toBe("MCP injection failed");
+    });
+
+    it("returns error status when memory sync fails", async () => {
+      const toolId: ToolId = "claude-code";
+
+      (syncMemoryToTool as MockedFunction<typeof syncMemoryToTool>).mockResolvedValue({
+        success: false,
+        filesWritten: 0,
+        error: "Memory sync failed",
+      });
+
+      const result = await syncTool(toolId, sampleMergedConfig);
+
+      expect(result.status).toBe("error");
+      expect(result.error).toBe("Memory sync failed");
+    });
+  });
+
+  describe("loadEnvFile", () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "sync-test-"));
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it("loads environment variables from .env.local", async () => {
+      const envContent = `
+WHARK_API_KEY=secret-key-123
+ANOTHER_VAR=another-value
+`;
+      await fs.writeFile(path.join(tempDir, ".env.local"), envContent);
+
+      const result = await loadEnvFile(path.join(tempDir, ".env.local"));
+
+      expect(result.WHARK_API_KEY).toBe("secret-key-123");
+      expect(result.ANOTHER_VAR).toBe("another-value");
+    });
+
+    it("returns empty object if .env.local does not exist", async () => {
+      const result = await loadEnvFile(path.join(tempDir, ".env.local"));
+
+      expect(result).toEqual({});
+    });
+
+    it("handles quoted values correctly", async () => {
+      const envContent = `
+QUOTED_VAR="value with spaces"
+SINGLE_QUOTED='another value'
+`;
+      await fs.writeFile(path.join(tempDir, ".env.local"), envContent);
+
+      const result = await loadEnvFile(path.join(tempDir, ".env.local"));
+
+      expect(result.QUOTED_VAR).toBe("value with spaces");
+      expect(result.SINGLE_QUOTED).toBe("another value");
+    });
+
+    it("ignores comments and empty lines", async () => {
+      const envContent = `
+# This is a comment
+VALID_VAR=value
+
+# Another comment
+ANOTHER_VAR=another
+`;
+      await fs.writeFile(path.join(tempDir, ".env.local"), envContent);
+
+      const result = await loadEnvFile(path.join(tempDir, ".env.local"));
+
+      expect(result.VALID_VAR).toBe("value");
+      expect(result.ANOTHER_VAR).toBe("another");
+      expect(Object.keys(result)).not.toContain("#");
+    });
+  });
+});

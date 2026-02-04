@@ -1,0 +1,38 @@
+{
+  "name": "@mycelium/cli",
+  "version": "0.0.1",
+  "description": "CLI for Mycelium - Universal AI Tool Orchestrator",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "mycelium": "./dist/index.js",
+    "myc": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@mycelium/core": "workspace:*",
+    "chalk": "^5.4.1",
+    "commander": "^13.0.0",
+    "dotenv": "^16.4.7",
+    "yaml": "^2.6.1"
+  }
+}
