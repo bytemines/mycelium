@@ -2,6 +2,7 @@
  * Marketplace Registry — manage marketplace sources and plugin discovery
  */
 import type { MarketplaceConfig, PluginInfo } from "@mycelium/core";
+import { MARKETPLACE_SOURCES as MS } from "@mycelium/core";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -113,7 +114,7 @@ export async function discoverMarketplaces(): Promise<
 
     // Also add claude-plugins as a local source if plugins exist
     if (plugins.length > 0) {
-      discovered["claude-plugins"] = {
+      discovered[MS.CLAUDE_PLUGINS] = {
         type: "local",
         enabled: true,
         default: true,
@@ -132,19 +133,19 @@ export async function loadMarketplaceRegistry(): Promise<
 > {
   // Start with defaults
   const registry: Record<string, MarketplaceConfig> = {
-    skillsmp: {
+    [MS.SKILLSMP]: {
       type: "remote",
       enabled: true,
       url: "https://skillsmp.com",
       description: "SkillsMP marketplace",
     },
-    "mcp-registry": {
+    [MS.MCP_REGISTRY]: {
       type: "remote",
       enabled: true,
       url: "https://registry.modelcontextprotocol.io",
       description: "MCP Registry",
     },
-    "anthropic-skills": {
+    [MS.ANTHROPIC_SKILLS]: {
       type: "remote",
       enabled: true,
       url: "https://github.com/anthropics/skills",

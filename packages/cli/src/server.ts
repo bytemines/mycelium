@@ -86,9 +86,14 @@ export function createServer(port = 3378): Express {
   // POST /api/marketplace/install
   app.post("/api/marketplace/install", async (req, res) => {
     try {
-      const entry = req.body as MarketplaceEntry;
-      await installFromMarketplace(entry);
-      res.json({ success: true });
+      const { name, source, description, type } = req.body || {};
+      if (!name || !source) {
+        res.status(400).json({ success: false, error: "Missing required fields: name, source" });
+        return;
+      }
+      const entry: MarketplaceEntry = { name, source, description: description || "", type: type || "skill" };
+      const result = await installFromMarketplace(entry);
+      res.json(result);
     } catch (e) {
       res.json({ success: false, error: (e as Error).message });
     }
@@ -138,7 +143,11 @@ export function createServer(port = 3378): Express {
   // POST /api/marketplace/update
   app.post("/api/marketplace/update", async (req, res) => {
     try {
-      const { name, source } = req.body as { name: string; source: string };
+      const { name, source } = req.body || {};
+      if (!name || !source) {
+        res.status(400).json({ success: false, error: "Missing required fields: name, source" });
+        return;
+      }
       const result = await updateSkill(name, source);
       res.json(result);
     } catch (e) {

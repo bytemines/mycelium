@@ -326,6 +326,15 @@ export interface MigrationManifest {
 
 export type MarketplaceSource = string;
 
+/** Well-known marketplace source identifiers */
+export const MARKETPLACE_SOURCES = {
+  SKILLSMP: "skillsmp" as const,
+  OPENSKILLS: "openskills" as const,
+  CLAUDE_PLUGINS: "claude-plugins" as const,
+  MCP_REGISTRY: "mcp-registry" as const,
+  ANTHROPIC_SKILLS: "anthropic-skills" as const,
+};
+
 export interface MarketplaceConfig {
   type: "local" | "claude-marketplace" | "remote";
   enabled: boolean;
