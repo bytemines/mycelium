@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { fetchMarketplaceRegistry, addMarketplaceToRegistry, searchMarketplace as apiSearch, installMarketplaceEntry } from "@/lib/api";
+import type { MarketplaceConfig } from "@mycelium/core";
 
 interface MarketplaceItem {
   name: string;
@@ -28,10 +30,12 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newMpName, setNewMpName] = useState("");
   const [newMpUrl, setNewMpUrl] = useState("");
+  const [registry, setRegistry] = useState<Record<string, MarketplaceConfig>>({});
 
   useEffect(() => {
-    fetchMarketplaceRegistry().then(registry => {
-      const dynamic = Object.keys(registry).map(k => ({ value: k, label: k }));
+    fetchMarketplaceRegistry().then(reg => {
+      setRegistry(reg);
+      const dynamic = Object.keys(reg).map(k => ({ value: k, label: k }));
       setMarketplaces([{ value: "all", label: "All" }, ...dynamic]);
     }).catch(() => {});
   }, []);
@@ -66,7 +70,9 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
 
   async function handleAddMarketplace() {
     if (!newMpName.trim()) return;
-    await addMarketplaceToRegistry(newMpName, { type: "remote", enabled: true, url: newMpUrl || undefined });
+    const config: MarketplaceConfig = { type: "remote", enabled: true, url: newMpUrl || undefined };
+    await addMarketplaceToRegistry(newMpName, config);
+    setRegistry(prev => ({ ...prev, [newMpName]: config }));
     setMarketplaces(prev => [...prev, { value: newMpName, label: newMpName }]);
     setNewMpName("");
     setNewMpUrl("");
@@ -87,6 +93,32 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      {/* Configured Marketplaces */}
+      {Object.keys(registry).length > 0 && (
+        <div className="rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
+          <h3 className="mb-3 text-sm font-medium">Configured Marketplaces</h3>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(registry).map(([name, config]) => (
+              <div
+                key={name}
+                className={cn(
+                  "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm",
+                  config.enabled ? "border-primary/40 bg-primary/5" : "border-muted bg-muted/50 opacity-60"
+                )}
+              >
+                <span className={cn(
+                  "inline-block w-2 h-2 rounded-full",
+                  config.enabled ? "bg-green-500" : "bg-gray-500"
+                )} />
+                <span className="font-medium">{name}</span>
+                <span className="text-xs text-muted-foreground">{config.type}</span>
+                {config.discovered && <span className="text-[10px] text-muted-foreground">(auto)</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Search bar */}
       <form onSubmit={handleSearch} className="flex gap-2">
         <input
