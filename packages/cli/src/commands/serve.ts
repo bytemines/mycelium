@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer } from "../server.js";
@@ -17,7 +17,7 @@ export const serveCommand = new Command("serve")
       const root = path.resolve(__dirname, "..", "..", "..", "..");
       try {
         console.log("Building latest code...");
-        execSync("pnpm run build", { cwd: root, stdio: "inherit" });
+        execFileSync("pnpm", ["run", "build"], { cwd: root, stdio: "inherit" });
       } catch {
         console.warn("Build failed, starting server with existing code.");
       }
