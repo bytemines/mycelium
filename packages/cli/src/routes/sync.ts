@@ -7,8 +7,8 @@ export function registerSyncRoutes(app: Express): void {
   const router = Router();
 
   router.post("/", asyncHandler(async (_req, res) => {
-    const { execSync } = await import("node:child_process");
-    execSync("npx mycelium sync", { stdio: "pipe", timeout: 30000 });
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("npx", ["mycelium", "sync"], { stdio: "pipe", timeout: 30000 });
     res.json({ success: true });
   }));
 

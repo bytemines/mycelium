@@ -20,9 +20,11 @@ vi.mock("node:os", async () => {
 // Mock fs-helpers to avoid MYCELIUM_HOME evaluation at import time (os.homedir() is undefined then)
 vi.mock("./fs-helpers.js", async () => {
   const fsp = await import("node:fs/promises");
+  const osMod = await import("node:os");
+  const pathMod = await import("node:path");
   return {
     mkdirp: (dir: string) => fsp.mkdir(dir, { recursive: true }),
-    MYCELIUM_HOME: "",
+    get MYCELIUM_HOME() { return pathMod.join(osMod.homedir(), ".mycelium"); },
     DEFAULT_PORT: 3378,
     MEMORY_LINE_LIMIT: 200,
     readFileIfExists: vi.fn(),

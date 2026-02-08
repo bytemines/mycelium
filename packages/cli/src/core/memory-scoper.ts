@@ -157,8 +157,10 @@ export async function getMemoryFilesForTool(tool: ToolId): Promise<MemoryFile[]>
  * Concatenates all applicable memory files with scope headers
  */
 /** Per-tool max line limits for memory files */
+import { MEMORY_LINE_LIMIT } from "./fs-helpers.js";
+
 const TOOL_MAX_LINES: Partial<Record<ToolId, number>> = {
-  "claude-code": 200,
+  "claude-code": MEMORY_LINE_LIMIT,
 };
 
 export async function syncMemoryToTool(tool: ToolId): Promise<SyncResult> {
