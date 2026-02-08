@@ -19,6 +19,8 @@ import { presetCommand } from "./commands/preset.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { marketplaceCommand } from "./commands/marketplace.js";
 import { serveCommand } from "./commands/serve.js";
+import { pushCommand, pullCommand, envCommand } from "./commands/remote.js";
+import { removeCommand } from "./commands/remove.js";
 
 const program = new Command();
 
@@ -43,5 +45,9 @@ program.addCommand(presetCommand);
 program.addCommand(migrateCommand);
 program.addCommand(marketplaceCommand);
 program.addCommand(serveCommand);
+program.addCommand(pushCommand);
+program.addCommand(pullCommand);
+program.addCommand(envCommand);
+program.addCommand(removeCommand);
 
 program.parse();

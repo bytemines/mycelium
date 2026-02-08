@@ -36,6 +36,14 @@ vi.mock("../core/mcp-injector.js", () => ({
   resolveEnvVarsInMcps: vi.fn(),
 }));
 
+const mockSyncAll = vi.fn().mockResolvedValue({ success: true });
+vi.mock("../core/tool-adapter.js", () => ({
+  getAdapter: vi.fn(() => ({
+    syncAll: mockSyncAll,
+    syncOne: vi.fn().mockResolvedValue({ success: true }),
+  })),
+}));
+
 vi.mock("../core/memory-scoper.js", () => ({
   syncMemoryToTool: vi.fn(),
   getMemoryFilesForTool: vi.fn(),
@@ -292,8 +300,8 @@ describe("Sync Command", () => {
       // Verify filterMcpsForTool was called to get tool-specific MCPs
       expect(filterMcpsForTool).toHaveBeenCalledWith(sampleMergedConfig.mcps, toolId);
 
-      // Verify injectMcpsToTool was called
-      expect(injectMcpsToTool).toHaveBeenCalled();
+      // Verify adapter syncAll was called
+      expect(mockSyncAll).toHaveBeenCalled();
     });
 
     it("syncs memory to specific tool", async () => {
@@ -352,9 +360,7 @@ describe("Sync Command", () => {
     it("returns error status when MCP injection fails", async () => {
       const toolId: ToolId = "claude-code";
 
-      (injectMcpsToTool as MockedFunction<typeof injectMcpsToTool>).mockRejectedValue(
-        new Error("MCP injection failed")
-      );
+      mockSyncAll.mockRejectedValueOnce(new Error("MCP injection failed"));
 
       const result = await syncTool(toolId, sampleMergedConfig);
 

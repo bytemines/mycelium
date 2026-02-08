@@ -19,7 +19,14 @@ import {
   generateMigrationPlan,
   executeMigration,
   clearMigration,
+  writeHooksYaml,
 } from "../core/migrator.js";
+import {
+  createSnapshot,
+  restoreSnapshot,
+  listSnapshots,
+  deleteSnapshot,
+} from "../core/snapshot.js";
 
 export const migrateCommand = new Command("migrate")
   .description("Scan installed tools and migrate configs into Mycelium")
@@ -33,9 +40,49 @@ export const migrateCommand = new Command("migrate")
     "Conflict resolution: latest, interactive, all",
     "latest",
   )
+  .option("--snapshot <name>", "Create a snapshot of current config")
+  .option("--restore <name>", "Restore a previously saved snapshot")
+  .option("--snapshots", "List all saved snapshots")
+  .option("--snapshot-delete <name>", "Delete a saved snapshot")
   .action(async (opts) => {
     const apply = opts.apply ?? false;
     const strategy = (opts.strategy ?? "latest") as ConflictStrategy;
+
+    // Handle snapshot operations
+    if (opts.snapshots) {
+      const snaps = await listSnapshots();
+      if (snaps.length === 0) {
+        console.log("No snapshots found.");
+        return;
+      }
+      console.log("Snapshots:\n");
+      console.log("  Name                Created                   Files");
+      console.log("  " + "-".repeat(60));
+      for (const s of snaps) {
+        const date = new Date(s.createdAt).toLocaleString();
+        const desc = s.description ? ` — ${s.description}` : "";
+        console.log(`  ${s.name.padEnd(20)}${date.padEnd(26)}${s.fileList.length} files${desc}`);
+      }
+      return;
+    }
+
+    if (opts.snapshot) {
+      const meta = await createSnapshot(opts.snapshot);
+      console.log(`Snapshot "${meta.name}" created (${meta.fileList.length} files, ${Object.keys(meta.skillSymlinks).length} skill symlinks)`);
+      return;
+    }
+
+    if (opts.restore) {
+      await restoreSnapshot(opts.restore);
+      console.log(`Snapshot "${opts.restore}" restored.`);
+      return;
+    }
+
+    if (opts.snapshotDelete) {
+      await deleteSnapshot(opts.snapshotDelete);
+      console.log(`Snapshot "${opts.snapshotDelete}" deleted.`);
+      return;
+    }
 
     // Handle --clear
     if (opts.clear) {
@@ -150,6 +197,13 @@ export const migrateCommand = new Command("migrate")
     // Execute
     console.log("\nApplying migration...");
     const result = await executeMigration(plan);
+
+    // Write hooks from scanned data
+    const allHooks = scans.flatMap((s) => s.hooks);
+    if (allHooks.length > 0) {
+      await writeHooksYaml(allHooks);
+      console.log(`Wrote ${allHooks.length} hooks to hooks.yaml`);
+    }
 
     console.log(
       `\nDone! Imported ${result.skillsImported} skills, ${result.mcpsImported} MCPs, ${result.memoryImported} memory files.`,

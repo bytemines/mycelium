@@ -246,9 +246,7 @@ export function generateOpenClawConfig(
 // Create Default Config
 // ============================================================================
 
-/**
- * Create a default config file if it doesn't exist
- */
+/** @deprecated Adapters handle file creation internally */
 export async function createDefaultConfig(
   toolId: ToolId,
   configPath: string
@@ -295,9 +293,7 @@ export async function createDefaultConfig(
 // Inject MCPs to Tool
 // ============================================================================
 
-/**
- * Inject MCPs into an existing tool config file, preserving other settings
- */
+/** @deprecated Use getAdapter(toolId).syncAll(mcps) instead */
 export async function injectMcpsToTool(
   toolId: ToolId,
   mcps: Record<string, McpServerConfig>,

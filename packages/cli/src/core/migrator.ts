@@ -12,6 +12,7 @@ import type {
   ScannedMcp,
   ScannedMemory,
   ScannedHook,
+  PluginComponent,
   MigrationPlan,
   MigrationResult,
   MigrationManifest,
@@ -21,19 +22,18 @@ import type {
   McpServerConfig,
 } from "@mycelium/core";
 
+import { expandPath } from "@mycelium/core";
 import { parseSkillMd } from "./skill-parser.js";
 import { detectInstalledTools } from "./tool-detector.js";
+import { readFileIfExists, mkdirp } from "./fs-helpers.js";
+import { scanPluginCache } from "./plugin-scanner.js";
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-export function expandHome(p: string): string {
-  if (p.startsWith("~")) {
-    return path.join(os.homedir(), p.slice(1));
-  }
-  return p;
-}
+/** @deprecated Use expandPath from @mycelium/core instead */
+export const expandHome = expandPath;
 
 const MYCELIUM_DIR = path.join(os.homedir(), ".mycelium");
 const MANIFEST_PATH = path.join(MYCELIUM_DIR, "migration-manifest.json");
@@ -57,18 +57,6 @@ async function globDir(dir: string, pattern: RegExp): Promise<string[]> {
   return results;
 }
 
-async function readFileIfExists(filePath: string): Promise<string | null> {
-  try {
-    return await fs.readFile(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-}
-
-async function mkdirp(dir: string): Promise<void> {
-  await fs.mkdir(dir, { recursive: true });
-}
-
 // ============================================================================
 // Tool Scanners
 // ============================================================================
@@ -83,6 +71,7 @@ export async function scanClaudeCode(): Promise<ToolScanResult> {
     mcps: [],
     memory: [],
     hooks: [],
+    components: [],
   };
 
   try {
@@ -159,7 +148,7 @@ export async function scanClaudeCode(): Promise<ToolScanResult> {
   }
 
   try {
-    // Hooks: ~/.claude/hooks/*.py
+    // Hooks: ~/.claude/hooks/*.py (file-based)
     const hooksDir = path.join(home, ".claude", "hooks");
     const hookFiles = await globDir(hooksDir, /\.py$/);
     for (const hookPath of hookFiles) {
@@ -169,6 +158,45 @@ export async function scanClaudeCode(): Promise<ToolScanResult> {
         source: "claude-code",
       });
     }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Hooks: ~/.claude/settings.json (config-based hooks)
+    const settingsPath = path.join(home, ".claude", "settings.json");
+    const settingsRaw = await readFileIfExists(settingsPath);
+    if (settingsRaw) {
+      const settings = JSON.parse(settingsRaw);
+      const hookEvents = ["PreToolUse", "PostToolUse", "Notification", "Stop"];
+      for (const event of hookEvents) {
+        const hooks = settings.hooks?.[event];
+        if (Array.isArray(hooks)) {
+          for (const hook of hooks) {
+            if (hook && typeof hook === "object" && hook.command) {
+              result.hooks.push({
+                name: `${event}/${hook.matcher || "default"}`,
+                source: "claude-code",
+                event,
+                matchers: hook.matcher ? [hook.matcher] : undefined,
+                command: hook.command,
+                timeout: hook.timeout,
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Components: scan plugin cache for agents, commands, hooks, lib
+    const pluginsCache = path.join(home, ".claude", "plugins", "cache");
+    const components = await scanPluginCache(pluginsCache);
+    // Filter out skills (already scanned above) to avoid duplicates
+    result.components = components.filter((c) => c.type !== "skill");
   } catch {
     // ignore
   }
@@ -186,6 +214,7 @@ export async function scanCodex(): Promise<ToolScanResult> {
     mcps: [],
     memory: [],
     hooks: [],
+    components: [],
   };
 
   try {
@@ -226,6 +255,8 @@ export async function scanCodex(): Promise<ToolScanResult> {
     const skillsDir = path.join(home, ".codex", "skills");
     const entries = await fs.readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
+      // Skip hidden dirs/files (e.g., .system)
+      if (entry.name.startsWith(".")) continue;
       const fullPath = path.join(skillsDir, entry.name);
       result.skills.push({
         name: entry.name.replace(/\.[^.]+$/, ""),
@@ -267,6 +298,7 @@ export async function scanGemini(): Promise<ToolScanResult> {
     mcps: [],
     memory: [],
     hooks: [],
+    components: [],
   };
 
   try {
@@ -298,6 +330,7 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
     mcps: [],
     memory: [],
     hooks: [],
+    components: [],
   };
 
   try {
@@ -382,6 +415,7 @@ export async function scanTool(toolId: ToolId): Promise<ToolScanResult> {
         mcps: [],
         memory: [],
         hooks: [],
+        components: [],
       };
   }
 }
@@ -408,6 +442,7 @@ export function generateMigrationPlan(
   const allSkills: ScannedSkill[] = [];
   const allMcps: ScannedMcp[] = [];
   const allMemory: ScannedMemory[] = [];
+  const allComponents: PluginComponent[] = [];
   const conflicts: MigrationConflict[] = [];
 
   // Collect everything
@@ -415,6 +450,7 @@ export function generateMigrationPlan(
     allSkills.push(...scan.skills);
     allMcps.push(...scan.mcps);
     allMemory.push(...scan.memory);
+    allComponents.push(...(scan.components ?? []));
   }
 
   // Detect skill conflicts (same name from different tools)
@@ -499,10 +535,23 @@ export function generateMigrationPlan(
     }
   }
 
+  // Deduplicate components by type+name
+  const componentKey = (c: PluginComponent) => `${c.type}:${c.name}`;
+  const seenComponents = new Set<string>();
+  const resolvedComponents: PluginComponent[] = [];
+  for (const comp of allComponents) {
+    const key = componentKey(comp);
+    if (!seenComponents.has(key)) {
+      seenComponents.add(key);
+      resolvedComponents.push(comp);
+    }
+  }
+
   return {
     skills: resolvedSkills,
     mcps: resolvedMcps,
     memory: allMemory,
+    components: resolvedComponents,
     conflicts,
     strategy,
   };
@@ -512,26 +561,54 @@ export function generateMigrationPlan(
 // Migration Execution
 // ============================================================================
 
+/** Quote a YAML scalar value if it contains special characters */
+function yamlQuote(val: string): string {
+  if (/^[@#{}\[\]&*!|>'"%,`]/.test(val) || /[:#]/.test(val) || val.includes("${") || val === "" || val === "true" || val === "false" || val === "null") {
+    return `"${val.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return val;
+}
+
 function serializeMcpsYaml(mcps: ScannedMcp[]): string {
   let yaml = "# Mycelium MCP Configuration\n# Auto-generated by migration\n\n";
   for (const mcp of mcps) {
     yaml += `${mcp.name}:\n`;
-    yaml += `  command: ${mcp.config.command}\n`;
+    yaml += `  command: ${yamlQuote(mcp.config.command)}\n`;
     if (mcp.config.args && mcp.config.args.length > 0) {
       yaml += `  args:\n`;
       for (const arg of mcp.config.args) {
-        yaml += `    - ${arg}\n`;
+        yaml += `    - ${yamlQuote(arg)}\n`;
       }
     }
     if (mcp.config.env) {
       yaml += `  env:\n`;
       for (const [key, val] of Object.entries(mcp.config.env)) {
-        yaml += `    ${key}: ${val}\n`;
+        yaml += `    ${key}: ${yamlQuote(String(val))}\n`;
       }
     }
     yaml += "\n";
   }
   return yaml;
+}
+
+export async function writeHooksYaml(hooks: ScannedHook[]): Promise<void> {
+  if (hooks.length === 0) return;
+  const hooksPath = path.join(MYCELIUM_DIR, "global", "hooks.yaml");
+  await mkdirp(path.join(MYCELIUM_DIR, "global"));
+  let yaml = "# Mycelium Hooks Configuration\n# Auto-generated by migration\n\n";
+  for (const hook of hooks) {
+    yaml += `${hook.name.replace(/\//g, "-")}:\n`;
+    if (hook.event) yaml += `  event: ${hook.event}\n`;
+    if (hook.command) yaml += `  command: ${hook.command}\n`;
+    if (hook.matchers?.length) {
+      yaml += `  matchers:\n`;
+      for (const m of hook.matchers) yaml += `    - ${m}\n`;
+    }
+    if (hook.timeout) yaml += `  timeout: ${hook.timeout}\n`;
+    if (hook.path) yaml += `  path: ${hook.path}\n`;
+    yaml += `  source: ${hook.source}\n\n`;
+  }
+  await fs.writeFile(hooksPath, yaml, "utf-8");
 }
 
 export async function executeMigration(plan: MigrationPlan): Promise<MigrationResult> {
@@ -623,6 +700,32 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
     }
   }
 
+  // Components: symlink agents, commands, hooks, lib into dedicated dirs
+  let componentsImported = 0;
+  for (const comp of plan.components ?? []) {
+    const compDir = path.join(MYCELIUM_DIR, "global", `${comp.type}s`);
+    await mkdirp(compDir);
+    const dest = path.join(compDir, comp.name + path.extname(comp.path));
+    try {
+      try { await fs.unlink(dest); } catch { /* doesn't exist */ }
+      await fs.symlink(comp.path, dest);
+      componentsImported++;
+      entries.push({
+        name: comp.name,
+        type: comp.type,
+        source: "claude-code",
+        originalPath: comp.path,
+        importedPath: dest,
+        importedAt: now,
+        strategy: plan.strategy,
+        marketplace: comp.marketplace,
+        pluginName: comp.pluginName,
+      });
+    } catch (err) {
+      errors.push(`Failed to symlink ${comp.type} ${comp.name}: ${err}`);
+    }
+  }
+
   // Auto-register discovered marketplaces from migrated skills
   const discoveredMarketplaces = new Set<string>();
   for (const skill of plan.skills) {
@@ -661,6 +764,7 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
     skillsImported,
     mcpsImported,
     memoryImported,
+    componentsImported,
     conflicts: plan.conflicts,
     errors,
     manifest,
@@ -703,6 +807,10 @@ export async function clearMigration(
     // Clear everything
     const dirs = [
       path.join(MYCELIUM_DIR, "global", "skills"),
+      path.join(MYCELIUM_DIR, "global", "agents"),
+      path.join(MYCELIUM_DIR, "global", "commands"),
+      path.join(MYCELIUM_DIR, "global", "hooks"),
+      path.join(MYCELIUM_DIR, "global", "libs"),
       path.join(MYCELIUM_DIR, "memory"),
     ];
     for (const dir of dirs) {

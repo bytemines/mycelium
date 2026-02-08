@@ -11,7 +11,6 @@ import {
   MiniMap,
   Node,
   Edge,
-  Handle,
   Position,
   useNodesState,
   useEdgesState,
@@ -20,6 +19,11 @@ import {
 import ELK from "elkjs/lib/elk.bundled.js";
 import "@xyflow/react/dist/style.css";
 import { cn } from "@/lib/utils";
+import { ToolNode, ResourceNode, PluginNode, AddToolNode } from "./nodes";
+import type { ResourceNodeData, PluginNodeData } from "./nodes";
+
+// Re-export node components for backwards compatibility
+export { ToolNode, ResourceNode, PluginNode, AddToolNode };
 
 // Initialize ELK
 const elk = new ELK();
@@ -57,9 +61,13 @@ interface ToolData {
 interface PluginData {
   name: string;
   marketplace: string;
-  skillCount: number;
+  componentCount: number;
   enabled: boolean;
   skills: string[];
+  agents?: string[];
+  commands?: string[];
+  hooks?: string[];
+  libs?: string[];
 }
 
 interface GraphData {
@@ -68,30 +76,6 @@ interface GraphData {
   mcps: McpData[];
   memory: MemoryData[];
   plugins?: PluginData[];
-}
-
-// Node data types
-interface ToolNodeData {
-  name: string;
-  status: Status;
-  installed: boolean;
-}
-
-interface ResourceNodeData {
-  name: string;
-  type: "skill" | "mcp" | "memory";
-  status: Status;
-  enabled?: boolean;
-  onToggle?: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
-}
-
-interface PluginNodeData {
-  name: string;
-  marketplace: string;
-  skillCount: number;
-  enabled: boolean;
-  onToggle?: (name: string, enabled: boolean) => void;
-  onClick?: (name: string) => void;
 }
 
 // ELK layout options
@@ -147,173 +131,6 @@ async function getLayoutedElements(
   }
 }
 
-// Status indicator component
-function StatusDot({ status }: { status: Status }) {
-  const colors: Record<Status, string> = {
-    synced: "bg-green-500 shadow-green-500/50",
-    pending: "bg-yellow-500 shadow-yellow-500/50",
-    error: "bg-red-500 shadow-red-500/50",
-    disabled: "bg-gray-500",
-    not_installed: "bg-gray-700 border border-gray-500",
-  };
-
-  return (
-    <span
-      data-testid={`node-status-${status}`}
-      className={cn(
-        "inline-block w-2.5 h-2.5 rounded-full shadow-sm",
-        colors[status]
-      )}
-    />
-  );
-}
-
-// Tool Node - represents AI tools (Claude Code, Codex, etc.)
-export function ToolNode({ data }: { data: ToolNodeData }) {
-  const isInstalled = data.installed !== false;
-
-  return (
-    <div
-      className={cn(
-        "px-4 py-3 rounded-lg border-2 bg-card shadow-lg min-w-[130px] transition-all",
-        isInstalled
-          ? "border-primary/60 hover:border-primary hover:shadow-primary/20"
-          : "border-gray-600 opacity-50"
-      )}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-3" />
-      <div className="flex items-center gap-2">
-        <StatusDot status={isInstalled ? data.status : "not_installed"} />
-        <span className={cn("font-medium text-sm", !isInstalled && "text-gray-500")}>
-          {data.name}
-        </span>
-      </div>
-      {!isInstalled && (
-        <div className="text-[10px] text-gray-500 mt-1">Not installed</div>
-      )}
-      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-3 !h-3" />
-    </div>
-  );
-}
-
-// Resource Node - represents skills, MCPs, or memory files
-export function ResourceNode({ data }: { data: ResourceNodeData }) {
-  const isEnabled = data.enabled !== false;
-  const typeStyles: Record<string, { border: string; bg: string }> = {
-    skill: { border: "border-blue-500/60", bg: "bg-blue-500/10" },
-    mcp: { border: "border-purple-500/60", bg: "bg-purple-500/10" },
-    memory: { border: "border-amber-500/60", bg: "bg-amber-500/10" },
-  };
-
-  const style = typeStyles[data.type] || typeStyles.skill;
-
-  return (
-    <div
-      className={cn(
-        "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-all hover:scale-105",
-        style.border,
-        style.bg,
-        !isEnabled && "opacity-50"
-      )}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-muted !w-2 !h-2" />
-      <div className="flex items-center gap-2">
-        <StatusDot status={isEnabled ? data.status : "disabled"} />
-        <span className="text-sm font-medium truncate max-w-[100px]">{data.name}</span>
-        <button
-          role="switch"
-          aria-checked={isEnabled}
-          aria-label={`Toggle ${data.name}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            data.onToggle?.(data.type, data.name, !isEnabled);
-          }}
-          className={cn(
-            "ml-auto relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-            isEnabled ? "bg-primary" : "bg-muted"
-          )}
-        >
-          <span
-            className={cn(
-              "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-              isEnabled ? "translate-x-3" : "translate-x-0"
-            )}
-          />
-        </button>
-      </div>
-      <div className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wider">
-        {data.type}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-muted !w-2 !h-2" />
-    </div>
-  );
-}
-
-// Plugin Node - represents installed plugins from marketplaces
-export function PluginNode({ data }: { data: PluginNodeData }) {
-  const isEnabled = data.enabled !== false;
-
-  return (
-    <div
-      className={cn(
-        "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-all hover:scale-105 cursor-pointer",
-        "border-teal-500/60",
-        "bg-teal-500/10",
-        !isEnabled && "opacity-50"
-      )}
-      onClick={() => data.onClick?.(data.name)}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-muted !w-2 !h-2" />
-      <div className="flex items-center gap-2">
-        <StatusDot status={isEnabled ? "synced" : "disabled"} />
-        <span className="text-sm font-medium truncate max-w-[100px]">{data.name}</span>
-        <button
-          role="switch"
-          aria-checked={isEnabled}
-          aria-label={`Toggle ${data.name}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            data.onToggle?.(data.name, !isEnabled);
-          }}
-          className={cn(
-            "ml-auto relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-            isEnabled ? "bg-primary" : "bg-muted"
-          )}
-        >
-          <span
-            className={cn(
-              "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-              isEnabled ? "translate-x-3" : "translate-x-0"
-            )}
-          />
-        </button>
-      </div>
-      <div className="flex items-center gap-2 mt-0.5">
-        <span className="rounded-full bg-teal-500/20 px-1.5 py-0 text-[9px] text-teal-400">{data.marketplace}</span>
-        <span className="text-[10px] text-muted-foreground">{data.skillCount} skills</span>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-muted !w-2 !h-2" />
-    </div>
-  );
-}
-
-// Add Tool Node - for adding new destination tools in migrate mode
-export function AddToolNode({ data }: { data: { onClick?: () => void } }) {
-  return (
-    <div
-      className="px-4 py-3 rounded-lg border-2 border-dashed border-muted-foreground/40 bg-card/50 shadow-md min-w-[130px] cursor-pointer hover:border-primary/60 hover:bg-card transition-all"
-      onClick={() => data.onClick?.()}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-muted !w-3 !h-3" />
-      <div className="flex items-center gap-2 justify-center">
-        <span className="text-lg text-muted-foreground">+</span>
-        <span className="font-medium text-sm text-muted-foreground">Add Tool</span>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-muted !w-3 !h-3" />
-    </div>
-  );
-}
-
 // Node types registry
 const nodeTypes = {
   tool: ToolNode,
@@ -321,6 +138,7 @@ const nodeTypes = {
   plugin: PluginNode,
   addTool: AddToolNode,
 };
+
 
 // Default tools - will be filtered based on what's installed
 const ALL_TOOLS: ToolData[] = [
@@ -403,7 +221,12 @@ export function Graph({ data, mode = "dashboard", onNodeClick, onToggle, onPlugi
         data: {
           name: plugin.name,
           marketplace: plugin.marketplace,
-          skillCount: plugin.skillCount,
+          componentCount: plugin.componentCount,
+          skillCount: plugin.skills?.length ?? 0,
+          agentCount: plugin.agents?.length ?? 0,
+          commandCount: plugin.commands?.length ?? 0,
+          hookCount: plugin.hooks?.length ?? 0,
+          libCount: plugin.libs?.length ?? 0,
           enabled: plugin.enabled,
           onToggle: (name: string, enabled: boolean) => onToggle?.({ type: "skill", name, enabled }),
           onClick: (name: string) => onPluginClick?.(name),

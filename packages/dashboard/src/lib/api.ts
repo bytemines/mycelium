@@ -95,6 +95,21 @@ export async function fetchPopularSkills(): Promise<MarketplaceSearchResult[]> {
   return res.json();
 }
 
+export async function removeSkill(name: string): Promise<{ removed: boolean; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/remove/skill/${encodeURIComponent(name)}`, { method: "DELETE" });
+  return res.json();
+}
+
+export async function removeMcp(name: string): Promise<{ removed: boolean; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/remove/mcp/${encodeURIComponent(name)}`, { method: "DELETE" });
+  return res.json();
+}
+
+export async function removePlugin(name: string): Promise<{ removed: string[]; errors: string[] }> {
+  const res = await fetch(`${API_BASE}/api/remove/plugin/${encodeURIComponent(name)}`, { method: "DELETE" });
+  return res.json();
+}
+
 export async function updateMarketplaceEntry(name: string, source: MarketplaceSource): Promise<{ success: boolean; path?: string; error?: string }> {
   const res = await fetch(`${API_BASE}/api/marketplace/update`, {
     method: "POST",
