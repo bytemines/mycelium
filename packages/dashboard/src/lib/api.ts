@@ -64,6 +64,10 @@ export async function addMarketplaceToRegistry(name: string, config: Marketplace
   });
 }
 
+export async function removeMarketplaceFromRegistry(name: string): Promise<void> {
+  await fetch(`${API_BASE}/api/marketplace/registry/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
 export async function fetchPlugins(marketplace?: string): Promise<PluginInfo[]> {
   const params = marketplace ? `?marketplace=${marketplace}` : "";
   const res = await fetch(`${API_BASE}/api/plugins${params}`);

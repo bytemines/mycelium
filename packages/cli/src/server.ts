@@ -7,6 +7,7 @@ import { searchMarketplace, installFromMarketplace } from "./core/marketplace.js
 import {
   loadMarketplaceRegistry,
   addMarketplace,
+  removeMarketplace,
   listPlugins,
   togglePlugin,
   toggleSkillInPlugin,
@@ -108,6 +109,16 @@ export function createServer(port = 3378): Express {
     try {
       const { name, ...config } = req.body as { name: string } & MarketplaceConfig;
       await addMarketplace(name, config);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // DELETE /api/marketplace/registry/:name
+  app.delete("/api/marketplace/registry/:name", async (req, res) => {
+    try {
+      await removeMarketplace(req.params.name);
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
