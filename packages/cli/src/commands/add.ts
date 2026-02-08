@@ -18,6 +18,8 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { expandPath, ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelium/core";
+import { getRegistryEntry, parseRegistryEntry } from "../core/mcp-registry.js";
+import { parseSkillMd, isValidSkillMd } from "../core/skill-parser.js";
 
 const execAsync = promisify(exec);
 
@@ -237,11 +239,29 @@ export async function addSkill(
       manifest.skills = {};
     }
 
-    (manifest.skills as Record<string, unknown>)[sourceInfo.name] = {
+    // Check for SKILL.md and extract metadata if present
+    const skillMdPath = path.join(skillDestPath, "SKILL.md");
+    let skillEntry: Record<string, unknown> = {
       source: source,
       path: `global/skills/${sourceInfo.name}`,
       enabled: true,
     };
+
+    if (await pathExists(skillMdPath)) {
+      const skillMdContent = await fs.readFile(skillMdPath, "utf-8");
+      if (isValidSkillMd(skillMdContent)) {
+        const metadata = parseSkillMd(skillMdContent);
+        skillEntry = {
+          ...skillEntry,
+          ...(metadata.description && { description: metadata.description }),
+          ...(metadata.tools.length > 0 && { tools: metadata.tools }),
+          ...(metadata.model && { model: metadata.model }),
+          ...(metadata.color && { color: metadata.color }),
+        };
+      }
+    }
+
+    (manifest.skills as Record<string, unknown>)[sourceInfo.name] = skillEntry;
 
     await fs.writeFile(manifestPath, yamlStringify(manifest), "utf-8");
 
@@ -425,6 +445,7 @@ const mcpCommand = new Command("mcp")
   .option("--enabled", "Enable the MCP server (default: true)")
   .option("-g, --global", "Add to global configuration (~/.mycelium/)")
   .option("-f, --force", "Overwrite existing MCP")
+  .option("--from-registry", "Fetch config from the MCP registry")
   .action(
     async (
       name: string,
@@ -435,10 +456,26 @@ const mcpCommand = new Command("mcp")
         enabled?: boolean;
         global?: boolean;
         force?: boolean;
+        fromRegistry?: boolean;
       }
     ) => {
+      // If --from-registry, fetch config from MCP registry
+      if (options.fromRegistry) {
+        const entry = await getRegistryEntry(name);
+        if (!entry) {
+          console.error(`Error: MCP "${name}" not found in registry`);
+          process.exit(1);
+        }
+        const config = parseRegistryEntry(entry);
+        options.command = config.command;
+        options.args = config.args;
+        if (config.env) {
+          options.env = Object.entries(config.env).map(([k, v]) => `${k}=${v}`);
+        }
+      }
+
       if (!options.command) {
-        console.error("Error: --command is required");
+        console.error("Error: --command is required (or use --from-registry)");
         process.exit(1);
       }
 

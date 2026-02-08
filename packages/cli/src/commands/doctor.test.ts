@@ -639,6 +639,72 @@ memory:
     });
   });
 
+  describe("checkMcpServerConnectivity", () => {
+    it("returns pass for valid command", async () => {
+      const { checkMcpServerConnectivity } = await import("./doctor.js");
+      const result = await checkMcpServerConnectivity("echo", ["hello"]);
+      expect(result.status).toBe("pass");
+    });
+
+    it("returns fail for invalid command", async () => {
+      const { checkMcpServerConnectivity } = await import("./doctor.js");
+      const result = await checkMcpServerConnectivity("nonexistent-cmd-xyz", []);
+      expect(result.status).toBe("fail");
+    });
+
+    it("includes command name in message", async () => {
+      const { checkMcpServerConnectivity } = await import("./doctor.js");
+      const result = await checkMcpServerConnectivity("echo", ["test"]);
+      expect(result.message).toContain("echo");
+    });
+  });
+
+  describe("checkToolVersions", () => {
+    it("returns a diagnostic result", async () => {
+      const { checkToolVersions } = await import("./doctor.js");
+      const result = await checkToolVersions();
+      expect(result.status).toBeDefined();
+      expect(result.name).toContain("Tool Versions");
+    });
+  });
+
+  describe("checkMemoryFileSize", () => {
+    it("returns pass when memory files are within limits", async () => {
+      const { pathExists } = await import("@mycelium/core");
+      const fs = await import("node:fs/promises");
+
+      vi.mocked(pathExists).mockResolvedValue(true);
+      vi.mocked(fs.readFile).mockResolvedValue("Line 1\nLine 2\nLine 3");
+
+      const { checkMemoryFileSize } = await import("./doctor.js");
+      const result = await checkMemoryFileSize("/mock/path/MEMORY.md", 200);
+      expect(result.status).toBe("pass");
+    });
+
+    it("returns warn when memory file exceeds limit", async () => {
+      const { pathExists } = await import("@mycelium/core");
+      const fs = await import("node:fs/promises");
+
+      vi.mocked(pathExists).mockResolvedValue(true);
+      const longContent = Array.from({ length: 250 }, (_, i) => `Line ${i}`).join("\n");
+      vi.mocked(fs.readFile).mockResolvedValue(longContent);
+
+      const { checkMemoryFileSize } = await import("./doctor.js");
+      const result = await checkMemoryFileSize("/mock/path/MEMORY.md", 200);
+      expect(result.status).toBe("warn");
+      expect(result.message).toContain("250");
+    });
+
+    it("returns pass when file does not exist", async () => {
+      const { pathExists } = await import("@mycelium/core");
+      vi.mocked(pathExists).mockResolvedValue(false);
+
+      const { checkMemoryFileSize } = await import("./doctor.js");
+      const result = await checkMemoryFileSize("/mock/path/MEMORY.md", 200);
+      expect(result.status).toBe("pass");
+    });
+  });
+
   describe("doctorCommand (Commander.js)", () => {
     it("exports a Command instance", async () => {
       const { doctorCommand } = await import("./doctor.js");

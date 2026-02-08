@@ -13,6 +13,7 @@ import {
   pathExists,
   ensureDir,
 } from "@mycelium/core";
+import { compressMemory, mergeMemoryFiles } from "./smart-memory.js";
 
 // ============================================================================
 // Types
@@ -155,27 +156,38 @@ export async function getMemoryFilesForTool(tool: ToolId): Promise<MemoryFile[]>
  * Sync memory files to a specific tool
  * Concatenates all applicable memory files with scope headers
  */
+/** Per-tool max line limits for memory files */
+const TOOL_MAX_LINES: Partial<Record<ToolId, number>> = {
+  "claude-code": 200,
+};
+
 export async function syncMemoryToTool(tool: ToolId): Promise<SyncResult> {
   try {
     const scopes = getScopesForTool(tool);
-    const sections: string[] = [];
+    const memoryFiles: Array<{ scope: string; content: string }> = [];
 
     for (const scope of scopes) {
       const files = await loadMemoryFiles(scope);
 
-      if (files.length > 0) {
-        sections.push(`<!-- SCOPE: ${scope} -->`);
-        for (const file of files) {
-          if (file.content) {
-            sections.push(file.content);
-          }
+      for (const file of files) {
+        if (file.content) {
+          memoryFiles.push({ scope, content: file.content });
         }
       }
     }
 
     // No files to write
-    if (sections.length === 0) {
+    if (memoryFiles.length === 0) {
       return { success: true, filesWritten: 0 };
+    }
+
+    // Merge and deduplicate across scopes
+    let content = mergeMemoryFiles(memoryFiles);
+
+    // Compress if tool has a max line limit
+    const maxLines = TOOL_MAX_LINES[tool];
+    if (maxLines) {
+      content = compressMemory(content, { maxLines });
     }
 
     // Get tool's memory path
@@ -186,8 +198,7 @@ export async function syncMemoryToTool(tool: ToolId): Promise<SyncResult> {
     // Ensure target directory exists
     await ensureDir(memoryDir);
 
-    // Write concatenated content
-    const content = sections.join("\n\n");
+    // Write content
     await fs.writeFile(memoryPath, content, "utf-8");
 
     return { success: true, filesWritten: 1 };

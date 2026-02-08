@@ -176,6 +176,30 @@ export interface SyncResult {
 }
 
 // ============================================================================
+// Memory Compression Types
+// ============================================================================
+
+export interface CompressOptions {
+  maxLines: number;
+  preserveHeaders?: boolean;
+}
+
+// ============================================================================
+// Agent Team Types
+// ============================================================================
+
+export interface AgentConfig {
+  name: string;
+  role: string;
+  model?: string;
+}
+
+export interface TeamConfig {
+  name: string;
+  agents: AgentConfig[];
+}
+
+// ============================================================================
 // Config Merge Types
 // ============================================================================
 
@@ -186,4 +210,41 @@ export interface MergedConfig {
   skills: Record<string, Skill>;
   memory: MemoryConfig;
   sources: Record<string, ConfigLevel>;
+}
+
+// ============================================================================
+// Dashboard Types
+// ============================================================================
+
+export interface ToggleAction {
+  type: "skill" | "mcp" | "memory";
+  name: string;
+  toolId: ToolId;
+  enabled: boolean;
+}
+
+export interface DashboardState {
+  tools: Array<{
+    id: ToolId;
+    name: string;
+    status: SyncStatus;
+    installed: boolean;
+  }>;
+  skills: Array<{
+    name: string;
+    status: SyncStatus;
+    enabled: boolean;
+    connectedTools: ToolId[];
+  }>;
+  mcps: Array<{
+    name: string;
+    status: SyncStatus;
+    enabled: boolean;
+    connectedTools: ToolId[];
+  }>;
+  memory: Array<{
+    name: string;
+    scope: MemoryScope;
+    status: SyncStatus;
+  }>;
 }

@@ -30,12 +30,14 @@ type Status = "synced" | "pending" | "error" | "disabled" | "not_installed";
 interface SkillData {
   name: string;
   status: Status;
+  enabled?: boolean;
   connectedTools?: string[];
 }
 
 interface McpData {
   name: string;
   status: Status;
+  enabled?: boolean;
   connectedTools?: string[];
 }
 
@@ -70,6 +72,8 @@ interface ResourceNodeData {
   name: string;
   type: "skill" | "mcp" | "memory";
   status: Status;
+  enabled?: boolean;
+  onToggle?: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
 }
 
 // ELK layout options
@@ -176,6 +180,7 @@ export function ToolNode({ data }: { data: ToolNodeData }) {
 
 // Resource Node - represents skills, MCPs, or memory files
 export function ResourceNode({ data }: { data: ResourceNodeData }) {
+  const isEnabled = data.enabled !== false;
   const typeStyles: Record<string, { border: string; bg: string }> = {
     skill: { border: "border-blue-500/60", bg: "bg-blue-500/10" },
     mcp: { border: "border-purple-500/60", bg: "bg-purple-500/10" },
@@ -189,13 +194,34 @@ export function ResourceNode({ data }: { data: ResourceNodeData }) {
       className={cn(
         "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-all hover:scale-105",
         style.border,
-        style.bg
+        style.bg,
+        !isEnabled && "opacity-50"
       )}
     >
       <Handle type="target" position={Position.Top} className="!bg-muted !w-2 !h-2" />
       <div className="flex items-center gap-2">
-        <StatusDot status={data.status} />
+        <StatusDot status={isEnabled ? data.status : "disabled"} />
         <span className="text-sm font-medium truncate max-w-[100px]">{data.name}</span>
+        <button
+          role="switch"
+          aria-checked={isEnabled}
+          aria-label={`Toggle ${data.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onToggle?.(data.type, data.name, !isEnabled);
+          }}
+          className={cn(
+            "ml-auto relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+            isEnabled ? "bg-primary" : "bg-muted"
+          )}
+        >
+          <span
+            className={cn(
+              "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
+              isEnabled ? "translate-x-3" : "translate-x-0"
+            )}
+          />
+        </button>
       </div>
       <div className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wider">
         {data.type}
@@ -221,16 +247,30 @@ const ALL_TOOLS: ToolData[] = [
   { id: "aider", name: "Aider", status: "synced", installed: true },
 ];
 
+interface ToggleInfo {
+  type: "skill" | "mcp" | "memory";
+  name: string;
+  enabled: boolean;
+}
+
 interface GraphProps {
   data?: GraphData;
   onNodeClick?: (node: Node) => void;
+  onToggle?: (toggle: ToggleInfo) => void;
   showUninstalledTools?: boolean;
 }
 
-export function Graph({ data, onNodeClick, showUninstalledTools = false }: GraphProps) {
+export function Graph({ data, onNodeClick, onToggle, showUninstalledTools = false }: GraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [layoutDirection, setLayoutDirection] = useState<"DOWN" | "RIGHT">("DOWN");
+
+  const handleToggle = useCallback(
+    (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => {
+      onToggle?.({ type, name, enabled });
+    },
+    [onToggle]
+  );
 
   // Build initial nodes and edges from data
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -264,9 +304,10 @@ export function Graph({ data, onNodeClick, showUninstalledTools = false }: Graph
         id: nodeId,
         type: "resource",
         position: { x: index * 140, y: 150 },
-        data: { name: skill.name, type: "skill", status: skill.status },
+        data: { name: skill.name, type: "skill", status: skill.status, enabled: skill.enabled, onToggle: handleToggle },
       });
 
+      const isEnabled = skill.enabled !== false;
       // Connect to specified tools or all installed tools
       const targetTools = skill.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
       targetTools.forEach((toolId) => {
@@ -275,8 +316,8 @@ export function Graph({ data, onNodeClick, showUninstalledTools = false }: Graph
             id: `${nodeId}-to-${toolId}`,
             source: nodeId,
             target: `tool-${toolId}`,
-            animated: skill.status === "synced",
-            style: { stroke: "#3b82f6", strokeWidth: 2 },
+            animated: isEnabled && skill.status === "synced",
+            style: { stroke: "#3b82f6", strokeWidth: 2, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
           });
         }
       });
@@ -289,9 +330,10 @@ export function Graph({ data, onNodeClick, showUninstalledTools = false }: Graph
         id: nodeId,
         type: "resource",
         position: { x: index * 140, y: 300 },
-        data: { name: mcp.name, type: "mcp", status: mcp.status },
+        data: { name: mcp.name, type: "mcp", status: mcp.status, enabled: mcp.enabled, onToggle: handleToggle },
       });
 
+      const isMcpEnabled = mcp.enabled !== false;
       // Connect to specified tools or all installed tools
       const targetTools = mcp.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
       targetTools.forEach((toolId) => {
@@ -300,8 +342,8 @@ export function Graph({ data, onNodeClick, showUninstalledTools = false }: Graph
             id: `${nodeId}-to-${toolId}`,
             source: nodeId,
             target: `tool-${toolId}`,
-            animated: mcp.status === "synced",
-            style: { stroke: "#a855f7", strokeWidth: 2 },
+            animated: isMcpEnabled && mcp.status === "synced",
+            style: { stroke: "#a855f7", strokeWidth: 2, ...(isMcpEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
           });
         }
       });
@@ -314,7 +356,7 @@ export function Graph({ data, onNodeClick, showUninstalledTools = false }: Graph
         id: nodeId,
         type: "resource",
         position: { x: index * 140, y: 450 },
-        data: { name: mem.name, type: "memory", status: mem.status },
+        data: { name: mem.name, type: "memory", status: mem.status, onToggle: handleToggle },
       });
 
       // Connect based on scope
@@ -341,7 +383,7 @@ export function Graph({ data, onNodeClick, showUninstalledTools = false }: Graph
     });
 
     return { initialNodes: nodes, initialEdges: edges };
-  }, [data, showUninstalledTools]);
+  }, [data, showUninstalledTools, handleToggle]);
 
   // Apply ELK layout when data changes
   useEffect(() => {

@@ -18,6 +18,8 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as yaml from "yaml";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   type ToolId,
   SUPPORTED_TOOLS,
@@ -396,6 +398,115 @@ export async function checkOrphanedConfigs(): Promise<DiagnosticResult> {
   }
 }
 
+/**
+ * Check if an MCP server command is accessible
+ */
+export async function checkMcpServerConnectivity(
+  command: string,
+  args: string[]
+): Promise<DiagnosticResult> {
+  const execFileAsync = promisify(execFile);
+  try {
+    await execFileAsync(command, args, { timeout: 5000 });
+    return {
+      name: "MCP Server Connectivity",
+      status: "pass",
+      message: `Command "${command}" is accessible`,
+    };
+  } catch (error: unknown) {
+    const err = error as { code?: string };
+    if (err.code === "ENOENT") {
+      return {
+        name: "MCP Server Connectivity",
+        status: "fail",
+        message: `Command "${command}" not found`,
+        fix: `Install or verify the path for "${command}"`,
+      };
+    }
+    // Command exists but may have exited with error (still accessible)
+    return {
+      name: "MCP Server Connectivity",
+      status: "pass",
+      message: `Command "${command}" is accessible`,
+    };
+  }
+}
+
+/**
+ * Check which supported tools are installed and report versions
+ */
+export async function checkToolVersions(): Promise<DiagnosticResult> {
+  const installed: string[] = [];
+  const missing: string[] = [];
+
+  for (const [toolId, toolConfig] of Object.entries(SUPPORTED_TOOLS)) {
+    const skillsPath = expandPath(toolConfig.skillsPath);
+    const configPath = expandPath(toolConfig.mcpConfigPath);
+    if ((await pathExists(skillsPath)) || (await pathExists(configPath))) {
+      installed.push(toolConfig.name);
+    } else {
+      missing.push(toolConfig.name);
+    }
+  }
+
+  if (installed.length === 0) {
+    return {
+      name: "Tool Versions",
+      status: "warn",
+      message: "No supported tools detected",
+      fix: "Install at least one supported AI tool (Claude Code, Codex, etc.)",
+    };
+  }
+
+  return {
+    name: "Tool Versions",
+    status: "pass",
+    message: `${installed.length} tool(s) detected: ${installed.join(", ")}`,
+  };
+}
+
+/**
+ * Check if a memory file exceeds the line limit for a tool
+ */
+export async function checkMemoryFileSize(
+  filePath: string,
+  maxLines: number
+): Promise<DiagnosticResult> {
+  if (!(await pathExists(filePath))) {
+    return {
+      name: "Memory File Size",
+      status: "pass",
+      message: `File not present: ${filePath}`,
+    };
+  }
+
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    const lineCount = content.split("\n").length;
+
+    if (lineCount > maxLines) {
+      return {
+        name: "Memory File Size",
+        status: "warn",
+        message: `${filePath} has ${lineCount} lines (limit: ${maxLines})`,
+        fix: "Run: mycelium sync (smart compression will reduce it)",
+      };
+    }
+
+    return {
+      name: "Memory File Size",
+      status: "pass",
+      message: `${filePath} is within limits (${lineCount}/${maxLines} lines)`,
+    };
+  } catch (error) {
+    return {
+      name: "Memory File Size",
+      status: "warn",
+      message: `Error reading ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 // ============================================================================
 // Main Functions
 // ============================================================================
@@ -446,6 +557,19 @@ export async function runAllChecks(): Promise<DoctorResult> {
   // 5. Check for orphaned configs
   if (globalExists) {
     checks.push(await checkOrphanedConfigs());
+  }
+
+  // 6. Check tool versions
+  checks.push(await checkToolVersions());
+
+  // 7. Check memory file sizes for tools with limits
+  const memoryLimits: Partial<Record<ToolId, number>> = {
+    "claude-code": 200,
+  };
+  for (const [toolId, maxLines] of Object.entries(memoryLimits)) {
+    const toolConfig = SUPPORTED_TOOLS[toolId as ToolId];
+    const memoryPath = expandPath(toolConfig.memoryPath);
+    checks.push(await checkMemoryFileSize(memoryPath, maxLines));
   }
 
   // Calculate summary

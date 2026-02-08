@@ -3,6 +3,7 @@
  * Implemented following TDD to pass Dashboard.test.tsx
  */
 
+import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Graph } from "./Graph";
 import { ReactFlowProvider } from "@xyflow/react";
@@ -44,7 +45,28 @@ function StatsCard({ title, count, status }: StatsCardProps) {
   );
 }
 
+interface ToggleState {
+  skills: Record<string, boolean>;
+  mcps: Record<string, boolean>;
+}
+
 function GraphContainer() {
+  const [toggleState, setToggleState] = useState<ToggleState>({
+    skills: { tdd: true, debugging: true, "git-workflow": true },
+    mcps: { "git-mcp": true, "filesystem-mcp": true, context7: true },
+  });
+
+  const handleToggle = useCallback(
+    (toggle: { type: string; name: string; enabled: boolean }) => {
+      setToggleState((prev) => {
+        const key = toggle.type === "skill" ? "skills" : toggle.type === "mcp" ? "mcps" : null;
+        if (!key) return prev;
+        return { ...prev, [key]: { ...prev[key], [toggle.name]: toggle.enabled } };
+      });
+    },
+    []
+  );
+
   // Mock data simulating tool detection - Claude Code and Codex installed
   // TODO: Replace with actual data from CLI's detectInstalledTools()
   const mockData = {
@@ -57,14 +79,14 @@ function GraphContainer() {
       { id: "aider", name: "Aider", status: "disabled" as Status, installed: false },
     ],
     skills: [
-      { name: "tdd", status: "synced" as Status, connectedTools: ["claude-code", "codex"] },
-      { name: "debugging", status: "synced" as Status, connectedTools: ["claude-code", "codex"] },
-      { name: "git-workflow", status: "pending" as Status, connectedTools: ["claude-code"] },
+      { name: "tdd", status: "synced" as Status, enabled: toggleState.skills.tdd, connectedTools: ["claude-code", "codex"] },
+      { name: "debugging", status: "synced" as Status, enabled: toggleState.skills.debugging, connectedTools: ["claude-code", "codex"] },
+      { name: "git-workflow", status: "pending" as Status, enabled: toggleState.skills["git-workflow"], connectedTools: ["claude-code"] },
     ],
     mcps: [
-      { name: "git-mcp", status: "synced" as Status, connectedTools: ["claude-code", "codex"] },
-      { name: "filesystem-mcp", status: "synced" as Status, connectedTools: ["claude-code"] },
-      { name: "context7", status: "synced" as Status, connectedTools: ["claude-code"] },
+      { name: "git-mcp", status: "synced" as Status, enabled: toggleState.mcps["git-mcp"], connectedTools: ["claude-code", "codex"] },
+      { name: "filesystem-mcp", status: "synced" as Status, enabled: toggleState.mcps["filesystem-mcp"], connectedTools: ["claude-code"] },
+      { name: "context7", status: "synced" as Status, enabled: toggleState.mcps.context7, connectedTools: ["claude-code"] },
     ],
     memory: [
       { name: "MEMORY.md", scope: "shared" as const, status: "synced" as Status },
@@ -82,6 +104,7 @@ function GraphContainer() {
           data={mockData}
           showUninstalledTools={false}
           onNodeClick={(node) => console.log("Clicked:", node)}
+          onToggle={handleToggle}
         />
       </ReactFlowProvider>
     </div>
