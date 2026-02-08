@@ -86,6 +86,58 @@ async function searchMcpRegistry(
   return { entries, total: entries.length, source: "mcp-registry" };
 }
 
+async function searchAnthropicSkills(
+  query: string
+): Promise<MarketplaceSearchResult> {
+  // Search Anthropic's official skills repo via GitHub API
+  const res = await fetch(
+    `https://api.github.com/search/code?q=${encodeURIComponent(query)}+filename:SKILL.md+repo:anthropics/skills`,
+    { headers: { Accept: "application/vnd.github.v3+json" } }
+  );
+  if (!res.ok) {
+    // Fallback: list top-level directories as skills
+    const treeRes = await fetch(
+      "https://api.github.com/repos/anthropics/skills/git/trees/main",
+      { headers: { Accept: "application/vnd.github.v3+json" } }
+    );
+    if (!treeRes.ok) return { entries: [], total: 0, source: "anthropic-skills" };
+    const tree = (await treeRes.json()) as { tree: { path: string; type: string }[] };
+    const q = query.toLowerCase();
+    const dirs = tree.tree
+      .filter(t => t.type === "tree" && t.path.toLowerCase().includes(q))
+      .map(t => ({
+        name: t.path,
+        description: `Official Anthropic skill: ${t.path}`,
+        author: "anthropics",
+        source: "anthropic-skills" as const,
+        type: "skill" as const,
+      }));
+    return { entries: dirs, total: dirs.length, source: "anthropic-skills" };
+  }
+  const data = (await res.json()) as {
+    items: { path: string; repository: { full_name: string } }[];
+  };
+  const entries: MarketplaceEntry[] = data.items.map((item) => {
+    const skillDir = path.dirname(item.path);
+    const name = skillDir === "." ? path.basename(item.path, ".md") : skillDir.split("/").pop() || item.path;
+    return {
+      name,
+      description: `Official Anthropic skill from ${item.path}`,
+      author: "anthropics",
+      source: "anthropic-skills",
+      type: "skill" as const,
+    };
+  });
+  // Deduplicate by name
+  const seen = new Set<string>();
+  const unique = entries.filter(e => {
+    if (seen.has(e.name)) return false;
+    seen.add(e.name);
+    return true;
+  });
+  return { entries: unique, total: unique.length, source: "anthropic-skills" };
+}
+
 const KNOWN_SEARCHERS: Record<
   string,
   (q: string) => Promise<MarketplaceSearchResult>
@@ -94,6 +146,7 @@ const KNOWN_SEARCHERS: Record<
   openskills: searchOpenSkills,
   "claude-plugins": searchClaudePlugins,
   "mcp-registry": searchMcpRegistry,
+  "anthropic-skills": searchAnthropicSkills,
 };
 
 export async function searchMarketplace(
@@ -161,6 +214,18 @@ export async function installFromMarketplace(
         const yamlLine = `\n${entry.name}:\n  command: ${config.command}\n  args: [${(config.args || []).map((a) => `"${a}"`).join(", ")}]\n  enabled: true\n`;
         await fs.appendFile(mcpsPath, yamlLine, "utf-8");
         return { success: true, path: mcpsPath };
+      }
+      case "anthropic-skills": {
+        // Download SKILL.md from Anthropic's GitHub repo
+        const rawUrl = `https://raw.githubusercontent.com/anthropics/skills/main/${encodeURIComponent(entry.name)}/SKILL.md`;
+        const ghRes = await fetch(rawUrl);
+        if (!ghRes.ok) throw new Error(`Download failed: ${ghRes.statusText}`);
+        const content = await ghRes.text();
+        const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
+        await fs.mkdir(dir, { recursive: true });
+        const filePath = path.join(dir, "SKILL.md");
+        await fs.writeFile(filePath, content, "utf-8");
+        return { success: true, path: filePath };
       }
       default:
         return { success: false, error: `Unknown source: ${entry.source}` };

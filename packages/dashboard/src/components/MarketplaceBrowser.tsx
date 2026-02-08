@@ -99,10 +99,15 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
           <h3 className="mb-3 text-sm font-medium">Configured Marketplaces</h3>
           <div className="flex flex-wrap gap-2">
             {Object.entries(registry).map(([name, config]) => (
-              <div
+              <button
                 key={name}
+                onClick={() => {
+                  setSource(name);
+                  if (query.trim()) handleSearch();
+                }}
                 className={cn(
-                  "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm",
+                  "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm cursor-pointer transition-all hover:border-primary",
+                  source === name ? "border-primary bg-primary/10 ring-1 ring-primary/30" :
                   config.enabled ? "border-primary/40 bg-primary/5" : "border-muted bg-muted/50 opacity-60"
                 )}
               >
@@ -113,7 +118,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
                 <span className="font-medium">{name}</span>
                 <span className="text-xs text-muted-foreground">{config.type}</span>
                 {config.discovered && <span className="text-[10px] text-muted-foreground">(auto)</span>}
-              </div>
+              </button>
             ))}
           </div>
         </div>
