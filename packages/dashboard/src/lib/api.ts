@@ -1,4 +1,4 @@
-import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceSearchResult, MarketplaceConfig, PluginInfo } from "@mycelium/core";
+import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceSearchResult, MarketplaceConfig, PluginInfo, MarketplaceSource } from "@mycelium/core";
 
 const API_BASE = "http://localhost:3378";
 
@@ -88,4 +88,18 @@ export async function togglePluginSkill(pluginName: string, skillName: string, e
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pluginName, skillName, enabled }),
   });
+}
+
+export async function fetchPopularSkills(): Promise<MarketplaceSearchResult[]> {
+  const res = await fetch(`${API_BASE}/api/marketplace/popular`);
+  return res.json();
+}
+
+export async function updateMarketplaceEntry(name: string, source: MarketplaceSource): Promise<{ success: boolean; path?: string; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/marketplace/update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, source }),
+  });
+  return res.json();
 }

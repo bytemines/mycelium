@@ -3,7 +3,7 @@ import cors from "cors";
 
 import { scanAllTools } from "./core/migrator.js";
 import { executeMigration, clearMigration } from "./core/migrator.js";
-import { searchMarketplace, installFromMarketplace } from "./core/marketplace.js";
+import { searchMarketplace, installFromMarketplace, getPopularSkills, updateSkill } from "./core/marketplace.js";
 import {
   loadMarketplaceRegistry,
   addMarketplace,
@@ -122,6 +122,27 @@ export function createServer(port = 3378): Express {
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // GET /api/marketplace/popular
+  app.get("/api/marketplace/popular", async (_req, res) => {
+    try {
+      const results = await getPopularSkills();
+      res.json(results);
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // POST /api/marketplace/update
+  app.post("/api/marketplace/update", async (req, res) => {
+    try {
+      const { name, source } = req.body as { name: string; source: string };
+      const result = await updateSkill(name, source);
+      res.json(result);
+    } catch (e) {
+      res.json({ success: false, error: (e as Error).message });
     }
   });
 
