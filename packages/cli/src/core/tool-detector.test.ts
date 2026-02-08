@@ -3,14 +3,14 @@
  * Detects which AI coding tools are installed on the system
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 // Mock child_process
 vi.mock("child_process", () => ({
-  execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
-const mockExecSync = vi.mocked(execSync);
+const mockExecFileSync = vi.mocked(execFileSync);
 
 describe("ToolDetector", () => {
   beforeEach(() => {
@@ -24,8 +24,8 @@ describe("ToolDetector", () => {
   describe("detectInstalledTools", () => {
     it("detects Claude Code when claude command exists", async () => {
       const { detectInstalledTools } = await import("./tool-detector");
-      mockExecSync.mockImplementation((cmd: string) => {
-        if (cmd === "which claude" || cmd === "where claude") {
+      mockExecFileSync.mockImplementation((_cmd: any, args?: any) => {
+        if (args && args[0] === "claude") {
           return Buffer.from("/usr/local/bin/claude");
         }
         throw new Error("Command not found");
@@ -40,8 +40,8 @@ describe("ToolDetector", () => {
 
     it("detects Codex CLI when codex command exists", async () => {
       const { detectInstalledTools } = await import("./tool-detector");
-      mockExecSync.mockImplementation((cmd: string) => {
-        if (cmd === "which codex" || cmd === "where codex") {
+      mockExecFileSync.mockImplementation((_cmd: any, args?: any) => {
+        if (args && args[0] === "codex") {
           return Buffer.from("/usr/local/bin/codex");
         }
         throw new Error("Command not found");
@@ -56,8 +56,8 @@ describe("ToolDetector", () => {
 
     it("detects Gemini CLI when gemini command exists", async () => {
       const { detectInstalledTools } = await import("./tool-detector");
-      mockExecSync.mockImplementation((cmd: string) => {
-        if (cmd === "which gemini" || cmd === "where gemini") {
+      mockExecFileSync.mockImplementation((_cmd: any, args?: any) => {
+        if (args && args[0] === "gemini") {
           return Buffer.from("/usr/local/bin/gemini");
         }
         throw new Error("Command not found");
@@ -72,7 +72,7 @@ describe("ToolDetector", () => {
 
     it("marks tool as not installed when command not found", async () => {
       const { detectInstalledTools } = await import("./tool-detector");
-      mockExecSync.mockImplementation(() => {
+      mockExecFileSync.mockImplementation(() => {
         throw new Error("Command not found");
       });
 
@@ -85,8 +85,8 @@ describe("ToolDetector", () => {
 
     it("returns all supported tools with their installation status", async () => {
       const { detectInstalledTools } = await import("./tool-detector");
-      mockExecSync.mockImplementation((cmd: string) => {
-        if (cmd.includes("claude") || cmd.includes("codex")) {
+      mockExecFileSync.mockImplementation((_cmd: any, args?: any) => {
+        if (args && (args[0] === "claude" || args[0] === "codex")) {
           return Buffer.from("/usr/local/bin/tool");
         }
         throw new Error("Command not found");
@@ -109,7 +109,7 @@ describe("ToolDetector", () => {
   describe("isToolInstalled", () => {
     it("returns true when tool command exists", async () => {
       const { isToolInstalled } = await import("./tool-detector");
-      mockExecSync.mockReturnValue(Buffer.from("/usr/local/bin/claude"));
+      mockExecFileSync.mockReturnValue(Buffer.from("/usr/local/bin/claude"));
 
       const result = await isToolInstalled("claude-code");
       expect(result).toBe(true);
@@ -117,7 +117,7 @@ describe("ToolDetector", () => {
 
     it("returns false when tool command not found", async () => {
       const { isToolInstalled } = await import("./tool-detector");
-      mockExecSync.mockImplementation(() => {
+      mockExecFileSync.mockImplementation(() => {
         throw new Error("Command not found");
       });
 

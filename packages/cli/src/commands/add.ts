@@ -12,404 +12,22 @@
  */
 
 import { Command } from "commander";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import { expandPath, ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelium/core";
-import { getRegistryEntry, parseRegistryEntry } from "../core/mcp-registry.js";
-import { parseSkillMd, isValidSkillMd } from "../core/skill-parser.js";
+import {
+  addSkill,
+  addMcp,
+  fetchMcpFromRegistry,
+} from "../core/add-helpers.js";
 
-const execAsync = promisify(exec);
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface SkillSourceInfo {
-  type: "github" | "local";
-  name: string;
-  // GitHub-specific
-  owner?: string;
-  repo?: string;
-  subpath?: string;
-  // Local-specific
-  path?: string;
-}
-
-export interface AddSkillOptions {
-  global?: boolean;
-  force?: boolean;
-  projectRoot?: string;
-}
-
-export interface AddSkillResult {
-  success: boolean;
-  name?: string;
-  path?: string;
-  message?: string;
-  error?: string;
-}
-
-export interface McpNameInfo {
-  name: string;
-  isValid: boolean;
-  error?: string;
-}
-
-export interface AddMcpOptions {
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-  enabled?: boolean;
-  global?: boolean;
-  force?: boolean;
-  projectRoot?: string;
-}
-
-export interface AddMcpResult {
-  success: boolean;
-  name?: string;
-  message?: string;
-  error?: string;
-}
-
-// ============================================================================
-// Skill Source Parsing
-// ============================================================================
-
-/**
- * Parse a skill source string to determine if it's a GitHub repo or local path
- */
-export function parseSkillSource(source: string): SkillSourceInfo {
-  // Empty or whitespace-only source is invalid
-  if (!source || !source.trim()) {
-    throw new Error("Invalid skill source: source cannot be empty");
-  }
-
-  const trimmedSource = source.trim();
-
-  // Check for GitHub URL format: https://github.com/owner/repo
-  const githubUrlMatch = trimmedSource.match(
-    /^https?:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/(.*))?$/
-  );
-  if (githubUrlMatch) {
-    const [, owner, repo, subpath] = githubUrlMatch;
-    const cleanRepo = repo.replace(/\.git$/, "");
-    return {
-      type: "github",
-      owner,
-      repo: cleanRepo,
-      subpath: subpath || undefined,
-      name: subpath ? path.basename(subpath) : cleanRepo,
-    };
-  }
-
-  // Check for local path (starts with ./, ../, or /)
-  if (
-    trimmedSource.startsWith("./") ||
-    trimmedSource.startsWith("../") ||
-    trimmedSource.startsWith("/")
-  ) {
-    return {
-      type: "local",
-      path: trimmedSource,
-      name: path.basename(trimmedSource),
-    };
-  }
-
-  // Check for GitHub owner/repo format
-  const githubShortMatch = trimmedSource.match(/^([^/]+)\/([^/]+)(?:\/(.*))?$/);
-  if (githubShortMatch) {
-    const [, owner, repo, subpath] = githubShortMatch;
-    return {
-      type: "github",
-      owner,
-      repo,
-      subpath: subpath || undefined,
-      name: subpath ? path.basename(subpath) : repo,
-    };
-  }
-
-  // Invalid source format
-  throw new Error(
-    `Invalid skill source: "${source}". Use owner/repo for GitHub or ./path for local skills.`
-  );
-}
-
-// ============================================================================
-// Add Skill Implementation
-// ============================================================================
-
-/**
- * Add a skill from GitHub or local path
- */
-export async function addSkill(
-  source: string,
-  options: AddSkillOptions
-): Promise<AddSkillResult> {
-  try {
-    const sourceInfo = parseSkillSource(source);
-    const globalPath = getGlobalMyceliumPath();
-    const basePath = options.global
-      ? globalPath
-      : options.projectRoot
-        ? path.join(options.projectRoot, ".mycelium")
-        : path.join(process.cwd(), ".mycelium");
-
-    const skillsDir = path.join(basePath, "global/skills");
-    const manifestPath = path.join(basePath, "manifest.yaml");
-    const skillDestPath = path.join(skillsDir, sourceInfo.name);
-
-    // Check if skill already exists
-    const manifestExists = await pathExists(manifestPath);
-    if (manifestExists) {
-      const manifestContent = await fs.readFile(manifestPath, "utf-8");
-      const manifest = yamlParse(manifestContent) || {};
-
-      if (manifest.skills && manifest.skills[sourceInfo.name] && !options.force) {
-        return {
-          success: false,
-          name: sourceInfo.name,
-          error: `Skill "${sourceInfo.name}" already exists. Use --force to overwrite.`,
-        };
-      }
-    }
-
-    // Ensure skills directory exists
-    await ensureDir(skillsDir);
-
-    // Handle GitHub source
-    if (sourceInfo.type === "github") {
-      const repoUrl = `https://github.com/${sourceInfo.owner}/${sourceInfo.repo}.git`;
-
-      try {
-        // Clone the repository
-        if (sourceInfo.subpath) {
-          // Clone to a temp directory first, then copy the subpath
-          const tempDir = path.join(skillsDir, `.temp-${Date.now()}`);
-          await execAsync(`git clone --depth 1 ${repoUrl} "${tempDir}"`);
-          const subpathSource = path.join(tempDir, sourceInfo.subpath);
-          await fs.cp(subpathSource, skillDestPath, { recursive: true });
-          await fs.rm(tempDir, { recursive: true, force: true });
-        } else {
-          // Clone directly to the skill destination
-          if (await pathExists(skillDestPath)) {
-            await fs.rm(skillDestPath, { recursive: true, force: true });
-          }
-          await execAsync(`git clone --depth 1 ${repoUrl} "${skillDestPath}"`);
-        }
-      } catch (gitError) {
-        return {
-          success: false,
-          name: sourceInfo.name,
-          error: `Failed to clone repository: ${(gitError as Error).message}`,
-        };
-      }
-    }
-
-    // Handle local source
-    if (sourceInfo.type === "local") {
-      const localPath = path.isAbsolute(sourceInfo.path!)
-        ? sourceInfo.path!
-        : path.resolve(process.cwd(), sourceInfo.path!);
-
-      const localExists = await pathExists(localPath);
-      if (!localExists) {
-        return {
-          success: false,
-          name: sourceInfo.name,
-          error: `Local path not found: ${sourceInfo.path}`,
-        };
-      }
-
-      // Copy the local skill to the skills directory
-      await fs.cp(localPath, skillDestPath, { recursive: true });
-    }
-
-    // Update manifest.yaml with the new skill
-    let manifest: Record<string, unknown> = {};
-    if (manifestExists) {
-      const manifestContent = await fs.readFile(manifestPath, "utf-8");
-      manifest = yamlParse(manifestContent) || {};
-    }
-
-    if (!manifest.skills) {
-      manifest.skills = {};
-    }
-
-    // Check for SKILL.md and extract metadata if present
-    const skillMdPath = path.join(skillDestPath, "SKILL.md");
-    let skillEntry: Record<string, unknown> = {
-      source: source,
-      path: `global/skills/${sourceInfo.name}`,
-      enabled: true,
-    };
-
-    if (await pathExists(skillMdPath)) {
-      const skillMdContent = await fs.readFile(skillMdPath, "utf-8");
-      if (isValidSkillMd(skillMdContent)) {
-        const metadata = parseSkillMd(skillMdContent);
-        skillEntry = {
-          ...skillEntry,
-          ...(metadata.description && { description: metadata.description }),
-          ...(metadata.tools.length > 0 && { tools: metadata.tools }),
-          ...(metadata.model && { model: metadata.model }),
-          ...(metadata.color && { color: metadata.color }),
-        };
-      }
-    }
-
-    (manifest.skills as Record<string, unknown>)[sourceInfo.name] = skillEntry;
-
-    await fs.writeFile(manifestPath, yamlStringify(manifest), "utf-8");
-
-    return {
-      success: true,
-      name: sourceInfo.name,
-      path: skillDestPath,
-      message: `Skill "${sourceInfo.name}" added successfully.`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: (error as Error).message,
-    };
-  }
-}
-
-// ============================================================================
-// MCP Name Parsing
-// ============================================================================
-
-/**
- * Parse and validate an MCP name
- */
-export function parseMcpName(name: string): McpNameInfo {
-  if (!name || name.trim() === "") {
-    return {
-      name: "",
-      isValid: false,
-      error: "MCP name cannot be empty",
-    };
-  }
-
-  const trimmedName = name.trim();
-
-  // MCP names can contain alphanumeric characters, hyphens, and underscores
-  const validPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
-  if (!validPattern.test(trimmedName)) {
-    return {
-      name: trimmedName,
-      isValid: false,
-      error: `MCP name contains invalid characters: "${trimmedName}". Use only letters, numbers, hyphens, and underscores.`,
-    };
-  }
-
-  return {
-    name: trimmedName,
-    isValid: true,
-  };
-}
-
-// ============================================================================
-// Add MCP Implementation
-// ============================================================================
-
-/**
- * Add an MCP server configuration
- */
-export async function addMcp(
-  name: string,
-  options: AddMcpOptions
-): Promise<AddMcpResult> {
-  try {
-    const nameInfo = parseMcpName(name);
-    if (!nameInfo.isValid) {
-      return {
-        success: false,
-        error: nameInfo.error,
-      };
-    }
-
-    const globalPath = getGlobalMyceliumPath();
-    const basePath = options.global
-      ? path.join(globalPath, "global")
-      : options.projectRoot
-        ? path.join(options.projectRoot, ".mycelium")
-        : path.join(process.cwd(), ".mycelium");
-
-    const mcpsPath = path.join(basePath, "mcps.yaml");
-
-    // Ensure the directory exists
-    await ensureDir(basePath);
-
-    // Load existing mcps.yaml or create empty structure
-    let mcpsConfig: { mcps: Record<string, unknown> } = { mcps: {} };
-    const mcpsExists = await pathExists(mcpsPath);
-
-    if (mcpsExists) {
-      try {
-        const mcpsContent = await fs.readFile(mcpsPath, "utf-8");
-        mcpsConfig = yamlParse(mcpsContent) || { mcps: {} };
-        if (!mcpsConfig.mcps) {
-          mcpsConfig.mcps = {};
-        }
-      } catch {
-        // If parsing fails, start with empty config
-        mcpsConfig = { mcps: {} };
-      }
-    }
-
-    // Check if MCP already exists
-    if (mcpsConfig.mcps[nameInfo.name] && !options.force) {
-      return {
-        success: false,
-        name: nameInfo.name,
-        error: `MCP "${nameInfo.name}" already exists. Use --force to overwrite.`,
-      };
-    }
-
-    // Build the MCP config
-    const mcpEntry: Record<string, unknown> = {
-      command: options.command,
-    };
-
-    if (options.args && options.args.length > 0) {
-      mcpEntry.args = options.args;
-    }
-
-    if (options.env && Object.keys(options.env).length > 0) {
-      mcpEntry.env = options.env;
-    }
-
-    if (options.enabled !== undefined) {
-      mcpEntry.enabled = options.enabled;
-    }
-
-    // Add the MCP to the config
-    mcpsConfig.mcps[nameInfo.name] = mcpEntry;
-
-    // Write the updated config
-    await fs.writeFile(mcpsPath, yamlStringify(mcpsConfig), "utf-8");
-
-    return {
-      success: true,
-      name: nameInfo.name,
-      message: `MCP "${nameInfo.name}" added successfully.`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: (error as Error).message,
-    };
-  }
-}
-
-// ============================================================================
-// Commander.js Commands
-// ============================================================================
+// Re-export types and functions for backward compatibility
+export type {
+  SkillSourceInfo,
+  AddSkillOptions,
+  AddSkillResult,
+  McpNameInfo,
+  AddMcpOptions,
+  AddMcpResult,
+} from "../core/add-helpers.js";
+export { parseSkillSource, addSkill, parseMcpName, addMcp } from "../core/add-helpers.js";
 
 /**
  * skill subcommand: mycelium add skill <source>
@@ -459,18 +77,16 @@ const mcpCommand = new Command("mcp")
         fromRegistry?: boolean;
       }
     ) => {
-      // If --from-registry, fetch config from MCP registry
       if (options.fromRegistry) {
-        const entry = await getRegistryEntry(name);
-        if (!entry) {
+        const registryConfig = await fetchMcpFromRegistry(name);
+        if (!registryConfig) {
           console.error(`Error: MCP "${name}" not found in registry`);
           process.exit(1);
         }
-        const config = parseRegistryEntry(entry);
-        options.command = config.command;
-        options.args = config.args;
-        if (config.env) {
-          options.env = Object.entries(config.env).map(([k, v]) => `${k}=${v}`);
+        options.command = registryConfig.command;
+        options.args = registryConfig.args;
+        if (registryConfig.env) {
+          options.env = registryConfig.env;
         }
       }
 
@@ -479,7 +95,6 @@ const mcpCommand = new Command("mcp")
         process.exit(1);
       }
 
-      // Parse environment variables from KEY=value format
       const env: Record<string, string> = {};
       if (options.env) {
         for (const envVar of options.env) {

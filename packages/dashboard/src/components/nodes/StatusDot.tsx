@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
-
-type Status = "synced" | "pending" | "error" | "disabled" | "not_installed";
+import type { Status } from "@/types";
 
 export function StatusDot({ status }: { status: Status }) {
   const colors: Record<Status, string> = {

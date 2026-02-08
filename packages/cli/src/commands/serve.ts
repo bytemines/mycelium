@@ -3,13 +3,14 @@ import { execSync } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer } from "../server.js";
+import { DEFAULT_PORT } from "../core/fs-helpers.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const serveCommand = new Command("serve")
   .description("Start the dashboard API server")
-  .option("-p, --port <port>", "Port number", "3378")
+  .option("-p, --port <port>", "Port number", String(DEFAULT_PORT))
   .option("--no-build", "Skip rebuilding before starting")
   .action((opts) => {
     if (opts.build !== false) {

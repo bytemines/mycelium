@@ -15,8 +15,8 @@ vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(),
 }));
 
-import { execSync } from "node:child_process";
-const mockedExecSync = vi.mocked(execSync);
+import { execFileSync } from "node:child_process";
+const mockedExecFileSync = vi.mocked(execFileSync);
 
 describe("init auto-setup helpers", () => {
   beforeEach(() => {
@@ -25,12 +25,12 @@ describe("init auto-setup helpers", () => {
 
   describe("isGhAvailable", () => {
     it("returns true when gh auth status succeeds", () => {
-      mockedExecSync.mockReturnValueOnce("" as any);
+      mockedExecFileSync.mockReturnValueOnce("" as any);
       expect(isGhAvailable()).toBe(true);
     });
 
     it("returns false when gh is not installed", () => {
-      mockedExecSync.mockImplementationOnce(() => {
+      mockedExecFileSync.mockImplementationOnce(() => {
         throw new Error("command not found");
       });
       expect(isGhAvailable()).toBe(false);
@@ -39,12 +39,12 @@ describe("init auto-setup helpers", () => {
 
   describe("ghRepoExists", () => {
     it("returns true when repo exists", () => {
-      mockedExecSync.mockReturnValueOnce('{"name":"mycelium-config"}' as any);
+      mockedExecFileSync.mockReturnValueOnce('{"name":"mycelium-config"}' as any);
       expect(ghRepoExists("user/mycelium-config")).toBe(true);
     });
 
     it("returns false when repo not found", () => {
-      mockedExecSync.mockImplementationOnce(() => {
+      mockedExecFileSync.mockImplementationOnce(() => {
         throw new Error("not found");
       });
       expect(ghRepoExists("user/mycelium-config")).toBe(false);
@@ -53,19 +53,19 @@ describe("init auto-setup helpers", () => {
 
   describe("getGhUsername", () => {
     it("returns trimmed username", () => {
-      mockedExecSync.mockReturnValueOnce("conrado\n" as any);
+      mockedExecFileSync.mockReturnValueOnce("conrado\n" as any);
       expect(getGhUsername()).toBe("conrado");
     });
   });
 
   describe("hasGitRemote", () => {
     it("returns true when origin is configured", () => {
-      mockedExecSync.mockReturnValueOnce("https://github.com/user/repo.git\n" as any);
+      mockedExecFileSync.mockReturnValueOnce("https://github.com/user/repo.git\n" as any);
       expect(hasGitRemote()).toBe(true);
     });
 
     it("returns false when no remote", () => {
-      mockedExecSync.mockImplementationOnce(() => {
+      mockedExecFileSync.mockImplementationOnce(() => {
         throw new Error("not a git repo");
       });
       expect(hasGitRemote()).toBe(false);

@@ -24,7 +24,6 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22.10.5",
     "typescript": "^5.7.2",
@@ -32,11 +31,9 @@
   },
   "dependencies": {
     "@mycelium/core": "workspace:*",
-    "chalk": "^5.4.1",
     "commander": "^13.0.0",
-    "cors": "^2.8.6",
-    "dotenv": "^16.4.7",
     "express": "^5.2.1",
+    "picocolors": "^1.1.1",
     "yaml": "^2.6.1"
   }
 }

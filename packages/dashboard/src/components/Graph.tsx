@@ -3,7 +3,7 @@
  * Supports drag-and-drop, smart layout for large graphs, and tool detection
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -16,67 +16,17 @@ import {
   useEdgesState,
   Panel,
 } from "@xyflow/react";
-import ELK from "elkjs/lib/elk.bundled.js";
 import "@xyflow/react/dist/style.css";
 import { cn } from "@/lib/utils";
 import { ToolNode, ResourceNode, PluginNode, AddToolNode } from "./nodes";
 import type { ResourceNodeData, PluginNodeData } from "./nodes";
+import { buildDashboardGraph } from "@/lib/graph-builder";
+import type { DashboardGraphData } from "@/lib/graph-builder";
 
 // Re-export node components for backwards compatibility
 export { ToolNode, ResourceNode, PluginNode, AddToolNode };
 
-// Initialize ELK
-const elk = new ELK();
-
-type Status = "synced" | "pending" | "error" | "disabled" | "not_installed";
-
-// Data types
-interface SkillData {
-  name: string;
-  status: Status;
-  enabled?: boolean;
-  connectedTools?: string[];
-}
-
-interface McpData {
-  name: string;
-  status: Status;
-  enabled?: boolean;
-  connectedTools?: string[];
-}
-
-interface MemoryData {
-  name: string;
-  scope: "shared" | "coding" | "personal";
-  status: Status;
-}
-
-interface ToolData {
-  id: string;
-  name: string;
-  status: Status;
-  installed: boolean;
-}
-
-interface PluginData {
-  name: string;
-  marketplace: string;
-  componentCount: number;
-  enabled: boolean;
-  skills: string[];
-  agents?: string[];
-  commands?: string[];
-  hooks?: string[];
-  libs?: string[];
-}
-
-interface GraphData {
-  tools?: ToolData[];
-  skills: SkillData[];
-  mcps: McpData[];
-  memory: MemoryData[];
-  plugins?: PluginData[];
-}
+import type { Status } from "@/types";
 
 // ELK layout options
 const elkOptions = {
@@ -87,7 +37,7 @@ const elkOptions = {
   "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
 };
 
-// Apply ELK layout to nodes and edges
+// Lazy-load ELK and apply layout
 async function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
@@ -114,6 +64,8 @@ async function getLayoutedElements(
   };
 
   try {
+    const ELK = (await import("elkjs/lib/elk.bundled.js")).default;
+    const elk = new ELK();
     const layoutedGraph = await elk.layout(graph);
 
     return {
@@ -139,17 +91,6 @@ const nodeTypes = {
   addTool: AddToolNode,
 };
 
-
-// Default tools - will be filtered based on what's installed
-const ALL_TOOLS: ToolData[] = [
-  { id: "claude-code", name: "Claude Code", status: "synced", installed: true },
-  { id: "codex", name: "Codex CLI", status: "synced", installed: true },
-  { id: "gemini", name: "Gemini CLI", status: "synced", installed: true },
-  { id: "opencode", name: "OpenCode", status: "synced", installed: true },
-  { id: "openclaw", name: "OpenClaw", status: "synced", installed: true },
-  { id: "aider", name: "Aider", status: "synced", installed: true },
-];
-
 interface ToggleInfo {
   type: "skill" | "mcp" | "memory";
   name: string;
@@ -157,7 +98,7 @@ interface ToggleInfo {
 }
 
 interface GraphProps {
-  data?: GraphData;
+  data?: DashboardGraphData;
   mode?: "dashboard" | "migrate";
   onNodeClick?: (node: Node) => void;
   onToggle?: (toggle: ToggleInfo) => void;
@@ -173,178 +114,33 @@ export function Graph({ data, mode = "dashboard", onNodeClick, onToggle, onPlugi
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [layoutDirection, setLayoutDirection] = useState<"DOWN" | "RIGHT">("DOWN");
 
+  // Stabilize callback refs to prevent unnecessary re-renders and ELK re-layouts
+  const onToggleRef = useRef(onToggle);
+  onToggleRef.current = onToggle;
+  const onPluginClickRef = useRef(onPluginClick);
+  onPluginClickRef.current = onPluginClick;
+  const onAddToolRef = useRef(onAddTool);
+  onAddToolRef.current = onAddTool;
+
   const handleToggle = useCallback(
     (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => {
-      onToggle?.({ type, name, enabled });
+      onToggleRef.current?.({ type, name, enabled });
     },
-    [onToggle]
+    []
   );
 
+  const stableHandlers = useMemo(() => ({
+    handleToggle,
+    onToggle: (toggle: ToggleInfo) => onToggleRef.current?.(toggle),
+    onPluginClick: (name: string) => onPluginClickRef.current?.(name),
+    onAddTool: () => onAddToolRef.current?.(),
+  }), [handleToggle]);
+
   // Build initial nodes and edges from data
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const nodes: Node[] = [];
-    const edges: Edge[] = [];
-
-    // Get tools - use provided or defaults, filter by installed status
-    const tools = data?.tools || ALL_TOOLS;
-    const visibleTools = showUninstalledTools
-      ? tools
-      : tools.filter((t) => t.installed !== false);
-
-    // Tool nodes
-    visibleTools.forEach((tool, index) => {
-      nodes.push({
-        id: `tool-${tool.id}`,
-        type: "tool",
-        position: { x: index * 160, y: 0 },
-        data: {
-          name: tool.name,
-          status: tool.status,
-          installed: tool.installed
-        },
-      });
-    });
-
-    // Build a set of skills owned by plugins
-    const pluginSkillSet = new Set<string>();
-    data?.plugins?.forEach((plugin) => {
-      plugin.skills.forEach((s) => pluginSkillSet.add(s));
-    });
-
-    // Plugin nodes
-    data?.plugins?.forEach((plugin, index) => {
-      const nodeId = `plugin-${plugin.name}`;
-      nodes.push({
-        id: nodeId,
-        type: "plugin",
-        position: { x: index * 160, y: 75 },
-        data: {
-          name: plugin.name,
-          marketplace: plugin.marketplace,
-          componentCount: plugin.componentCount,
-          skillCount: plugin.skills?.length ?? 0,
-          agentCount: plugin.agents?.length ?? 0,
-          commandCount: plugin.commands?.length ?? 0,
-          hookCount: plugin.hooks?.length ?? 0,
-          libCount: plugin.libs?.length ?? 0,
-          enabled: plugin.enabled,
-          onToggle: (name: string, enabled: boolean) => onToggle?.({ type: "skill", name, enabled }),
-          onClick: (name: string) => onPluginClick?.(name),
-        },
-      });
-
-      // Connect plugin to all installed tools
-      visibleTools.filter(t => t.installed).forEach((tool) => {
-        edges.push({
-          id: `${nodeId}-to-tool-${tool.id}`,
-          source: nodeId,
-          target: `tool-${tool.id}`,
-          animated: plugin.enabled,
-          style: { stroke: "#14b8a6", strokeWidth: 2, ...(plugin.enabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
-        });
-      });
-    });
-
-    // Skill nodes — skip skills that belong to a plugin (they're collapsed into the plugin node)
-    data?.skills.forEach((skill, index) => {
-      if (pluginSkillSet.has(skill.name)) return; // collapsed into plugin node
-
-      const nodeId = `skill-${skill.name}`;
-      nodes.push({
-        id: nodeId,
-        type: "resource",
-        position: { x: index * 140, y: 150 },
-        data: { name: skill.name, type: "skill", status: skill.status, enabled: skill.enabled, onToggle: handleToggle },
-      });
-
-      const isEnabled = skill.enabled !== false;
-
-      // Connect to specified tools or all installed tools
-      const targetTools = skill.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
-      targetTools.forEach((toolId) => {
-        if (visibleTools.some(t => t.id === toolId)) {
-          edges.push({
-            id: `${nodeId}-to-${toolId}`,
-            source: nodeId,
-            target: `tool-${toolId}`,
-            animated: isEnabled && skill.status === "synced",
-            style: { stroke: "#3b82f6", strokeWidth: 2, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
-          });
-        }
-      });
-    });
-
-    // MCP nodes
-    data?.mcps.forEach((mcp, index) => {
-      const nodeId = `mcp-${mcp.name}`;
-      nodes.push({
-        id: nodeId,
-        type: "resource",
-        position: { x: index * 140, y: 300 },
-        data: { name: mcp.name, type: "mcp", status: mcp.status, enabled: mcp.enabled, onToggle: handleToggle },
-      });
-
-      const isMcpEnabled = mcp.enabled !== false;
-      // Connect to specified tools or all installed tools
-      const targetTools = mcp.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
-      targetTools.forEach((toolId) => {
-        if (visibleTools.some(t => t.id === toolId)) {
-          edges.push({
-            id: `${nodeId}-to-${toolId}`,
-            source: nodeId,
-            target: `tool-${toolId}`,
-            animated: isMcpEnabled && mcp.status === "synced",
-            style: { stroke: "#a855f7", strokeWidth: 2, ...(isMcpEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
-          });
-        }
-      });
-    });
-
-    // Memory nodes
-    data?.memory.forEach((mem, index) => {
-      const nodeId = `memory-${mem.name}`;
-      nodes.push({
-        id: nodeId,
-        type: "resource",
-        position: { x: index * 140, y: 450 },
-        data: { name: mem.name, type: "memory", status: mem.status, onToggle: handleToggle },
-      });
-
-      // Connect based on scope
-      let targetToolIds: string[];
-      if (mem.scope === "personal") {
-        targetToolIds = ["openclaw"];
-      } else if (mem.scope === "coding") {
-        targetToolIds = visibleTools.filter(t => t.id !== "openclaw" && t.installed).map((t) => t.id);
-      } else {
-        targetToolIds = visibleTools.filter(t => t.installed).map((t) => t.id);
-      }
-
-      targetToolIds.forEach((toolId) => {
-        if (visibleTools.some(t => t.id === toolId)) {
-          edges.push({
-            id: `${nodeId}-to-${toolId}`,
-            source: nodeId,
-            target: `tool-${toolId}`,
-            animated: mem.status === "synced",
-            style: { stroke: "#f59e0b", strokeWidth: 2 },
-          });
-        }
-      });
-    });
-
-    // "+ Add Tool" node in migrate mode
-    if (mode === "migrate") {
-      nodes.push({
-        id: "add-tool",
-        type: "addTool",
-        position: { x: visibleTools.length * 160, y: 0 },
-        data: { onClick: onAddTool },
-      });
-    }
-
-    return { initialNodes: nodes, initialEdges: edges };
-  }, [data, mode, showUninstalledTools, handleToggle, onToggle, onPluginClick, onAddTool]);
+  const { initialNodes, initialEdges } = useMemo(
+    () => buildDashboardGraph(data, mode, showUninstalledTools, stableHandlers),
+    [data, mode, showUninstalledTools, stableHandlers]
+  );
 
   // Apply ELK layout when data changes
   useEffect(() => {
@@ -375,16 +171,15 @@ export function Graph({ data, mode = "dashboard", onNodeClick, onToggle, onPlugi
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       onNodeClick?.(node);
-      // Dispatch to specific click handlers based on node type
       if (node.type === "plugin") {
-        onPluginClick?.((node.data as unknown as PluginNodeData).name);
+        onPluginClickRef.current?.((node.data as unknown as PluginNodeData).name);
       } else if (node.type === "resource") {
         const rd = node.data as unknown as ResourceNodeData;
         if (rd.type === "mcp") onMcpClick?.(rd.name);
         else if (rd.type === "skill") onSkillClick?.(rd.name);
       }
     },
-    [onNodeClick, onPluginClick, onMcpClick, onSkillClick]
+    [onNodeClick, onMcpClick, onSkillClick]
   );
 
   return (

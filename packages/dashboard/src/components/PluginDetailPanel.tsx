@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Sparkles, Bot, Terminal, Webhook, Library } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
 
 interface PluginDetailPanelProps {
   plugin: {
@@ -102,145 +103,146 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
   const totalComponents = sections.reduce((sum, s) => sum + s.items.length, 0);
 
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} />
-
-      {/* Panel */}
-      <div className="fixed right-0 top-0 z-50 h-full w-96 overflow-y-auto border-l bg-card text-card-foreground shadow-xl">
-        {/* Header */}
-        <div className="flex items-start justify-between border-b p-4">
-          <div>
-            <h2 className="text-lg font-bold">{plugin.name}</h2>
-            <div className="mt-1 flex items-center gap-2">
-              {plugin.version && <span className="text-sm text-muted-foreground">v{plugin.version}</span>}
-              <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-400 border border-teal-500/30">
-                {plugin.marketplace}
-              </span>
+    <Dialog.Root open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+        <Dialog.Content className="fixed right-0 top-0 z-50 h-full w-96 overflow-y-auto border-l bg-card text-card-foreground shadow-xl">
+          {/* Header */}
+          <div className="flex items-start justify-between border-b p-4">
+            <div>
+              <Dialog.Title className="text-lg font-bold">{plugin.name}</Dialog.Title>
+              <Dialog.Description asChild>
+                <div className="mt-1 flex items-center gap-2">
+                  {plugin.version && <span className="text-sm text-muted-foreground">v{plugin.version}</span>}
+                  <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-400 border border-teal-500/30">
+                    {plugin.marketplace}
+                  </span>
+                </div>
+              </Dialog.Description>
+              {plugin.author && (
+                <p className="mt-1 text-xs text-muted-foreground">by {plugin.author}</p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">{totalComponents} components</p>
             </div>
-            {plugin.author && (
-              <p className="mt-1 text-xs text-muted-foreground">by {plugin.author}</p>
-            )}
-            <p className="mt-1 text-xs text-muted-foreground">{totalComponents} components</p>
+            <Dialog.Close asChild>
+              <button
+                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Close"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </Dialog.Close>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Close"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
 
-        {/* Description */}
-        <div className="border-b p-4">
-          <p className="text-sm text-muted-foreground">{plugin.description}</p>
-        </div>
+          {/* Description */}
+          <div className="border-b p-4">
+            <p className="text-sm text-muted-foreground">{plugin.description}</p>
+          </div>
 
-        {/* Enable/Disable All */}
-        <div className="flex gap-2 border-b p-4">
-          <button
-            onClick={() => toggleAll(true)}
-            className={cn(
-              "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-              Object.values(toggleStates).every(Boolean)
-                ? "bg-primary text-primary-foreground"
-                : "border bg-background text-foreground hover:bg-muted"
-            )}
-          >
-            Enable All
-          </button>
-          <button
-            onClick={() => toggleAll(false)}
-            className={cn(
-              "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-              Object.values(toggleStates).every(v => !v)
-                ? "bg-destructive text-destructive-foreground"
-                : "border bg-background text-foreground hover:bg-muted"
-            )}
-          >
-            Disable All
-          </button>
-        </div>
-
-        {/* Component sections */}
-        {sections.map(({ type, items }) => {
-          const meta = SECTION_META[type] ?? { label: type, color: "text-muted-foreground", icon: "?" };
-          return (
-            <div key={type} className="border-b p-4">
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-medium">
-                {meta.icon}
-                <span className={cn("font-bold", meta.color)}>{meta.label}</span>
-                <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">{items.length}</span>
-              </h3>
-              <div className="space-y-2">
-                {items.map((item) => (
-                  <ToggleRow
-                    key={item}
-                    name={item}
-                    enabled={toggleStates[item] ?? true}
-                    onToggle={() => toggle(item)}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Delete */}
-        {onRemoveItem && (
-          <div className="p-4">
-            <h3 className="mb-2 text-sm font-medium text-destructive">Danger Zone</h3>
+          {/* Enable/Disable All */}
+          <div className="flex gap-2 border-b p-4">
             <button
-              onClick={() => setConfirmRemove(true)}
-              className="w-full rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/20"
+              onClick={() => toggleAll(true)}
+              className={cn(
+                "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
+                Object.values(toggleStates).every(Boolean)
+                  ? "bg-primary text-primary-foreground"
+                  : "border bg-background text-foreground hover:bg-muted"
+              )}
             >
-              Remove {plugin.marketplace === "system" ? "MCP" : plugin.marketplace === "standalone" ? "Skill" : "Plugin"}
+              Enable All
             </button>
-            <p className="mt-2 text-xs text-muted-foreground">
-              This removes it from ~/.mycelium. Run <code className="bg-muted px-1 rounded">mycelium sync</code> to propagate to all tools.
-            </p>
+            <button
+              onClick={() => toggleAll(false)}
+              className={cn(
+                "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
+                Object.values(toggleStates).every(v => !v)
+                  ? "bg-destructive text-destructive-foreground"
+                  : "border bg-background text-foreground hover:bg-muted"
+              )}
+            >
+              Disable All
+            </button>
           </div>
-        )}
 
-        {/* Remove confirmation modal */}
-        {confirmRemove && (
-          <>
-            <div className="fixed inset-0 z-[60] bg-black/60" onClick={() => setConfirmRemove(false)} />
-            <div className="fixed left-1/2 top-1/2 z-[70] w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-2xl">
-              <h3 className="text-lg font-bold text-destructive">Remove {plugin.name}?</h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                This will remove all components ({sections.reduce((sum, s) => sum + s.items.length, 0)} total) from ~/.mycelium.
-                Run <code className="bg-muted px-1 rounded text-xs">mycelium sync</code> after to propagate.
-              </p>
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => {
-                    const type = plugin.marketplace === "system" ? "mcp" as const
-                      : plugin.marketplace === "standalone" ? "skill" as const
-                      : "plugin" as const;
-                    onRemoveItem?.(type, plugin.name);
-                    setConfirmRemove(false);
-                    onClose();
-                  }}
-                  className="flex-1 rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Yes, remove
-                </button>
-                <button
-                  onClick={() => setConfirmRemove(false)}
-                  className="flex-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
-                >
-                  Cancel
-                </button>
+          {/* Component sections */}
+          {sections.map(({ type, items }) => {
+            const meta = SECTION_META[type] ?? { label: type, color: "text-muted-foreground", icon: "?" };
+            return (
+              <div key={type} className="border-b p-4">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  {meta.icon}
+                  <span className={cn("font-bold", meta.color)}>{meta.label}</span>
+                  <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">{items.length}</span>
+                </h3>
+                <div className="space-y-2">
+                  {items.map((item) => (
+                    <ToggleRow
+                      key={item}
+                      name={item}
+                      enabled={toggleStates[item] ?? true}
+                      onToggle={() => toggle(item)}
+                    />
+                  ))}
+                </div>
               </div>
+            );
+          })}
+
+          {/* Delete */}
+          {onRemoveItem && (
+            <div className="p-4">
+              <h3 className="mb-2 text-sm font-medium text-destructive">Danger Zone</h3>
+              <button
+                onClick={() => setConfirmRemove(true)}
+                className="w-full rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/20"
+              >
+                Remove {plugin.marketplace === "system" ? "MCP" : plugin.marketplace === "standalone" ? "Skill" : "Plugin"}
+              </button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                This removes it from ~/.mycelium. Run <code className="bg-muted px-1 rounded">mycelium sync</code> to propagate to all tools.
+              </p>
             </div>
-          </>
-        )}
-      </div>
-    </>
+          )}
+
+          {/* Remove confirmation modal */}
+          <Dialog.Root open={confirmRemove} onOpenChange={setConfirmRemove}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="fixed inset-0 z-[60] bg-black/60" />
+              <Dialog.Content className="fixed left-1/2 top-1/2 z-[70] w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-2xl">
+                <Dialog.Title className="text-lg font-bold text-destructive">Remove {plugin.name}?</Dialog.Title>
+                <Dialog.Description className="mt-2 text-sm text-muted-foreground">
+                  This will remove all components ({sections.reduce((sum, s) => sum + s.items.length, 0)} total) from ~/.mycelium.
+                  Run <code className="bg-muted px-1 rounded text-xs">mycelium sync</code> after to propagate.
+                </Dialog.Description>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => {
+                      const type = plugin.marketplace === "system" ? "mcp" as const
+                        : plugin.marketplace === "standalone" ? "skill" as const
+                        : "plugin" as const;
+                      onRemoveItem?.(type, plugin.name);
+                      setConfirmRemove(false);
+                      onClose();
+                    }}
+                    className="flex-1 rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Yes, remove
+                  </button>
+                  <Dialog.Close asChild>
+                    <button className="flex-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
+                      Cancel
+                    </button>
+                  </Dialog.Close>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

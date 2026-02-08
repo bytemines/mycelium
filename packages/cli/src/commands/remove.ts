@@ -11,11 +11,10 @@
 import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as os from "node:os";
-import { readFileIfExists, mkdirp } from "../core/fs-helpers.js";
-import { loadManifest, saveManifest } from "../core/migrator.js";
+import { readFileIfExists, mkdirp, MYCELIUM_HOME } from "../core/fs-helpers.js";
+import { loadManifest, saveManifest } from "../core/migrator/index.js";
 
-const MYCELIUM_DIR = path.join(os.homedir(), ".mycelium");
+const MYCELIUM_DIR = MYCELIUM_HOME;
 
 // ============================================================================
 // Core remove functions

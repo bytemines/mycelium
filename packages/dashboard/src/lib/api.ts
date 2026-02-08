@@ -1,14 +1,12 @@
 import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceSearchResult, MarketplaceConfig, PluginInfo, MarketplaceSource } from "@mycelium/core";
 
-const API_BASE = "http://localhost:3378";
-
 export async function fetchDashboardState(): Promise<DashboardState> {
-  const res = await fetch(`${API_BASE}/api/state`);
+  const res = await fetch(`/api/state`);
   return res.json();
 }
 
 export async function sendToggle(action: ToggleAction): Promise<void> {
-  await fetch(`${API_BASE}/api/toggle`, {
+  await fetch(`/api/toggle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(action),
@@ -16,12 +14,12 @@ export async function sendToggle(action: ToggleAction): Promise<void> {
 }
 
 export async function scanTools(): Promise<ToolScanResult[]> {
-  const res = await fetch(`${API_BASE}/api/migrate/scan`);
+  const res = await fetch(`/api/migrate/scan`);
   return res.json();
 }
 
 export async function applyMigration(plan: MigrationPlan): Promise<MigrationResult> {
-  const res = await fetch(`${API_BASE}/api/migrate/apply`, {
+  const res = await fetch(`/api/migrate/apply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(plan),
@@ -30,7 +28,7 @@ export async function applyMigration(plan: MigrationPlan): Promise<MigrationResu
 }
 
 export async function clearMigration(toolId?: string): Promise<{ cleared: string[]; errors: string[] }> {
-  const url = toolId ? `${API_BASE}/api/migrate/clear?tool=${toolId}` : `${API_BASE}/api/migrate/clear`;
+  const url = toolId ? `/api/migrate/clear?tool=${toolId}` : `/api/migrate/clear`;
   const res = await fetch(url, { method: "POST" });
   return res.json();
 }
@@ -38,12 +36,12 @@ export async function clearMigration(toolId?: string): Promise<{ cleared: string
 export async function searchMarketplace(query: string, source?: string): Promise<MarketplaceSearchResult[]> {
   const params = new URLSearchParams({ q: query });
   if (source) params.set("source", source);
-  const res = await fetch(`${API_BASE}/api/marketplace/search?${params}`);
+  const res = await fetch(`/api/marketplace/search?${params}`);
   return res.json();
 }
 
 export async function installMarketplaceEntry(name: string, source: string): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/marketplace/install`, {
+  const res = await fetch(`/api/marketplace/install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, source }),
@@ -52,12 +50,12 @@ export async function installMarketplaceEntry(name: string, source: string): Pro
 }
 
 export async function fetchMarketplaceRegistry(): Promise<Record<string, MarketplaceConfig>> {
-  const res = await fetch(`${API_BASE}/api/marketplace/registry`);
+  const res = await fetch(`/api/marketplace/registry`);
   return res.json();
 }
 
 export async function addMarketplaceToRegistry(name: string, config: MarketplaceConfig): Promise<void> {
-  await fetch(`${API_BASE}/api/marketplace/registry`, {
+  await fetch(`/api/marketplace/registry`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, ...config }),
@@ -65,17 +63,17 @@ export async function addMarketplaceToRegistry(name: string, config: Marketplace
 }
 
 export async function removeMarketplaceFromRegistry(name: string): Promise<void> {
-  await fetch(`${API_BASE}/api/marketplace/registry/${encodeURIComponent(name)}`, { method: "DELETE" });
+  await fetch(`/api/marketplace/registry/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
 export async function fetchPlugins(marketplace?: string): Promise<PluginInfo[]> {
   const params = marketplace ? `?marketplace=${marketplace}` : "";
-  const res = await fetch(`${API_BASE}/api/plugins${params}`);
+  const res = await fetch(`/api/plugins${params}`);
   return res.json();
 }
 
 export async function togglePlugin(name: string, enabled: boolean): Promise<void> {
-  await fetch(`${API_BASE}/api/plugins/toggle`, {
+  await fetch(`/api/plugins/toggle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, enabled }),
@@ -83,7 +81,7 @@ export async function togglePlugin(name: string, enabled: boolean): Promise<void
 }
 
 export async function togglePluginSkill(pluginName: string, skillName: string, enabled: boolean): Promise<void> {
-  await fetch(`${API_BASE}/api/plugins/toggle-skill`, {
+  await fetch(`/api/plugins/toggle-skill`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pluginName, skillName, enabled }),
@@ -91,27 +89,27 @@ export async function togglePluginSkill(pluginName: string, skillName: string, e
 }
 
 export async function fetchPopularSkills(): Promise<MarketplaceSearchResult[]> {
-  const res = await fetch(`${API_BASE}/api/marketplace/popular`);
+  const res = await fetch(`/api/marketplace/popular`);
   return res.json();
 }
 
 export async function removeSkill(name: string): Promise<{ removed: boolean; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/remove/skill/${encodeURIComponent(name)}`, { method: "DELETE" });
+  const res = await fetch(`/api/remove/skill/${encodeURIComponent(name)}`, { method: "DELETE" });
   return res.json();
 }
 
 export async function removeMcp(name: string): Promise<{ removed: boolean; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/remove/mcp/${encodeURIComponent(name)}`, { method: "DELETE" });
+  const res = await fetch(`/api/remove/mcp/${encodeURIComponent(name)}`, { method: "DELETE" });
   return res.json();
 }
 
 export async function removePlugin(name: string): Promise<{ removed: string[]; errors: string[] }> {
-  const res = await fetch(`${API_BASE}/api/remove/plugin/${encodeURIComponent(name)}`, { method: "DELETE" });
+  const res = await fetch(`/api/remove/plugin/${encodeURIComponent(name)}`, { method: "DELETE" });
   return res.json();
 }
 
 export async function updateMarketplaceEntry(name: string, source: MarketplaceSource): Promise<{ success: boolean; path?: string; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/marketplace/update`, {
+  const res = await fetch(`/api/marketplace/update`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, source }),

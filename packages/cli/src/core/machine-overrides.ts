@@ -5,16 +5,16 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 import type { McpServerConfig, MachineOverrideEntry, MachineOverridesFile } from "@mycelium/core";
-import { readFileIfExists, mkdirp } from "./fs-helpers.js";
+import { readFileIfExists, mkdirp, MYCELIUM_HOME } from "./fs-helpers.js";
 
 // ============================================================================
 // Paths
 // ============================================================================
 
-const MYCELIUM_DIR = path.join(os.homedir(), ".mycelium");
+const MYCELIUM_DIR = MYCELIUM_HOME;
 
 export function getMachineOverridesPath(): string {
   return path.join(MYCELIUM_DIR, "machines", `${os.hostname()}.yaml`);
@@ -119,7 +119,7 @@ export interface DetectedOverride {
 
 function whichCommand(cmd: string): string | null {
   try {
-    return execSync(`which ${cmd}`, { encoding: "utf-8" }).trim();
+    return execFileSync("which", [cmd], { encoding: "utf-8" }).trim();
   } catch {
     return null;
   }

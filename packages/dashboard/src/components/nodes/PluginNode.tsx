@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { Sparkles, Bot, Terminal, Webhook, Library } from "lucide-react";
@@ -17,7 +18,7 @@ export interface PluginNodeData {
   onClick?: (name: string) => void;
 }
 
-export function PluginNode({ data }: { data: PluginNodeData }) {
+function PluginNodeInner({ data }: { data: PluginNodeData }) {
   const isEnabled = data.enabled !== false;
 
   return (
@@ -69,3 +70,5 @@ export function PluginNode({ data }: { data: PluginNodeData }) {
     </div>
   );
 }
+
+export const PluginNode = memo(PluginNodeInner);

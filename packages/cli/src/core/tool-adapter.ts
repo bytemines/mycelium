@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { type ToolId, type McpServerConfig, SUPPORTED_TOOLS, expandPath } from "@mycelium/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
+import { replaceMcpSection } from "./toml-helpers.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -252,24 +253,6 @@ export class CodexAdapter extends BaseToolAdapter {
       const configPath = expandPath("~/.codex/config.toml");
       const existing = await readFileIfExists(configPath);
 
-      // Preserve non-MCP lines from existing TOML
-      const nonMcpLines: string[] = [];
-      if (existing) {
-        let inMcpSection = false;
-        for (const line of existing.split("\n")) {
-          if (/^\[mcp\.servers\./.test(line)) {
-            inMcpSection = true;
-            continue;
-          }
-          if (inMcpSection && /^\[/.test(line)) {
-            inMcpSection = false;
-          }
-          if (!inMcpSection) {
-            nonMcpLines.push(line);
-          }
-        }
-      }
-
       // Build MCP TOML sections
       const mcpLines: string[] = [];
       for (const [name, mcp] of Object.entries(mcps)) {
@@ -288,7 +271,8 @@ export class CodexAdapter extends BaseToolAdapter {
         mcpLines.push("");
       }
 
-      const content = [...nonMcpLines.filter((l) => l.trim() !== "" || nonMcpLines.indexOf(l) < nonMcpLines.length - 1), "", ...mcpLines].join("\n");
+      const mcpSection = mcpLines.join("\n");
+      const content = existing ? replaceMcpSection(existing, mcpSection) : mcpSection;
 
       await mkdirp(path.dirname(configPath));
       await fs.writeFile(configPath, content, "utf-8");

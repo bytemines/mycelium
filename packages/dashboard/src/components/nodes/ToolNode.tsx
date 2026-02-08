@@ -1,9 +1,9 @@
+import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { cn } from "@/lib/utils";
+import type { Status } from "@/types";
 import { TOOL_ICONS } from "../icons/ToolIcons";
 import { StatusDot } from "./StatusDot";
-
-type Status = "synced" | "pending" | "error" | "disabled" | "not_installed";
 
 export interface ToolNodeData {
   name: string;
@@ -11,7 +11,7 @@ export interface ToolNodeData {
   installed: boolean;
 }
 
-export function ToolNode({ data }: { data: ToolNodeData }) {
+function ToolNodeInner({ data }: { data: ToolNodeData }) {
   const isInstalled = data.installed !== false;
 
   return (
@@ -38,3 +38,5 @@ export function ToolNode({ data }: { data: ToolNodeData }) {
     </div>
   );
 }
+
+export const ToolNode = memo(ToolNodeInner);

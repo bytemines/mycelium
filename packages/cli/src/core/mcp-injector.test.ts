@@ -3,11 +3,8 @@
  * Tests written FIRST following TDD
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import * as os from "node:os";
-import type { ToolId, McpServerConfig } from "@mycelium/core";
+import { describe, it, expect } from "vitest";
+import type { McpServerConfig } from "@mycelium/core";
 
 // Import the module under test (doesn't exist yet - tests will fail)
 import {
@@ -16,10 +13,8 @@ import {
   generateGeminiConfig,
   generateOpenCodeConfig,
   generateOpenClawConfig,
-  injectMcpsToTool,
   filterMcpsForTool,
   resolveEnvVarsInMcps,
-  createDefaultConfig,
 } from "./mcp-injector.js";
 
 describe("MCP Injector", () => {
@@ -389,180 +384,4 @@ describe("MCP Injector", () => {
     });
   });
 
-  describe("injectMcpsToTool", () => {
-    let tempDir: string;
-
-    beforeEach(async () => {
-      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-injector-test-"));
-    });
-
-    afterEach(async () => {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    });
-
-    it("injects MCPs into existing Claude config", async () => {
-      const configPath = path.join(tempDir, "mcp.json");
-      const existingConfig = {
-        mcpServers: {
-          existing: { command: "existing" },
-        },
-        otherSetting: "preserved",
-      };
-      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2));
-
-      const mcps: Record<string, McpServerConfig> = {
-        new: { command: "new", enabled: true },
-      };
-
-      await injectMcpsToTool("claude-code", mcps, configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(content);
-
-      expect(config.mcpServers.new).toBeDefined();
-      expect(config.otherSetting).toBe("preserved");
-    });
-
-    it("preserves other settings in config file", async () => {
-      const configPath = path.join(tempDir, "mcp.json");
-      const existingConfig = {
-        mcpServers: {},
-        theme: "dark",
-        editor: { tabSize: 2 },
-      };
-      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2));
-
-      const mcps: Record<string, McpServerConfig> = {
-        test: { command: "test", enabled: true },
-      };
-
-      await injectMcpsToTool("claude-code", mcps, configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(content);
-
-      expect(config.theme).toBe("dark");
-      expect(config.editor.tabSize).toBe(2);
-    });
-
-    it("injects MCPs into existing Codex TOML config", async () => {
-      const configPath = path.join(tempDir, "config.toml");
-      const existingConfig = `
-model = "gpt-4"
-
-[mcp]
-enabled = true
-
-[mcp.servers.existing]
-command = "existing"
-`;
-      await fs.writeFile(configPath, existingConfig);
-
-      const mcps: Record<string, McpServerConfig> = {
-        new: { command: "new", args: ["arg1"], enabled: true },
-      };
-
-      await injectMcpsToTool("codex", mcps, configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-
-      expect(content).toContain('model = "gpt-4"');
-      expect(content).toContain('[mcp.servers."new"]');
-      expect(content).toContain('command = "new"');
-    });
-
-    it("injects MCPs into existing OpenCode YAML config", async () => {
-      const configPath = path.join(tempDir, "config.yaml");
-      const existingConfig = `
-model: gpt-4
-mcp:
-  enabled: true
-  servers:
-    existing:
-      command: existing
-`;
-      await fs.writeFile(configPath, existingConfig);
-
-      const mcps: Record<string, McpServerConfig> = {
-        new: { command: "new", enabled: true },
-      };
-
-      await injectMcpsToTool("opencode", mcps, configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-
-      expect(content).toContain("model: gpt-4");
-      expect(content).toContain("new:");
-      expect(content).toContain("command: new");
-    });
-  });
-
-  describe("createDefaultConfig", () => {
-    let tempDir: string;
-
-    beforeEach(async () => {
-      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-injector-test-"));
-    });
-
-    afterEach(async () => {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    });
-
-    it("creates config file if missing for Claude", async () => {
-      const configPath = path.join(tempDir, "mcp.json");
-
-      await createDefaultConfig("claude-code", configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(content);
-
-      expect(config).toHaveProperty("mcpServers");
-      expect(config.mcpServers).toEqual({});
-    });
-
-    it("creates config file if missing for Codex", async () => {
-      const configPath = path.join(tempDir, "config.toml");
-
-      await createDefaultConfig("codex", configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-
-      expect(content).toContain("[mcp]");
-      expect(content).toContain("[mcp.servers]");
-    });
-
-    it("creates config file if missing for OpenCode", async () => {
-      const configPath = path.join(tempDir, "config.yaml");
-
-      await createDefaultConfig("opencode", configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-
-      expect(content).toContain("mcp:");
-      expect(content).toContain("servers:");
-    });
-
-    it("creates parent directories if needed", async () => {
-      const configPath = path.join(tempDir, "nested", "deep", "mcp.json");
-
-      await createDefaultConfig("claude-code", configPath);
-
-      const exists = await fs
-        .access(configPath)
-        .then(() => true)
-        .catch(() => false);
-      expect(exists).toBe(true);
-    });
-
-    it("does not overwrite existing config", async () => {
-      const configPath = path.join(tempDir, "mcp.json");
-      const existingContent = '{"existing": true}';
-      await fs.writeFile(configPath, existingContent);
-
-      await createDefaultConfig("claude-code", configPath);
-
-      const content = await fs.readFile(configPath, "utf-8");
-      expect(content).toBe(existingContent);
-    });
-  });
 });

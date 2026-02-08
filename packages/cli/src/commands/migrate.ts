@@ -20,7 +20,7 @@ import {
   executeMigration,
   clearMigration,
   writeHooksYaml,
-} from "../core/migrator.js";
+} from "../core/migrator/index.js";
 import {
   createSnapshot,
   restoreSnapshot,

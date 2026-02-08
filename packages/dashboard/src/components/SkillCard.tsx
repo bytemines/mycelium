@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { ENTRY_TYPE_META } from "@mycelium/core";
+import { ENTRY_TYPE_META } from "@/lib/entry-type-meta";
 
 export interface MarketplaceItem {
   name: string;

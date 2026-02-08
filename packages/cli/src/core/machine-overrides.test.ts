@@ -9,16 +9,19 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 vi.mock("node:child_process", () => ({
-  execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
 vi.mock("./fs-helpers.js", () => ({
   readFileIfExists: vi.fn(),
   mkdirp: vi.fn(),
+  MYCELIUM_HOME: "/mock/.mycelium",
+  DEFAULT_PORT: 3378,
+  MEMORY_LINE_LIMIT: 200,
 }));
 
 import * as fs from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 import {
   getMachineOverridesPath,
@@ -32,7 +35,7 @@ import {
 const mockedReadFile = readFileIfExists as ReturnType<typeof vi.fn>;
 const mockedWriteFile = fs.writeFile as ReturnType<typeof vi.fn>;
 const mockedMkdirp = mkdirp as ReturnType<typeof vi.fn>;
-const mockedExecSync = execSync as unknown as ReturnType<typeof vi.fn>;
+const mockedExecFileSync = execFileSync as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -105,7 +108,7 @@ describe("saveMachineOverrides + load round-trip", () => {
 
 describe("detectMcpOverrides", () => {
   it("detects command at different path", () => {
-    mockedExecSync.mockReturnValue("/opt/homebrew/bin/uvx\n");
+    mockedExecFileSync.mockReturnValue("/opt/homebrew/bin/uvx\n");
 
     const mcps = {
       server: { command: "/usr/local/bin/uvx", args: ["mcp-server"] },
@@ -119,7 +122,7 @@ describe("detectMcpOverrides", () => {
   });
 
   it("skips when command exists at configured path", () => {
-    mockedExecSync.mockReturnValue("/usr/local/bin/uvx\n");
+    mockedExecFileSync.mockReturnValue("/usr/local/bin/uvx\n");
 
     const mcps = {
       server: { command: "/usr/local/bin/uvx", args: [] },
@@ -130,7 +133,7 @@ describe("detectMcpOverrides", () => {
   });
 
   it("skips when which fails", () => {
-    mockedExecSync.mockImplementation(() => { throw new Error("not found"); });
+    mockedExecFileSync.mockImplementation(() => { throw new Error("not found"); });
 
     const mcps = {
       server: { command: "/usr/local/bin/uvx", args: [] },
@@ -180,7 +183,7 @@ describe("applyMachineOverrides", () => {
 
 describe("rescanOverrides", () => {
   it("re-detects and saves overrides", async () => {
-    mockedExecSync.mockReturnValue("/opt/homebrew/bin/uvx\n");
+    mockedExecFileSync.mockReturnValue("/opt/homebrew/bin/uvx\n");
     mockedWriteFile.mockResolvedValue(undefined);
 
     const mcps = {

@@ -31,7 +31,6 @@ vi.mock("../core/symlink-manager.js", () => ({
 }));
 
 vi.mock("../core/mcp-injector.js", () => ({
-  injectMcpsToTool: vi.fn(),
   filterMcpsForTool: vi.fn(),
   resolveEnvVarsInMcps: vi.fn(),
 }));
@@ -56,7 +55,6 @@ import { syncAll, syncTool, loadEnvFile } from "./sync.js";
 import { loadAndMergeAllConfigs } from "../core/config-merger.js";
 import { syncSkillsToTool } from "../core/symlink-manager.js";
 import {
-  injectMcpsToTool,
   filterMcpsForTool,
   resolveEnvVarsInMcps,
 } from "../core/mcp-injector.js";
@@ -125,8 +123,6 @@ describe("Sync Command", () => {
     (resolveEnvVarsInMcps as MockedFunction<typeof resolveEnvVarsInMcps>).mockImplementation(
       (mcps, _envVars) => mcps
     );
-
-    (injectMcpsToTool as MockedFunction<typeof injectMcpsToTool>).mockResolvedValue(undefined);
 
     (syncMemoryToTool as MockedFunction<typeof syncMemoryToTool>).mockResolvedValue({
       success: true,

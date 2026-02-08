@@ -395,14 +395,6 @@ export const MARKETPLACE_SOURCES = {
 /** Well-known entry types with display metadata */
 export type MarketplaceEntryType = "skill" | "mcp" | "plugin" | "agent" | "template" | string;
 
-export const ENTRY_TYPE_META: Record<string, { label: string; color: string; bgColor: string; borderColor: string; fileExt: string }> = {
-  skill:    { label: "Skill",    color: "text-purple-400", bgColor: "bg-purple-500/10", borderColor: "border-purple-500/30", fileExt: ".md" },
-  mcp:      { label: "MCP",      color: "text-blue-400",   bgColor: "bg-blue-500/10",   borderColor: "border-blue-500/30",   fileExt: ".yaml" },
-  plugin:   { label: "Plugin",   color: "text-amber-400",  bgColor: "bg-amber-500/10",  borderColor: "border-amber-500/30",  fileExt: ".json" },
-  agent:    { label: "Agent",    color: "text-emerald-400",bgColor: "bg-emerald-500/10",borderColor: "border-emerald-500/30",fileExt: ".md" },
-  template: { label: "Template", color: "text-pink-400",   bgColor: "bg-pink-500/10",   borderColor: "border-pink-500/30",   fileExt: ".yaml" },
-};
-
 export interface MarketplaceConfig {
   type: "local" | "claude-marketplace" | "remote";
   enabled: boolean;
@@ -455,28 +447,36 @@ export interface MarketplaceSearchResult {
 // Dashboard Types
 // ============================================================================
 
+export interface DashboardTool {
+  id: ToolId;
+  name: string;
+  status: SyncStatus;
+  installed: boolean;
+}
+
+export interface DashboardSkill {
+  name: string;
+  status: SyncStatus;
+  enabled: boolean;
+  connectedTools: ToolId[];
+}
+
+export interface DashboardMcp {
+  name: string;
+  status: SyncStatus;
+  enabled: boolean;
+  connectedTools: ToolId[];
+}
+
+export interface DashboardMemory {
+  name: string;
+  scope: MemoryScope;
+  status: SyncStatus;
+}
+
 export interface DashboardState {
-  tools: Array<{
-    id: ToolId;
-    name: string;
-    status: SyncStatus;
-    installed: boolean;
-  }>;
-  skills: Array<{
-    name: string;
-    status: SyncStatus;
-    enabled: boolean;
-    connectedTools: ToolId[];
-  }>;
-  mcps: Array<{
-    name: string;
-    status: SyncStatus;
-    enabled: boolean;
-    connectedTools: ToolId[];
-  }>;
-  memory: Array<{
-    name: string;
-    scope: MemoryScope;
-    status: SyncStatus;
-  }>;
+  tools: DashboardTool[];
+  skills: DashboardSkill[];
+  mcps: DashboardMcp[];
+  memory: DashboardMemory[];
 }

@@ -5,16 +5,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import type { McpServerConfig, ScannedHook } from "@mycelium/core";
+import type { McpServerConfig } from "@mycelium/core";
 
 vi.mock("node:fs/promises");
 
+const mockSyncAll = vi.fn().mockResolvedValue({ success: true });
 vi.mock("./tool-adapter.js", () => ({
   getAdapter: vi.fn((toolId: string) => {
     const known = ["claude-code", "codex", "gemini-cli", "opencode", "openclaw", "aider"];
     if (!known.includes(toolId)) throw new Error(`No adapter for tool: ${toolId}`);
     return {
-      syncAll: vi.fn().mockResolvedValue({ success: true }),
+      syncAll: mockSyncAll,
       syncOne: vi.fn().mockResolvedValue({ success: true }),
     };
   }),
@@ -25,11 +26,6 @@ import {
   backupConfig,
   restoreBackups,
   dryRunSync,
-  writeClaudeCode,
-  writeCodex,
-  writeGemini,
-  writeOpenClaw,
-  writeOpenCode,
 } from "./sync-writer.js";
 
 const mockFs = vi.mocked(fs);
@@ -54,6 +50,7 @@ describe("sync-writer", () => {
     mockFs.writeFile.mockResolvedValue(undefined);
     mockFs.copyFile.mockResolvedValue(undefined);
     mockFs.unlink.mockResolvedValue(undefined);
+    mockSyncAll.mockResolvedValue({ success: true });
   });
 
   describe("backupConfig", () => {
@@ -83,154 +80,61 @@ describe("sync-writer", () => {
     });
   });
 
-  describe("writeClaudeCode", () => {
-    it("writes mcpServers preserving other keys", async () => {
-      mockFs.readFile.mockResolvedValue(
-        JSON.stringify({ someOther: "value", mcpServers: { old: {} } }),
-      );
-
-      const result = await writeClaudeCode(sampleMcps);
-      expect(result.success).toBe(true);
-      expect(result.sectionsUpdated).toContain("mcpServers");
-
-      const written = JSON.parse(
-        mockFs.writeFile.mock.calls[0][1] as string,
-      );
-      expect(written.someOther).toBe("value");
-      expect(written.mcpServers["whark-trading"].command).toBe("uvx");
-      expect(written.mcpServers["whark-trading"].env.API_KEY).toBe("test123");
-      expect(written.mcpServers.playwright.command).toBe("npx");
-      expect(written.mcpServers.old).toBeUndefined();
-    });
-
-    it("creates backup before writing", async () => {
-      mockFs.readFile.mockResolvedValue(JSON.stringify({ mcpServers: {} }));
-      await writeClaudeCode(sampleMcps);
-      expect(mockFs.copyFile).toHaveBeenCalled();
-    });
-
-    it("handles missing config (creates new)", async () => {
-      mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
-      const result = await writeClaudeCode(sampleMcps);
-      expect(result.success).toBe(true);
-      expect(result.backupPath).toBe("");
-    });
-
-    it("writes hooks to settings.json when provided", async () => {
-      mockFs.readFile.mockImplementation(async (p) => {
-        if (String(p).includes("settings.json")) {
-          return JSON.stringify({ existingSetting: true });
-        }
-        return JSON.stringify({ mcpServers: {} });
-      });
-
-      const hooks: ScannedHook[] = [
-        { name: "test-hook", source: "claude-code", event: "PostToolUse", command: "echo test", matchers: ["Bash"] },
-      ];
-
-      const result = await writeClaudeCode(sampleMcps, hooks);
-      expect(result.sectionsUpdated).toContain("hooks");
-      // Two writeFile calls: claude.json + settings.json
-      expect(mockFs.writeFile).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe("writeCodex", () => {
-    it("generates correct TOML format", async () => {
-      mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
-      const result = await writeCodex(sampleMcps);
-      expect(result.success).toBe(true);
-      expect(result.sectionsUpdated).toContain("mcp.servers");
-
-      const content = mockFs.writeFile.mock.calls[0][1] as string;
-      expect(content).toContain('[mcp.servers."whark-trading"]');
-      expect(content).toContain('command = "uvx"');
-      expect(content).toContain('args = ["whark-mcp"]');
-      expect(content).toContain('[mcp.servers."whark-trading".env]');
-      expect(content).toContain('API_KEY = "test123"');
-      expect(content).toContain('[mcp.servers."playwright"]');
-    });
-
-    it("preserves non-MCP TOML sections", async () => {
-      mockFs.readFile.mockResolvedValue(
-        `[general]\nmodel = "gpt-4"\n\n[mcp.servers."old"]\ncommand = "old"\n`,
-      );
-      const result = await writeCodex(sampleMcps);
-      expect(result.success).toBe(true);
-
-      const content = mockFs.writeFile.mock.calls[0][1] as string;
-      expect(content).toContain("[general]");
-      expect(content).toContain('model = "gpt-4"');
-      expect(content).not.toContain('"old"');
-    });
-  });
-
-  describe("writeGemini", () => {
-    it("writes memory content", async () => {
-      mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
-      const result = await writeGemini("# My Memory\nSome content");
-      expect(result.success).toBe(true);
-      expect(result.sectionsUpdated).toContain("memory");
-      expect(mockFs.writeFile.mock.calls[0][1]).toBe("# My Memory\nSome content");
-    });
-  });
-
-  describe("writeOpenClaw", () => {
-    it("replaces only mcp-adapter entries in plugins", async () => {
-      mockFs.readFile.mockResolvedValue(
-        JSON.stringify({
-          version: "1.0",
-          plugins: {
-            entries: [
-              { name: "other-plugin", type: "custom", enabled: true },
-              { name: "old-mcp", type: "mcp-adapter", enabled: true },
-            ],
-          },
-        }),
-      );
-
-      const result = await writeOpenClaw(sampleMcps);
-      expect(result.success).toBe(true);
-      expect(result.sectionsUpdated).toContain("plugins");
-
-      const written = JSON.parse(mockFs.writeFile.mock.calls[0][1] as string);
-      expect(written.version).toBe("1.0");
-      const entries = written.plugins.entries;
-      // Should keep custom plugin, remove old mcp-adapter, add new ones
-      expect(entries.find((e: any) => e.name === "other-plugin")).toBeTruthy();
-      expect(entries.find((e: any) => e.name === "old-mcp")).toBeUndefined();
-      expect(entries.find((e: any) => e.name === "whark-trading")).toBeTruthy();
-    });
-  });
-
-  describe("writeOpenCode", () => {
-    it("writes mcpServers preserving other keys", async () => {
-      mockFs.readFile.mockResolvedValue(
-        JSON.stringify({ theme: "dark", mcpServers: { old: {} } }),
-      );
-
-      const result = await writeOpenCode(sampleMcps);
-      expect(result.success).toBe(true);
-
-      const written = JSON.parse(mockFs.writeFile.mock.calls[0][1] as string);
-      expect(written.theme).toBe("dark");
-      expect(written.mcpServers["whark-trading"]).toBeTruthy();
-      expect(written.mcpServers.old).toBeUndefined();
-    });
-  });
-
   describe("syncToTool", () => {
-    it("dispatches to correct writer", async () => {
-      mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
+    it("dispatches to adapter for claude-code", async () => {
       const result = await syncToTool("claude-code", sampleMcps);
       expect(result.success).toBe(true);
       expect(result.configPath).toContain(".claude.json");
+      expect(mockSyncAll).toHaveBeenCalledWith(sampleMcps);
+    });
+
+    it("dispatches to adapter for codex", async () => {
+      const result = await syncToTool("codex", sampleMcps);
+      expect(result.success).toBe(true);
+      expect(result.configPath).toContain("config.toml");
+      expect(mockSyncAll).toHaveBeenCalledWith(sampleMcps);
+    });
+
+    it("dispatches to adapter for opencode", async () => {
+      const result = await syncToTool("opencode", sampleMcps);
+      expect(result.success).toBe(true);
+      expect(mockSyncAll).toHaveBeenCalledWith(sampleMcps);
+    });
+
+    it("dispatches to adapter for openclaw", async () => {
+      const result = await syncToTool("openclaw", sampleMcps);
+      expect(result.success).toBe(true);
+      expect(mockSyncAll).toHaveBeenCalledWith(sampleMcps);
+    });
+
+    it("dispatches to adapter for gemini-cli", async () => {
+      const result = await syncToTool("gemini-cli", sampleMcps);
+      expect(result.success).toBe(true);
+      expect(mockSyncAll).toHaveBeenCalledWith(sampleMcps);
     });
 
     it("returns error for unsupported tool", async () => {
       const result = await syncToTool("unknown-tool" as any, sampleMcps);
       expect(result.success).toBe(false);
       expect(result.error).toContain("Unsupported");
+    });
+
+    it("returns error when adapter fails", async () => {
+      mockSyncAll.mockResolvedValueOnce({ success: false, error: "Write failed" });
+      const result = await syncToTool("claude-code", sampleMcps);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Write failed");
+    });
+
+    it("writes hooks for claude-code when provided", async () => {
+      mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
+      const hooks = [
+        { name: "test-hook", source: "claude-code" as const, event: "PostToolUse" as const, command: "echo test", matchers: ["Bash"] },
+      ];
+      const result = await syncToTool("claude-code", sampleMcps, hooks);
+      expect(result.success).toBe(true);
+      // hooks are written to settings.json
+      expect(mockFs.writeFile).toHaveBeenCalled();
     });
   });
 

@@ -12,7 +12,7 @@ import { MarketplaceBrowser } from "./MarketplaceBrowser";
 import { PluginDetailPanel } from "./PluginDetailPanel";
 import { useDashboardStore } from "@/stores/dashboard-store";
 
-type Status = "synced" | "pending" | "error" | "disabled";
+import type { Status } from "@/types";
 
 function StatusIndicator({ status }: { status: Status }) {
   const colors: Record<Status, string> = {
@@ -20,6 +20,7 @@ function StatusIndicator({ status }: { status: Status }) {
     pending: "bg-status-pending",
     error: "bg-status-error",
     disabled: "bg-status-disabled",
+    not_installed: "bg-gray-700",
   };
 
   return (
@@ -63,7 +64,7 @@ function GraphContainer() {
   if (loading) {
     return (
       <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50 flex items-center justify-center">
-        <div className="text-center text-muted-foreground">
+        <div aria-live="polite" className="text-center text-muted-foreground">
           <div className="mb-2 text-lg">Loading...</div>
         </div>
       </div>
@@ -73,7 +74,7 @@ function GraphContainer() {
   if (error) {
     return (
       <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50 flex items-center justify-center">
-        <div className="text-center text-muted-foreground">
+        <div aria-live="polite" className="text-center text-muted-foreground">
           <div className="mb-2 text-lg">Cannot connect to API</div>
           <div className="text-sm">Start the server with <code className="bg-muted px-1 rounded">mycelium serve</code></div>
         </div>
@@ -148,10 +149,12 @@ export function Dashboard() {
           <StatusIndicator status={apiStatus === "connected" ? "synced" : apiStatus === "checking" ? "pending" : "error"} />
 
           {/* Tabs in navbar */}
-          <nav className="flex gap-1 rounded-lg bg-muted p-0.5">
+          <nav role="tablist" className="flex gap-1 rounded-lg bg-muted p-0.5">
             {(["graph", "migrate", "marketplace"] as const).map((tab) => (
               <button
                 key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   "rounded-md px-3 py-1 text-sm font-medium transition-colors",
@@ -188,7 +191,7 @@ export function Dashboard() {
 
       {/* Sync Banner */}
       {syncBanner && (
-        <div className={cn(
+        <div aria-live="polite" className={cn(
           "px-4 py-1.5 text-sm font-medium",
           syncBanner.type === "success" && "bg-green-500/10 text-green-400",
           syncBanner.type === "pending" && "bg-yellow-500/10 text-yellow-400",
