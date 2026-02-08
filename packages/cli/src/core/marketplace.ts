@@ -139,6 +139,31 @@ async function searchAnthropicSkills(
   return { entries: unique, total: unique.length, source: MS.ANTHROPIC_SKILLS };
 }
 
+async function searchClawHub(
+  query: string
+): Promise<MarketplaceSearchResult> {
+  const res = await fetch(
+    `https://clawhub.ai/api/v1/search?q=${encodeURIComponent(query)}&limit=12`,
+    { headers: { Accept: "application/json" } }
+  );
+  if (!res.ok) throw new Error(`ClawHub search failed: ${res.statusText}`);
+  const data = (await res.json()) as {
+    items: { name: string; description: string; author?: string; type?: string; downloads?: number; stars?: number; version?: string }[];
+  };
+  const entries: MarketplaceEntry[] = data.items.map((item) => ({
+    name: item.name,
+    description: item.description || "",
+    author: item.author,
+    downloads: item.downloads,
+    stars: item.stars,
+    version: item.version,
+    latestVersion: item.version,
+    source: MS.CLAWHUB,
+    type: (item.type as MarketplaceEntry["type"]) || "skill",
+  }));
+  return { entries, total: entries.length, source: MS.CLAWHUB };
+}
+
 const KNOWN_SEARCHERS: Record<
   string,
   (q: string) => Promise<MarketplaceSearchResult>
@@ -148,6 +173,7 @@ const KNOWN_SEARCHERS: Record<
   [MS.CLAUDE_PLUGINS]: searchClaudePlugins,
   [MS.MCP_REGISTRY]: searchMcpRegistry,
   [MS.ANTHROPIC_SKILLS]: searchAnthropicSkills,
+  [MS.CLAWHUB]: searchClawHub,
 };
 
 export async function searchMarketplace(
@@ -222,6 +248,19 @@ export async function installFromMarketplace(
         const ghRes = await fetch(rawUrl);
         if (!ghRes.ok) throw new Error(`Download failed: ${ghRes.statusText}`);
         const content = await ghRes.text();
+        const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
+        await fs.mkdir(dir, { recursive: true });
+        const filePath = path.join(dir, "SKILL.md");
+        await fs.writeFile(filePath, content, "utf-8");
+        return { success: true, path: filePath };
+      }
+      case MS.CLAWHUB: {
+        const res = await fetch(
+          `https://clawhub.ai/api/v1/download/${encodeURIComponent(entry.name)}`,
+          { headers: { Accept: "application/json" } }
+        );
+        if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
+        const content = await res.text();
         const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
         await fs.mkdir(dir, { recursive: true });
         const filePath = path.join(dir, "SKILL.md");
@@ -305,6 +344,29 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
       results.push({ entries, total: entries.length, source: MS.MCP_REGISTRY });
     }
   } catch (e) { console.warn("MCP Registry popular fetch failed:", e); }
+
+  // ClawHub popular
+  try {
+    const res = await fetch("https://clawhub.ai/api/v1/search?q=&sort=popular&limit=12",
+      { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        items: { name: string; description: string; author?: string; type?: string; downloads?: number; stars?: number; version?: string }[];
+      };
+      const entries: MarketplaceEntry[] = data.items.map((item) => ({
+        name: item.name,
+        description: item.description || "",
+        author: item.author,
+        downloads: item.downloads,
+        stars: item.stars,
+        version: item.version,
+        latestVersion: item.version,
+        source: MS.CLAWHUB,
+        type: (item.type as MarketplaceEntry["type"]) || "skill",
+      }));
+      results.push({ entries, total: entries.length, source: MS.CLAWHUB });
+    }
+  } catch (e) { console.warn("ClawHub popular fetch failed:", e); }
 
   return results;
 }
