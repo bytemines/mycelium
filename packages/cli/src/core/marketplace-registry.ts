@@ -150,6 +150,12 @@ export async function loadMarketplaceRegistry(): Promise<
       url: "https://registry.modelcontextprotocol.io",
       description: "MCP Registry",
     },
+    "anthropic-skills": {
+      type: "remote",
+      enabled: true,
+      url: "https://github.com/anthropics/skills",
+      description: "Official Anthropic skills",
+    },
   };
 
   // Load saved config
