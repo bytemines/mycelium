@@ -8,7 +8,7 @@ import {
 } from "../core/marketplace-registry.js";
 import { asyncHandler } from "./async-handler.js";
 
-import type { MarketplaceSource, MarketplaceEntry } from "@mycelium/core";
+import type { MarketplaceSource, MarketplaceEntry, MarketplaceConfig } from "@mycelium/core";
 import type { Express } from "express";
 
 export function registerMarketplaceRoutes(app: Express): void {
@@ -38,8 +38,8 @@ export function registerMarketplaceRoutes(app: Express): void {
   }));
 
   router.post("/registry", asyncHandler(async (req, res) => {
-    const { name, ...config } = req.body as { name: string } & Record<string, unknown>;
-    await addMarketplace(name, config as any);
+    const { name, ...config } = req.body as { name: string } & MarketplaceConfig;
+    await addMarketplace(name, config);
     res.json({ success: true });
   }));
 
