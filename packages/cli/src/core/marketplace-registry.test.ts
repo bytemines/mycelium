@@ -73,8 +73,8 @@ describe("loadMarketplaceRegistry", () => {
     mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
     const registry = await loadMarketplaceRegistry();
     expect(registry["skillsmp"]).toBeDefined();
-    expect(registry["openskills"]).toBeDefined();
     expect(registry["mcp-registry"]).toBeDefined();
+    expect(registry["anthropic-skills"]).toBeDefined();
   });
 
   it("merges saved YAML config with defaults", async () => {
