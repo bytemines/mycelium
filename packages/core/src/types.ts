@@ -22,6 +22,7 @@ export interface ToolConfig {
   mcpConfigFormat: "json" | "toml" | "yaml";
   memoryPath: string;
   enabled: boolean;
+  cliCommand?: string;
 }
 
 export const SUPPORTED_TOOLS: Record<ToolId, ToolConfig> = {
@@ -29,10 +30,11 @@ export const SUPPORTED_TOOLS: Record<ToolId, ToolConfig> = {
     id: "claude-code",
     name: "Claude Code",
     skillsPath: "~/.claude/skills",
-    mcpConfigPath: "~/.claude/mcp.json",
+    mcpConfigPath: "~/.claude.json",
     mcpConfigFormat: "json",
     memoryPath: "~/.claude/CLAUDE.md",
     enabled: true,
+    cliCommand: "claude",
   },
   codex: {
     id: "codex",
@@ -42,31 +44,34 @@ export const SUPPORTED_TOOLS: Record<ToolId, ToolConfig> = {
     mcpConfigFormat: "toml",
     memoryPath: "~/.codex/AGENTS.md",
     enabled: true,
+    cliCommand: "codex",
   },
   "gemini-cli": {
     id: "gemini-cli",
     name: "Gemini CLI",
     skillsPath: "~/.gemini/extensions",
-    mcpConfigPath: "~/.gemini/gemini-extension.json",
+    mcpConfigPath: "~/.gemini/settings.json",
     mcpConfigFormat: "json",
     memoryPath: "~/.gemini/GEMINI.md",
     enabled: true,
+    cliCommand: "gemini",
   },
   opencode: {
     id: "opencode",
     name: "OpenCode",
     skillsPath: "~/.config/opencode/plugin",
-    mcpConfigPath: "~/.config/opencode/config.yaml",
-    mcpConfigFormat: "yaml",
+    mcpConfigPath: "~/.config/opencode/opencode.json",
+    mcpConfigFormat: "json",
     memoryPath: "~/.opencode/context.md",
     enabled: true,
+    cliCommand: "opencode",
   },
   openclaw: {
     id: "openclaw",
     name: "OpenClaw",
     skillsPath: "~/.openclaw/skills",
-    mcpConfigPath: "~/.openclaw/config.yaml",
-    mcpConfigFormat: "yaml",
+    mcpConfigPath: "~/.openclaw/openclaw.json",
+    mcpConfigFormat: "json",
     memoryPath: "~/.openclaw/MEMORY.md",
     enabled: true,
   },
@@ -74,7 +79,7 @@ export const SUPPORTED_TOOLS: Record<ToolId, ToolConfig> = {
     id: "aider",
     name: "Aider",
     skillsPath: "~/.aider/plugins",
-    mcpConfigPath: "~/.aider/config.yaml",
+    mcpConfigPath: "~/.aider.conf.yml",
     mcpConfigFormat: "yaml",
     memoryPath: "~/.aider/MEMORY.md",
     enabled: true,
@@ -146,6 +151,18 @@ export interface MachineOverrides {
   memory?: Partial<MemoryConfig>;
 }
 
+export interface MachineOverrideEntry {
+  command: string;
+  detectedAt: string;
+}
+
+export interface MachineOverridesFile {
+  hostname: string;
+  detectedAt: string;
+  updatedAt: string;
+  mcps: Record<string, MachineOverrideEntry>;
+}
+
 export interface Manifest {
   version: string;
   tools: Record<ToolId, { enabled: boolean }>;
@@ -173,6 +190,18 @@ export interface SyncResult {
   tools: ToolSyncStatus[];
   errors: string[];
   warnings: string[];
+}
+
+// ============================================================================
+// Snapshot Types
+// ============================================================================
+
+export interface SnapshotMetadata {
+  name: string;
+  createdAt: string;
+  description?: string;
+  skillSymlinks: Record<string, string>;
+  fileList: string[];
 }
 
 // ============================================================================
@@ -235,6 +264,7 @@ export interface ToolScanResult {
   mcps: ScannedMcp[];
   memory: ScannedMemory[];
   hooks: ScannedHook[];
+  components: PluginComponent[];
 }
 
 export interface ScannedSkill {
@@ -265,8 +295,12 @@ export interface ScannedMemory {
 
 export interface ScannedHook {
   name: string;
-  path: string;
+  path?: string;
   source: ToolId;
+  event?: string;
+  matchers?: string[];
+  command?: string;
+  timeout?: number;
 }
 
 export type ConflictStrategy = "latest" | "interactive" | "all";
@@ -287,6 +321,7 @@ export interface MigrationPlan {
   skills: ScannedSkill[];
   mcps: ScannedMcp[];
   memory: ScannedMemory[];
+  components: PluginComponent[];
   conflicts: MigrationConflict[];
   strategy: ConflictStrategy;
 }
@@ -296,14 +331,35 @@ export interface MigrationResult {
   skillsImported: number;
   mcpsImported: number;
   memoryImported: number;
+  componentsImported: number;
   conflicts: MigrationConflict[];
   errors: string[];
   manifest: MigrationManifest;
 }
 
+export type PluginComponentType = "skill" | "agent" | "command" | "hook" | "lib";
+
+export interface PluginComponent {
+  name: string;
+  type: PluginComponentType;
+  path: string;
+  description?: string;
+  pluginName?: string;
+  marketplace?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface PluginManifest {
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  components: PluginComponent[];
+}
+
 export interface MigrationManifestEntry {
   name: string;
-  type: "skill" | "mcp" | "memory";
+  type: "skill" | "mcp" | "memory" | "hook" | "agent" | "command" | "lib";
   source: ToolId;
   originalPath: string;
   importedPath: string;
@@ -366,6 +422,8 @@ export interface PluginInfo {
   skills: string[];
   agents: string[];
   commands: string[];
+  hooks: string[];
+  libs: string[];
   installPath: string;
   installedAt?: string;
   lastUpdated?: string;

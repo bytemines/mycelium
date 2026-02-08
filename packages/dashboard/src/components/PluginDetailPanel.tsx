@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { Sparkles, Bot, Terminal, Webhook, Library } from "lucide-react";
 
 interface PluginDetailPanelProps {
   plugin: {
@@ -12,37 +13,93 @@ interface PluginDetailPanelProps {
     skills: string[];
     agents: string[];
     commands: string[];
+    hooks?: string[];
+    libs?: string[];
   } | null;
   onClose: () => void;
   onTogglePlugin: (name: string, enabled: boolean) => void;
   onToggleSkill: (pluginName: string, skillName: string, enabled: boolean) => void;
+  onRemoveItem?: (type: "skill" | "mcp" | "plugin", name: string) => void;
 }
 
-export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSkill }: PluginDetailPanelProps) {
-  const [skillStates, setSkillStates] = useState<Record<string, boolean>>({});
+// Reusable toggle row
+function ToggleRow({ name, enabled, onToggle }: { name: string; enabled: boolean; onToggle: () => void }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+      <span className="text-sm">{name}</span>
+      <button
+        role="switch"
+        aria-checked={enabled}
+        aria-label={`Toggle ${name}`}
+        onClick={onToggle}
+        className={cn(
+          "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+          enabled ? "bg-primary" : "bg-muted"
+        )}
+      >
+        <span
+          className={cn(
+            "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
+            enabled ? "translate-x-3" : "translate-x-0"
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
+// Section header with count badge and color
+const SECTION_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  skill:   { label: "Skills",    color: "text-purple-400", icon: <Sparkles size={14} className="text-purple-400" /> },
+  agent:   { label: "Agents",    color: "text-emerald-400", icon: <Bot size={14} className="text-emerald-400" /> },
+  command: { label: "Commands",  color: "text-blue-400", icon: <Terminal size={14} className="text-blue-400" /> },
+  hook:    { label: "Hooks",     color: "text-amber-400", icon: <Webhook size={14} className="text-amber-400" /> },
+  lib:     { label: "Libraries", color: "text-pink-400", icon: <Library size={14} className="text-pink-400" /> },
+};
+
+export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSkill, onRemoveItem }: PluginDetailPanelProps) {
+  const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   useEffect(() => {
     if (plugin) {
       const initial: Record<string, boolean> = {};
-      for (const s of plugin.skills) initial[s] = plugin.enabled;
-      setSkillStates(initial);
+      const allItems = [
+        ...plugin.skills,
+        ...plugin.agents,
+        ...plugin.commands,
+        ...(plugin.hooks ?? []),
+        ...(plugin.libs ?? []),
+      ];
+      for (const item of allItems) initial[item] = plugin.enabled;
+      setToggleStates(initial);
     }
   }, [plugin]);
 
   if (!plugin) return null;
 
-  const toggleSkill = (skill: string) => {
-    const next = !skillStates[skill];
-    setSkillStates(prev => ({ ...prev, [skill]: next }));
-    onToggleSkill(plugin.name, skill, next);
+  const toggle = (name: string) => {
+    const next = !toggleStates[name];
+    setToggleStates(prev => ({ ...prev, [name]: next }));
+    onToggleSkill(plugin.name, name, next);
   };
 
   const toggleAll = (enabled: boolean) => {
     const next: Record<string, boolean> = {};
-    for (const s of plugin.skills) next[s] = enabled;
-    setSkillStates(next);
+    for (const key of Object.keys(toggleStates)) next[key] = enabled;
+    setToggleStates(next);
     onTogglePlugin(plugin.name, enabled);
   };
+
+  const sections: Array<{ type: string; items: string[] }> = [
+    { type: "skill", items: plugin.skills },
+    { type: "agent", items: plugin.agents },
+    { type: "command", items: plugin.commands },
+    { type: "hook", items: plugin.hooks ?? [] },
+    { type: "lib", items: plugin.libs ?? [] },
+  ].filter(s => s.items.length > 0);
+
+  const totalComponents = sections.reduce((sum, s) => sum + s.items.length, 0);
 
   return (
     <>
@@ -56,7 +113,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
           <div>
             <h2 className="text-lg font-bold">{plugin.name}</h2>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">v{plugin.version}</span>
+              {plugin.version && <span className="text-sm text-muted-foreground">v{plugin.version}</span>}
               <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-400 border border-teal-500/30">
                 {plugin.marketplace}
               </span>
@@ -64,6 +121,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
             {plugin.author && (
               <p className="mt-1 text-xs text-muted-foreground">by {plugin.author}</p>
             )}
+            <p className="mt-1 text-xs text-muted-foreground">{totalComponents} components</p>
           </div>
           <button
             onClick={onClose}
@@ -88,7 +146,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
             onClick={() => toggleAll(true)}
             className={cn(
               "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-              Object.values(skillStates).every(Boolean)
+              Object.values(toggleStates).every(Boolean)
                 ? "bg-primary text-primary-foreground"
                 : "border bg-background text-foreground hover:bg-muted"
             )}
@@ -99,7 +157,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
             onClick={() => toggleAll(false)}
             className={cn(
               "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-              Object.values(skillStates).every(v => !v)
+              Object.values(toggleStates).every(v => !v)
                 ? "bg-destructive text-destructive-foreground"
                 : "border bg-background text-foreground hover:bg-muted"
             )}
@@ -108,63 +166,79 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
           </button>
         </div>
 
-        {/* Skills */}
-        {plugin.skills.length > 0 && (
-          <div className="border-b p-4">
-            <h3 className="mb-2 text-sm font-medium">Skills</h3>
-            <div className="space-y-2">
-              {plugin.skills.map((skill) => (
-                <div key={skill} className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <span className="text-sm">{skill}</span>
-                  <button
-                    role="switch"
-                    aria-checked={skillStates[skill] ?? true}
-                    aria-label={`Toggle ${skill}`}
-                    onClick={() => toggleSkill(skill)}
-                    className={cn(
-                      "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-                      skillStates[skill] ? "bg-primary" : "bg-muted"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-                        skillStates[skill] ? "translate-x-3" : "translate-x-0"
-                      )}
-                    />
-                  </button>
-                </div>
-              ))}
+        {/* Component sections */}
+        {sections.map(({ type, items }) => {
+          const meta = SECTION_META[type] ?? { label: type, color: "text-muted-foreground", icon: "?" };
+          return (
+            <div key={type} className="border-b p-4">
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-medium">
+                {meta.icon}
+                <span className={cn("font-bold", meta.color)}>{meta.label}</span>
+                <span className="rounded-full bg-muted px-1.5 py-0 text-[10px] text-muted-foreground">{items.length}</span>
+              </h3>
+              <div className="space-y-2">
+                {items.map((item) => (
+                  <ToggleRow
+                    key={item}
+                    name={item}
+                    enabled={toggleStates[item] ?? true}
+                    onToggle={() => toggle(item)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })}
 
-        {/* Agents */}
-        {plugin.agents.length > 0 && (
-          <div className="border-b p-4">
-            <h3 className="mb-2 text-sm font-medium">Agents</h3>
-            <div className="space-y-1">
-              {plugin.agents.map((agent) => (
-                <div key={agent} className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-                  {agent}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Commands */}
-        {plugin.commands.length > 0 && (
+        {/* Delete */}
+        {onRemoveItem && (
           <div className="p-4">
-            <h3 className="mb-2 text-sm font-medium">Commands</h3>
-            <div className="space-y-1">
-              {plugin.commands.map((cmd) => (
-                <div key={cmd} className="rounded-md border px-3 py-2 text-sm font-mono text-muted-foreground">
-                  {cmd}
-                </div>
-              ))}
-            </div>
+            <h3 className="mb-2 text-sm font-medium text-destructive">Danger Zone</h3>
+            <button
+              onClick={() => setConfirmRemove(true)}
+              className="w-full rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/20"
+            >
+              Remove {plugin.marketplace === "system" ? "MCP" : plugin.marketplace === "standalone" ? "Skill" : "Plugin"}
+            </button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              This removes it from ~/.mycelium. Run <code className="bg-muted px-1 rounded">mycelium sync</code> to propagate to all tools.
+            </p>
           </div>
+        )}
+
+        {/* Remove confirmation modal */}
+        {confirmRemove && (
+          <>
+            <div className="fixed inset-0 z-[60] bg-black/60" onClick={() => setConfirmRemove(false)} />
+            <div className="fixed left-1/2 top-1/2 z-[70] w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-2xl">
+              <h3 className="text-lg font-bold text-destructive">Remove {plugin.name}?</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This will remove all components ({sections.reduce((sum, s) => sum + s.items.length, 0)} total) from ~/.mycelium.
+                Run <code className="bg-muted px-1 rounded text-xs">mycelium sync</code> after to propagate.
+              </p>
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => {
+                    const type = plugin.marketplace === "system" ? "mcp" as const
+                      : plugin.marketplace === "standalone" ? "skill" as const
+                      : "plugin" as const;
+                    onRemoveItem?.(type, plugin.name);
+                    setConfirmRemove(false);
+                    onClose();
+                  }}
+                  className="flex-1 rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Yes, remove
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="flex-1 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </>

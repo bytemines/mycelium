@@ -1,25 +1,18 @@
 /**
  * Dashboard - Main Mycelium Control Center component
- * Implemented following TDD to pass Dashboard.test.tsx
+ * Uses Zustand store for centralized state management
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Graph } from "./Graph";
 import { ReactFlowProvider } from "@xyflow/react";
 import { MigrateWizard } from "./MigrateWizard";
 import { MarketplaceBrowser } from "./MarketplaceBrowser";
 import { PluginDetailPanel } from "./PluginDetailPanel";
-import type { PluginInfo } from "@mycelium/core";
-import { togglePlugin, togglePluginSkill, fetchDashboardState } from "@/lib/api";
+import { useDashboardStore } from "@/stores/dashboard-store";
 
 type Status = "synced" | "pending" | "error" | "disabled";
-
-interface StatsCardProps {
-  title: string;
-  count: number;
-  status: Status;
-}
 
 function StatusIndicator({ status }: { status: Status }) {
   const colors: Record<Status, string> = {
@@ -37,6 +30,12 @@ function StatusIndicator({ status }: { status: Status }) {
   );
 }
 
+interface StatsCardProps {
+  title: string;
+  count: number;
+  status: Status;
+}
+
 function StatsCard({ title, count, status }: StatsCardProps) {
   return (
     <div className="rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
@@ -50,71 +49,69 @@ function StatsCard({ title, count, status }: StatsCardProps) {
   );
 }
 
-interface ToggleState {
-  skills: Record<string, boolean>;
-  mcps: Record<string, boolean>;
-}
+function GraphContainer() {
+  const {
+    graphData, loading, error, apiStatus,
+    fetchState, toggleResource, setActiveTab,
+    openPluginPanel, openMcpPanel, openSkillPanel,
+  } = useDashboardStore();
 
-function GraphContainer({ onPluginClick, onMcpClick, onSkillClick }: { onPluginClick?: (name: string) => void; onMcpClick?: (name: string) => void; onSkillClick?: (name: string) => void }) {
-  const [toggleState, setToggleState] = useState<ToggleState>({
-    skills: { tdd: true, debugging: true, "git-workflow": true },
-    mcps: { "git-mcp": true, "filesystem-mcp": true, context7: true },
-  });
+  useEffect(() => {
+    fetchState();
+  }, [apiStatus, fetchState]);
 
-  const handleToggle = useCallback(
-    (toggle: { type: string; name: string; enabled: boolean }) => {
-      setToggleState((prev) => {
-        const key = toggle.type === "skill" ? "skills" : toggle.type === "mcp" ? "mcps" : null;
-        if (!key) return prev;
-        return { ...prev, [key]: { ...prev[key], [toggle.name]: toggle.enabled } };
-      });
-    },
-    []
-  );
+  if (loading) {
+    return (
+      <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50 flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <div className="mb-2 text-lg">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
-  // Mock data simulating tool detection - Claude Code and Codex installed
-  // TODO: Replace with actual data from CLI's detectInstalledTools()
-  const mockData = {
-    tools: [
-      { id: "claude-code", name: "Claude Code", status: "synced" as Status, installed: true },
-      { id: "codex", name: "Codex CLI", status: "synced" as Status, installed: true },
-      { id: "gemini", name: "Gemini CLI", status: "disabled" as Status, installed: false },
-      { id: "opencode", name: "OpenCode", status: "disabled" as Status, installed: false },
-      { id: "openclaw", name: "OpenClaw", status: "disabled" as Status, installed: false },
-      { id: "aider", name: "Aider", status: "disabled" as Status, installed: false },
-    ],
-    skills: [
-      { name: "tdd", status: "synced" as Status, enabled: toggleState.skills.tdd, connectedTools: ["claude-code", "codex"] },
-      { name: "debugging", status: "synced" as Status, enabled: toggleState.skills.debugging, connectedTools: ["claude-code", "codex"] },
-      { name: "git-workflow", status: "pending" as Status, enabled: toggleState.skills["git-workflow"], connectedTools: ["claude-code"] },
-    ],
-    mcps: [
-      { name: "git-mcp", status: "synced" as Status, enabled: toggleState.mcps["git-mcp"], connectedTools: ["claude-code", "codex"] },
-      { name: "filesystem-mcp", status: "synced" as Status, enabled: toggleState.mcps["filesystem-mcp"], connectedTools: ["claude-code"] },
-      { name: "context7", status: "synced" as Status, enabled: toggleState.mcps.context7, connectedTools: ["claude-code"] },
-    ],
-    memory: [
-      { name: "MEMORY.md", scope: "shared" as const, status: "synced" as Status },
-      { name: "coding.md", scope: "coding" as const, status: "synced" as Status },
-    ],
-    plugins: [
-      { name: "superpowers", marketplace: "superpowers-marketplace", skillCount: 3, enabled: true, skills: ["tdd", "debugging", "git-workflow"] },
-    ],
-  };
+  if (error) {
+    return (
+      <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50 flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <div className="mb-2 text-lg">Cannot connect to API</div>
+          <div className="text-sm">Start the server with <code className="bg-muted px-1 rounded">mycelium serve</code></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (graphData && !graphData.migrated && graphData.skills.length === 0 && graphData.mcps.length === 0) {
+    return (
+      <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="mb-2 text-lg text-foreground">No configuration detected</div>
+          <div className="mb-4 text-sm text-muted-foreground">
+            Run <code className="bg-muted px-1 rounded">mycelium migrate --apply</code> to import your tool configs, then <code className="bg-muted px-1 rounded">mycelium serve</code> to view them here.
+          </div>
+          <button
+            onClick={() => setActiveTab("migrate")}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Scan Tools
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const data = graphData ?? { tools: [], skills: [], mcps: [], memory: [], plugins: [] };
 
   return (
-    <div
-      data-testid="graph-container"
-      className="h-[600px] rounded-lg border bg-card/50"
-    >
+    <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50">
       <ReactFlowProvider>
         <Graph
-          data={mockData}
+          data={data}
           showUninstalledTools={false}
-          onToggle={handleToggle}
-          onPluginClick={onPluginClick}
-          onMcpClick={onMcpClick}
-          onSkillClick={onSkillClick}
+          onToggle={toggleResource}
+          onPluginClick={openPluginPanel}
+          onMcpClick={openMcpPanel}
+          onSkillClick={openSkillPanel}
         />
       </ReactFlowProvider>
     </div>
@@ -122,165 +119,121 @@ function GraphContainer({ onPluginClick, onMcpClick, onSkillClick }: { onPluginC
 }
 
 export function Dashboard() {
-  const [activeTab, setActiveTab] = useState<"graph" | "migrate" | "marketplace">("graph");
-  const [selectedPlugin, setSelectedPlugin] = useState<PluginInfo | null>(null);
-  const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+  const {
+    activeTab, setActiveTab,
+    selectedPlugin, setSelectedPlugin,
+    apiStatus, checkApiStatus,
+    hasPendingChanges, syncBanner, triggerSync,
+    togglePlugin, togglePluginSkill, removeItem,
+    graphData,
+  } = useDashboardStore();
+
+  const stats = {
+    skills: { count: graphData?.skills.length ?? 0, status: (graphData?.skills.length ? "synced" : "pending") as Status },
+    mcps: { count: graphData?.mcps.length ?? 0, status: (graphData?.mcps.length ? "synced" : "pending") as Status },
+    memory: { count: graphData?.memory.length ?? 0, status: (graphData?.memory.length ? "synced" : "pending") as Status },
+    machines: { count: 1, status: "synced" as Status },
+  };
 
   useEffect(() => {
-    fetchDashboardState()
-      .then(() => setApiStatus("connected"))
-      .catch(() => setApiStatus("disconnected"));
-  }, []);
-
-  const handlePluginClick = useCallback((pluginName: string) => {
-    // Mock plugin detail - in production this would fetch from API
-    setSelectedPlugin({
-      name: pluginName,
-      marketplace: "superpowers-marketplace",
-      version: "1.0.0",
-      description: "A collection of powerful development skills",
-      author: "mycelium-community",
-      enabled: true,
-      skills: ["tdd", "debugging", "git-workflow"],
-      agents: [],
-      commands: [],
-      installPath: "~/.mycelium/plugins/superpowers",
-    });
-  }, []);
-
-  const handleTogglePlugin = useCallback(async (name: string, enabled: boolean) => {
-    await togglePlugin(name, enabled).catch(() => {});
-    setSelectedPlugin(prev => prev ? { ...prev, enabled } : null);
-  }, []);
-
-  const handleTogglePluginSkill = useCallback(async (pluginName: string, skillName: string, enabled: boolean) => {
-    await togglePluginSkill(pluginName, skillName, enabled).catch(() => {});
-  }, []);
-
-  const handleMcpClick = useCallback((mcpName: string) => {
-    setSelectedPlugin({
-      name: mcpName,
-      marketplace: "system",
-      version: "",
-      description: `MCP server: ${mcpName}`,
-      author: undefined,
-      enabled: true,
-      skills: [],
-      agents: [],
-      commands: [],
-      installPath: "",
-    });
-  }, []);
-
-  const handleSkillClick = useCallback((skillName: string) => {
-    setSelectedPlugin({
-      name: skillName,
-      marketplace: "standalone",
-      version: "",
-      description: `Standalone skill: ${skillName}`,
-      author: undefined,
-      enabled: true,
-      skills: [skillName],
-      agents: [],
-      commands: [],
-      installPath: "",
-    });
-  }, []);
-
-  const [stats, setStats] = useState({
-    skills: { count: 0, status: "pending" as Status },
-    mcps: { count: 0, status: "pending" as Status },
-    memory: { count: 0, status: "pending" as Status },
-    machines: { count: 0, status: "pending" as Status },
-  });
-
-  useEffect(() => {
-    if (apiStatus !== "connected") return;
-    fetchDashboardState().then((state) => {
-      setStats({
-        skills: { count: state.skills?.length ?? 0, status: state.skills?.length ? "synced" : "pending" },
-        mcps: { count: state.mcps?.length ?? 0, status: state.mcps?.length ? "synced" : "pending" },
-        memory: { count: state.memory?.length ?? 0, status: state.memory?.length ? "synced" : "pending" },
-        machines: { count: 1, status: "synced" },
-      });
-    }).catch(() => {
-      setStats({
-        skills: { count: 0, status: "error" },
-        mcps: { count: 0, status: "error" },
-        memory: { count: 0, status: "error" },
-        machines: { count: 0, status: "error" },
-      });
-    });
-  }, [apiStatus]);
+    checkApiStatus();
+  }, [checkApiStatus]);
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      {/* Header */}
-      <header className="mb-8 flex items-center justify-between">
+    <div className="flex h-screen flex-col bg-background">
+      {/* Navbar with tabs */}
+      <header className="flex items-center justify-between border-b px-4 py-2">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold tracking-tight">MYCELIUM</h1>
+          <h1 className="text-lg font-bold tracking-tight">MYCELIUM</h1>
           <StatusIndicator status={apiStatus === "connected" ? "synced" : apiStatus === "checking" ? "pending" : "error"} />
-          <span className="text-sm text-muted-foreground">
-            {apiStatus === "connected" ? "Connected" : apiStatus === "checking" ? "Connecting..." : "API Offline \u2014 run mycelium serve"}
-          </span>
-        </div>
-        <button
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Sync
-        </button>
-      </header>
 
-      {/* Tab Bar */}
-      <nav className="mb-6 flex gap-1 rounded-lg border bg-muted p-1">
-        {(["graph", "migrate", "marketplace"] as const).map((tab) => (
+          {/* Tabs in navbar */}
+          <nav className="flex gap-1 rounded-lg bg-muted p-0.5">
+            {(["graph", "migrate", "marketplace"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "rounded-md px-3 py-1 text-sm font-medium transition-colors",
+                  activeTab === tab
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {apiStatus !== "connected" && (
+            <span className="text-xs text-muted-foreground">
+              {apiStatus === "checking" ? "Connecting..." : "API Offline"}
+            </span>
+          )}
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={triggerSync}
             className={cn(
-              "rounded-md px-4 py-2 text-sm font-medium transition-colors",
-              activeTab === tab
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              hasPendingChanges
+                ? "bg-yellow-500 text-black hover:bg-yellow-400 animate-pulse"
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
             )}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {hasPendingChanges ? "Sync (pending)" : "Sync"}
           </button>
-        ))}
-      </nav>
+        </div>
+      </header>
 
-      {/* Tab Content */}
-      {activeTab === "graph" && (
-        <>
-          <section className="mb-8">
-            <GraphContainer onPluginClick={handlePluginClick} onMcpClick={handleMcpClick} onSkillClick={handleSkillClick} />
-          </section>
-          <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatsCard title="Skills" count={stats.skills.count} status={stats.skills.status} />
-            <StatsCard title="MCPs" count={stats.mcps.count} status={stats.mcps.status} />
-            <StatsCard title="Memory" count={stats.memory.count} status={stats.memory.status} />
-            <StatsCard title="Machines" count={stats.machines.count} status={stats.machines.status} />
-          </section>
-        </>
+      {/* Sync Banner */}
+      {syncBanner && (
+        <div className={cn(
+          "px-4 py-1.5 text-sm font-medium",
+          syncBanner.type === "success" && "bg-green-500/10 text-green-400",
+          syncBanner.type === "pending" && "bg-yellow-500/10 text-yellow-400",
+          syncBanner.type === "error" && "bg-red-500/10 text-red-400",
+        )}>
+          {syncBanner.message}
+        </div>
       )}
 
-      {activeTab === "migrate" && <MigrateWizard />}
+      {/* Full-height content */}
+      <div className="flex-1 overflow-hidden p-2">
+        {activeTab === "graph" && (
+          <>
+            <section className="mb-2 h-[calc(100%-6rem)]">
+              <GraphContainer />
+            </section>
+            <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <StatsCard title="Skills" count={stats.skills.count} status={stats.skills.status} />
+              <StatsCard title="MCPs" count={stats.mcps.count} status={stats.mcps.status} />
+              <StatsCard title="Memory" count={stats.memory.count} status={stats.memory.status} />
+              <StatsCard title="Machines" count={stats.machines.count} status={stats.machines.status} />
+            </section>
+          </>
+        )}
 
-      {activeTab === "marketplace" && <MarketplaceBrowser />}
+        {activeTab === "migrate" && (
+          <div className="h-full overflow-y-auto p-4">
+            <MigrateWizard />
+          </div>
+        )}
+
+        {activeTab === "marketplace" && (
+          <div className="h-full overflow-y-auto p-4">
+            <MarketplaceBrowser />
+          </div>
+        )}
+      </div>
 
       <PluginDetailPanel
         plugin={selectedPlugin}
         onClose={() => setSelectedPlugin(null)}
-        onTogglePlugin={handleTogglePlugin}
-        onToggleSkill={handleTogglePluginSkill}
+        onTogglePlugin={togglePlugin}
+        onToggleSkill={togglePluginSkill}
+        onRemoveItem={removeItem}
       />
-
-      {/* Footer hint */}
-      <footer className="mt-8 text-center text-sm text-muted-foreground">
-        {activeTab === "graph" && "Click any node to view details and manage toggles"}
-        {activeTab === "migrate" && "Scan tools to discover skills, MCPs, and memory"}
-        {activeTab === "marketplace" && "Search and install skills from marketplace registries"}
-      </footer>
     </div>
   );
 }

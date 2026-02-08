@@ -28,12 +28,17 @@ import {
 import { detectConflicts, type PartialConfig } from "../core/conflict-detector.js";
 import { syncSkillsToTool } from "../core/symlink-manager.js";
 import {
-  injectMcpsToTool,
   filterMcpsForTool,
   resolveEnvVarsInMcps,
 } from "../core/mcp-injector.js";
 import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
 import { startWatcher } from "../core/watcher.js";
+import { restoreBackups, dryRunSync } from "../core/sync-writer.js";
+import {
+  loadMachineOverrides,
+  applyMachineOverrides,
+  rescanOverrides,
+} from "../core/machine-overrides.js";
 
 // ============================================================================
 // Types
@@ -43,6 +48,9 @@ export interface SyncOptions {
   verbose?: boolean;
   tool?: ToolId;
   watch?: boolean;
+  dryRun?: boolean;
+  restore?: boolean;
+  rescan?: boolean;
 }
 
 // ============================================================================
@@ -109,7 +117,6 @@ export async function syncTool(
 ): Promise<ToolSyncStatus> {
   const toolConfig = SUPPORTED_TOOLS[toolId];
   const toolSkillsDir = expandPath(toolConfig.skillsPath);
-  const toolMcpConfigPath = expandPath(toolConfig.mcpConfigPath);
 
   try {
     // 1. Sync skills via symlinks
@@ -125,8 +132,10 @@ export async function syncTool(
     const resolvedMcps = resolveEnvVarsInMcps(filteredMcps, envVars);
     const mcpsCount = Object.keys(resolvedMcps).length;
 
-    // 3. Inject MCPs into tool config
-    await injectMcpsToTool(toolId, resolvedMcps, toolMcpConfigPath);
+    // 3. Sync MCPs via tool adapter (CLI-first, file fallback)
+    const { getAdapter } = await import("../core/tool-adapter.js");
+    const adapter = getAdapter(toolId);
+    await adapter.syncAll(resolvedMcps);
 
     // 4. Sync memory files
     const memoryResult = await syncMemoryToTool(toolId);
@@ -171,7 +180,8 @@ export async function syncTool(
 export async function syncAll(
   projectRoot: string,
   enabledTools: Record<ToolId, { enabled: boolean }>,
-  envVars: Record<string, string> = {}
+  envVars: Record<string, string> = {},
+  options: { rescan?: boolean } = {}
 ): Promise<SyncResult> {
   const result: SyncResult = {
     success: true,
@@ -182,6 +192,19 @@ export async function syncAll(
 
   // Load and merge all configs
   const mergedConfig = await loadAndMergeAllConfigs(projectRoot);
+
+  // Apply machine-level overrides to MCP commands
+  if (options.rescan) {
+    const overrides = await rescanOverrides(mergedConfig.mcps);
+    const overrideCount = Object.keys(overrides.mcps).length;
+    if (overrideCount > 0) {
+      result.warnings.push(`Rescanned: ${overrideCount} MCP command override(s) detected`);
+    }
+    mergedConfig.mcps = applyMachineOverrides(mergedConfig.mcps, overrides);
+  } else {
+    const overrides = await loadMachineOverrides();
+    mergedConfig.mcps = applyMachineOverrides(mergedConfig.mcps, overrides);
+  }
 
   // Detect conflicts between config levels
   const globalConfig = await loadGlobalConfig();
@@ -221,6 +244,9 @@ export const syncCommand = new Command("sync")
   .option("-t, --tool <tool>", "Sync to specific tool only")
   .option("-v, --verbose", "Show detailed output")
   .option("-w, --watch", "Watch for config changes and auto-sync")
+  .option("--dry-run", "Show what would change without writing")
+  .option("--restore", "Restore tool configs from backups")
+  .option("--rescan", "Force re-detect machine overrides")
   .action(async (options: SyncOptions) => {
     const projectRoot = process.cwd();
 
@@ -256,7 +282,51 @@ export const syncCommand = new Command("sync")
       }
     }
 
-    const result = await syncAll(projectRoot, enabledTools, envVars);
+    // Handle --restore
+    if (options.restore) {
+      const restoreResult = await restoreBackups();
+      if (restoreResult.restored.length > 0) {
+        console.log("Restored:");
+        for (const r of restoreResult.restored) {
+          console.log(`  - ${r}`);
+        }
+      } else {
+        console.log("No backups found to restore.");
+      }
+      if (restoreResult.errors.length > 0) {
+        console.error("Errors:");
+        for (const e of restoreResult.errors) {
+          console.error(`  - ${e}`);
+        }
+      }
+      return;
+    }
+
+    // Handle --dry-run
+    if (options.dryRun) {
+      const mergedConfig = await loadAndMergeAllConfigs(projectRoot);
+      for (const [toolId, config] of Object.entries(enabledTools)) {
+        if (!config.enabled) continue;
+        const diff = await dryRunSync(toolId as ToolId, mergedConfig.mcps);
+        console.log(`${toolId} (${diff.configPath}):`);
+        if (diff.currentContent === diff.newContent) {
+          console.log("  No changes");
+        } else if (!diff.currentContent) {
+          console.log("  Would create new config");
+        } else {
+          console.log("  Would update config");
+        }
+        if (options.verbose) {
+          console.log("  New content preview:");
+          console.log("  " + diff.newContent.split("\n").join("\n  "));
+        }
+      }
+      return;
+    }
+
+    const result = await syncAll(projectRoot, enabledTools, envVars, {
+      rescan: options.rescan,
+    });
 
     if (options.verbose) {
       console.log("Sync result:", JSON.stringify(result, null, 2));

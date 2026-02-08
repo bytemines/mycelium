@@ -1,7 +1,11 @@
 import express from "express";
 import cors from "cors";
+import fs from "fs/promises";
+import path from "path";
+import os from "os";
+import { parse as parseYaml } from "yaml";
 
-import { scanAllTools } from "./core/migrator.js";
+import { scanAllTools, loadManifest } from "./core/migrator.js";
 import { executeMigration, clearMigration } from "./core/migrator.js";
 import { searchMarketplace, installFromMarketplace, getPopularSkills, updateSkill } from "./core/marketplace.js";
 import {
@@ -12,9 +16,28 @@ import {
   togglePlugin,
   toggleSkillInPlugin,
 } from "./core/marketplace-registry.js";
+import { detectInstalledTools } from "./core/tool-detector.js";
+import { getAdapter } from "./core/tool-adapter.js";
 
-import type { MigrationPlan, MarketplaceConfig, MarketplaceSource, MarketplaceEntry } from "@mycelium/core";
+import type { MigrationPlan, MarketplaceConfig, MarketplaceSource, MarketplaceEntry, ToolId, McpServerConfig } from "@mycelium/core";
 import type { Express } from "express";
+
+const MYCELIUM_HOME = path.join(os.homedir(), ".mycelium");
+const DISABLED_MCPS_FILE = path.join(MYCELIUM_HOME, "disabled-mcps.json");
+
+async function loadDisabledMcps(): Promise<Record<string, ToolId[]>> {
+  try {
+    const content = await fs.readFile(DISABLED_MCPS_FILE, "utf-8");
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+async function saveDisabledMcps(disabled: Record<string, ToolId[]>): Promise<void> {
+  await fs.mkdir(path.dirname(DISABLED_MCPS_FILE), { recursive: true });
+  await fs.writeFile(DISABLED_MCPS_FILE, JSON.stringify(disabled, null, 2), "utf-8");
+}
 
 export function createServer(port = 3378): Express {
   const app = express();
@@ -24,16 +47,186 @@ export function createServer(port = 3378): Express {
   // GET /api/state
   app.get("/api/state", async (_req, res) => {
     try {
-      res.json({ tools: [], skills: [], mcps: [], memory: [] });
+      // 1. Detect installed tools
+      const detectedTools = await detectInstalledTools();
+      const tools = detectedTools.map((t) => ({
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        installed: t.installed,
+      }));
+
+      // 2. Read skills from ~/.mycelium/global/skills/
+      const skillsDir = path.join(MYCELIUM_HOME, "global", "skills");
+      let skills: Array<{ name: string; status: "synced"; enabled: boolean; connectedTools: ToolId[] }> = [];
+      try {
+        const entries = await fs.readdir(skillsDir);
+        skills = entries.map((name) => ({
+          name,
+          status: "synced" as const,
+          enabled: true,
+          connectedTools: ["claude-code" as ToolId],
+        }));
+      } catch {
+        // directory doesn't exist yet
+      }
+
+      // 3. Read MCPs from ~/.mycelium/global/mcps.yaml
+      const disabledMcps = await loadDisabledMcps();
+      let mcps: Array<{ name: string; status: "synced" | "disabled"; enabled: boolean; connectedTools: ToolId[] }> = [];
+      try {
+        const mcpContent = await fs.readFile(path.join(MYCELIUM_HOME, "global", "mcps.yaml"), "utf-8");
+        const parsed = parseYaml(mcpContent) as Record<string, unknown> | null;
+        if (parsed && typeof parsed === "object") {
+          mcps = Object.keys(parsed).map((name) => {
+            const disabledFor = disabledMcps[name] || [];
+            const enabled = disabledFor.length === 0;
+            return {
+              name,
+              status: enabled ? "synced" as const : "disabled" as const,
+              enabled,
+              connectedTools: ["claude-code" as ToolId],
+            };
+          });
+        }
+      } catch {
+        // file doesn't exist yet
+      }
+
+      // 4. Read memory files from ~/.mycelium/memory/
+      let memory: Array<{ name: string; scope: "global"; status: "synced" }> = [];
+      try {
+        const memEntries = await fs.readdir(path.join(MYCELIUM_HOME, "memory"));
+        memory = memEntries
+          .filter((f) => f.endsWith(".md"))
+          .map((name) => ({
+            name,
+            scope: "global" as const,
+            status: "synced" as const,
+          }));
+      } catch {
+        // directory doesn't exist yet
+      }
+
+      // 5. Load manifest for provenance
+      const manifest = await loadManifest();
+      const migrated = manifest.entries.length > 0;
+
+      // 6. Group components by pluginName from manifest
+      const pluginMap = new Map<string, { skills: string[]; agents: string[]; commands: string[]; hooks: string[]; libs: string[] }>();
+      for (const entry of manifest.entries) {
+        if (entry.pluginName) {
+          const existing = pluginMap.get(entry.pluginName) || { skills: [], agents: [], commands: [], hooks: [], libs: [] };
+          switch (entry.type) {
+            case "skill": existing.skills.push(entry.name); break;
+            case "agent": existing.agents.push(entry.name); break;
+            case "command": existing.commands.push(entry.name); break;
+            case "hook": existing.hooks.push(entry.name); break;
+            case "lib": existing.libs.push(entry.name); break;
+          }
+          pluginMap.set(entry.pluginName, existing);
+        }
+      }
+      const plugins = Array.from(pluginMap.entries()).map(([name, data]) => ({
+        name,
+        skills: data.skills,
+        agents: data.agents,
+        commands: data.commands,
+        hooks: data.hooks,
+        libs: data.libs,
+      }));
+
+      res.json({ tools, skills, mcps, memory, migrated, plugins });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }
   });
 
-  // POST /api/toggle
+  // GET /api/state/status
+  app.get("/api/state/status", async (_req, res) => {
+    try {
+      const manifest = await loadManifest();
+      const migrated = manifest.entries.length > 0;
+
+      let configExists = false;
+      try {
+        const entries = await fs.readdir(MYCELIUM_HOME);
+        configExists = entries.length > 0;
+      } catch {
+        // directory doesn't exist
+      }
+
+      let snapshotCount = 0;
+      try {
+        const snapshots = await fs.readdir(path.join(MYCELIUM_HOME, "snapshots"));
+        snapshotCount = snapshots.length;
+      } catch {
+        // no snapshots dir
+      }
+
+      res.json({ migrated, configExists, snapshotCount });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // POST /api/toggle — enable/disable an MCP for a specific tool
   app.post("/api/toggle", async (req, res) => {
     try {
-      res.json({ success: true, action: req.body });
+      const { type, name, toolId, enabled } = req.body as {
+        type: "mcp" | "skill" | "memory";
+        name: string;
+        toolId?: ToolId;
+        enabled: boolean;
+      };
+
+      if (type !== "mcp") {
+        return res.json({ success: true, action: req.body, message: "Only MCP toggles are supported" });
+      }
+
+      const targetTool = toolId || "claude-code";
+      const adapter = getAdapter(targetTool as ToolId);
+
+      // Track disabled state
+      const disabledMcps = await loadDisabledMcps();
+
+      if (enabled) {
+        // Re-enable: read MCP config from mcps.yaml and add it back
+        const mcpContent = await fs.readFile(path.join(MYCELIUM_HOME, "global", "mcps.yaml"), "utf-8");
+        const parsed = parseYaml(mcpContent) as Record<string, Record<string, unknown>> | null;
+        const mcpConfig = parsed?.[name];
+
+        if (mcpConfig) {
+          const config: McpServerConfig = {
+            command: mcpConfig.command as string,
+            args: mcpConfig.args as string[] | undefined,
+            env: mcpConfig.env as Record<string, string> | undefined,
+          };
+          const result = await adapter.add(name, config);
+
+          // Remove from disabled list
+          if (disabledMcps[name]) {
+            disabledMcps[name] = disabledMcps[name].filter((t: string) => t !== targetTool);
+            if (disabledMcps[name].length === 0) delete disabledMcps[name];
+          }
+          await saveDisabledMcps(disabledMcps);
+
+          return res.json({ success: result.success, method: result.method, message: result.message || result.error });
+        }
+        return res.status(404).json({ error: `MCP ${name} not found in mcps.yaml` });
+      } else {
+        // Disable: remove from tool
+        const result = await adapter.remove(name);
+
+        // Add to disabled list
+        if (!disabledMcps[name]) disabledMcps[name] = [];
+        if (!disabledMcps[name].includes(targetTool as ToolId)) {
+          disabledMcps[name].push(targetTool as ToolId);
+        }
+        await saveDisabledMcps(disabledMcps);
+
+        return res.json({ success: result.success, method: result.method, message: result.message || result.error });
+      }
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }
@@ -156,10 +349,60 @@ export function createServer(port = 3378): Express {
   });
 
   // GET /api/plugins
-  app.get("/api/plugins", async (req, res) => {
+  app.get("/api/plugins", async (_req, res) => {
     try {
-      const marketplace = req.query.marketplace as string | undefined;
-      const plugins = await listPlugins(marketplace);
+      // Build plugin list from manifest — classify all component types
+      const manifest = await loadManifest();
+      const pluginMap = new Map<string, {
+        marketplace: string;
+        skills: string[];
+        agents: string[];
+        commands: string[];
+        hooks: string[];
+        libs: string[];
+      }>();
+      for (const entry of manifest.entries) {
+        if (entry.pluginName) {
+          const existing = pluginMap.get(entry.pluginName) || {
+            marketplace: entry.marketplace || "",
+            skills: [],
+            agents: [],
+            commands: [],
+            hooks: [],
+            libs: [],
+          };
+          switch (entry.type) {
+            case "skill": existing.skills.push(entry.name); break;
+            case "agent": existing.agents.push(entry.name); break;
+            case "command": existing.commands.push(entry.name); break;
+            case "hook": existing.hooks.push(entry.name); break;
+            case "lib": existing.libs.push(entry.name); break;
+          }
+          if (entry.marketplace) existing.marketplace = entry.marketplace;
+          pluginMap.set(entry.pluginName, existing);
+        }
+      }
+      const plugins = Array.from(pluginMap.entries()).map(([name, data]) => {
+        const parts: string[] = [];
+        if (data.skills.length) parts.push(`${data.skills.length} skills`);
+        if (data.agents.length) parts.push(`${data.agents.length} agents`);
+        if (data.commands.length) parts.push(`${data.commands.length} commands`);
+        if (data.hooks.length) parts.push(`${data.hooks.length} hooks`);
+        if (data.libs.length) parts.push(`${data.libs.length} libs`);
+        return {
+          name,
+          marketplace: data.marketplace,
+          version: "",
+          description: parts.join(", "),
+          enabled: true,
+          skills: data.skills,
+          agents: data.agents,
+          commands: data.commands,
+          hooks: data.hooks,
+          libs: data.libs,
+          installPath: "",
+        };
+      });
       res.json(plugins);
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
@@ -189,6 +432,61 @@ export function createServer(port = 3378): Express {
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // POST /api/sync — trigger sync from dashboard
+  app.post("/api/sync", async (_req, res) => {
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("npx mycelium sync", { stdio: "pipe", timeout: 30000 });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: (e as Error).message });
+    }
+  });
+
+  // DELETE /api/remove/skill/:name
+  app.delete("/api/remove/skill/:name", async (req, res) => {
+    try {
+      const { removeSkill } = await import("./commands/remove.js");
+      const result = await removeSkill(req.params.name);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ removed: false, error: (e as Error).message });
+    }
+  });
+
+  // DELETE /api/remove/mcp/:name
+  app.delete("/api/remove/mcp/:name", async (req, res) => {
+    try {
+      const { removeMcp } = await import("./commands/remove.js");
+      const result = await removeMcp(req.params.name);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ removed: false, error: (e as Error).message });
+    }
+  });
+
+  // DELETE /api/remove/hook/:name
+  app.delete("/api/remove/hook/:name", async (req, res) => {
+    try {
+      const { removeHook } = await import("./commands/remove.js");
+      const result = await removeHook(req.params.name);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ removed: false, error: (e as Error).message });
+    }
+  });
+
+  // DELETE /api/remove/plugin/:name
+  app.delete("/api/remove/plugin/:name", async (req, res) => {
+    try {
+      const { removePlugin } = await import("./commands/remove.js");
+      const result = await removePlugin(req.params.name);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ removed: [], errors: [(e as Error).message] });
     }
   });
 

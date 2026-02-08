@@ -267,6 +267,8 @@ export async function listPlugins(
           skills: meta.skills || [],
           agents: meta.agents || [],
           commands: meta.commands || [],
+          hooks: [],
+          libs: [],
           installPath: path.join(cacheDir, entry),
           installedAt: meta.installedAt,
           lastUpdated: meta.lastUpdated,

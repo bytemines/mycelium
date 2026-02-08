@@ -42,7 +42,7 @@ function makeScan(
   mcps: ScannedMcp[] = [],
   memory: ScannedMemory[] = [],
 ): ToolScanResult {
-  return { toolId: toolId as any, toolName: toolId, installed: true, skills, mcps, memory, hooks: [] };
+  return { toolId: toolId as any, toolName: toolId, installed: true, skills, mcps, memory, hooks: [], components: [] };
 }
 
 // ============================================================================
@@ -453,6 +453,7 @@ describe("execution", () => {
         skills: [{ name: "tdd", path: "/src/tdd", source: "claude-code" }],
         mcps: [{ name: "git", config: { command: "git-mcp", args: ["--stdio"] }, source: "codex" }],
         memory: [{ name: "proj1", path: "/mem/proj1.md", source: "claude-code", scope: "shared", content: "# Proj" }],
+        components: [],
         conflicts: [],
         strategy: "latest",
       };
@@ -479,6 +480,7 @@ describe("execution", () => {
         skills: [{ name: "sk", path: "/a", source: "claude-code" }],
         mcps: [],
         memory: [],
+        components: [],
         conflicts: [],
         strategy: "latest",
       };
