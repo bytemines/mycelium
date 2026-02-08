@@ -345,6 +345,26 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
     }
   } catch (e) { console.warn("MCP Registry popular fetch failed:", e); }
 
+  // OpenSkills popular (npm)
+  try {
+    const res = await fetch("https://registry.npmjs.org/-/v1/search?text=openskills&size=12");
+    if (res.ok) {
+      const data = (await res.json()) as {
+        objects: { package: { name: string; description: string; author?: { name: string }; version: string }; score?: { detail?: { popularity?: number } } }[];
+      };
+      const entries: MarketplaceEntry[] = data.objects.map((o) => ({
+        name: o.package.name,
+        description: o.package.description || "",
+        author: o.package.author?.name,
+        version: o.package.version,
+        latestVersion: o.package.version,
+        source: MS.OPENSKILLS,
+        type: "skill" as const,
+      }));
+      results.push({ entries, total: entries.length, source: MS.OPENSKILLS });
+    }
+  } catch (e) { console.warn("OpenSkills popular fetch failed:", e); }
+
   // ClawHub popular
   try {
     const res = await fetch("https://clawhub.ai/api/v1/search?q=&sort=popular&limit=12",
