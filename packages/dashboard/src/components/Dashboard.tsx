@@ -31,24 +31,6 @@ function StatusIndicator({ status }: { status: Status }) {
   );
 }
 
-interface StatsCardProps {
-  title: string;
-  count: number;
-  status: Status;
-}
-
-function StatsCard({ title, count, status }: StatsCardProps) {
-  return (
-    <div className="rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{title}</span>
-        <StatusIndicator status={status} />
-      </div>
-      <div className="mt-2 text-2xl font-bold">{count}</div>
-      <div className="text-xs text-muted-foreground">{status}</div>
-    </div>
-  );
-}
 
 function GraphContainer() {
   const {
@@ -126,50 +108,44 @@ export function Dashboard() {
     apiStatus, checkApiStatus,
     hasPendingChanges, syncBanner, triggerSync,
     togglePlugin, togglePluginSkill, removeItem,
-    graphData,
   } = useDashboardStore();
 
-  const stats = {
-    skills: { count: graphData?.skills.length ?? 0, status: (graphData?.skills.length ? "synced" : "pending") as Status },
-    mcps: { count: graphData?.mcps.length ?? 0, status: (graphData?.mcps.length ? "synced" : "pending") as Status },
-    memory: { count: graphData?.memory.length ?? 0, status: (graphData?.memory.length ? "synced" : "pending") as Status },
-    machines: { count: 1, status: "synced" as Status },
-  };
-
-  useEffect(() => {
+useEffect(() => {
     checkApiStatus();
   }, [checkApiStatus]);
 
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Navbar with tabs */}
-      <header className="flex items-center justify-between border-b px-4 py-2">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-bold tracking-tight">MYCELIUM</h1>
+      <header className="relative flex items-center border-b px-4 py-2">
+        {/* Left: branding */}
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-bold tracking-tight">🍄 MYCELIUM</h1>
           <StatusIndicator status={apiStatus === "connected" ? "synced" : apiStatus === "checking" ? "pending" : "error"} />
-
-          {/* Tabs in navbar */}
-          <nav role="tablist" className="flex gap-1 rounded-lg bg-muted p-0.5">
-            {(["graph", "migrate", "marketplace"] as const).map((tab) => (
-              <button
-                key={tab}
-                role="tab"
-                aria-selected={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "rounded-md px-3 py-1 text-sm font-medium transition-colors",
-                  activeTab === tab
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
-          </nav>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Center: tabs */}
+        <nav role="tablist" className="absolute left-1/2 -translate-x-1/2 flex gap-1 rounded-lg bg-muted p-0.5">
+          {(["graph", "migrate", "marketplace"] as const).map((tab) => (
+            <button
+              key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                "rounded-md px-3 py-1 text-sm font-medium transition-colors",
+                activeTab === tab
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+        </nav>
+
+        {/* Right: actions */}
+        <div className="ml-auto flex items-center gap-3">
           {apiStatus !== "connected" && (
             <span className="text-xs text-muted-foreground">
               {apiStatus === "checking" ? "Connecting..." : "API Offline"}
@@ -204,17 +180,9 @@ export function Dashboard() {
       {/* Full-height content */}
       <div className="flex-1 overflow-hidden p-2">
         {activeTab === "graph" && (
-          <>
-            <section className="mb-2 h-[calc(100%-6rem)]">
-              <GraphContainer />
-            </section>
-            <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <StatsCard title="Skills" count={stats.skills.count} status={stats.skills.status} />
-              <StatsCard title="MCPs" count={stats.mcps.count} status={stats.mcps.status} />
-              <StatsCard title="Memory" count={stats.memory.count} status={stats.memory.status} />
-              <StatsCard title="Machines" count={stats.machines.count} status={stats.machines.status} />
-            </section>
-          </>
+          <section className="h-full">
+            <GraphContainer />
+          </section>
         )}
 
         {activeTab === "migrate" && (

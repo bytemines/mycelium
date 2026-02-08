@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": ["@changesets/changelog-github", { "repo": "conradomateunavarro/mycelium" }],
+  "commit": false,
+  "fixed": [],
+  "linked": [["@mycelium/core", "@mycelium/cli"]],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": ["@mycelium/dashboard"]
+}

@@ -8,7 +8,7 @@ describe("Dashboard", () => {
   it("renders the header with title", async () => {
     const { Dashboard } = await import("./Dashboard");
     render(<Dashboard />);
-    expect(screen.getByText("MYCELIUM")).toBeInTheDocument();
+    expect(screen.getByText("🍄 MYCELIUM")).toBeInTheDocument();
   });
 
   it("renders status indicators", async () => {
@@ -31,12 +31,11 @@ describe("Dashboard", () => {
     expect(screen.getByTestId("graph-container")).toBeInTheDocument();
   });
 
-  it("renders stats cards for skills, mcps, memory, machines", async () => {
+  it("renders navigation tabs", async () => {
     const { Dashboard } = await import("./Dashboard");
     render(<Dashboard />);
-    expect(screen.getByText("Skills")).toBeInTheDocument();
-    expect(screen.getByText("MCPs")).toBeInTheDocument();
-    expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.getByText("Machines")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /graph/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /migrate/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /marketplace/i })).toBeInTheDocument();
   });
 });
