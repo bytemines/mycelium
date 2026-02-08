@@ -20,7 +20,12 @@ import {
   SUPPORTED_TOOLS,
   expandPath,
 } from "@mycelium/core";
-import { loadAndMergeAllConfigs } from "../core/config-merger.js";
+import {
+  loadAndMergeAllConfigs,
+  loadGlobalConfig,
+  loadProjectConfig,
+} from "../core/config-merger.js";
+import { detectConflicts, type PartialConfig } from "../core/conflict-detector.js";
 import { syncSkillsToTool } from "../core/symlink-manager.js";
 import {
   injectMcpsToTool,
@@ -28,6 +33,7 @@ import {
   resolveEnvVarsInMcps,
 } from "../core/mcp-injector.js";
 import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
+import { startWatcher } from "../core/watcher.js";
 
 // ============================================================================
 // Types
@@ -36,6 +42,7 @@ import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.j
 export interface SyncOptions {
   verbose?: boolean;
   tool?: ToolId;
+  watch?: boolean;
 }
 
 // ============================================================================
@@ -176,6 +183,17 @@ export async function syncAll(
   // Load and merge all configs
   const mergedConfig = await loadAndMergeAllConfigs(projectRoot);
 
+  // Detect conflicts between config levels
+  const globalConfig = await loadGlobalConfig();
+  const projectConfig = await loadProjectConfig(projectRoot);
+  const conflicts = detectConflicts(
+    globalConfig as PartialConfig,
+    projectConfig as PartialConfig
+  );
+  for (const conflict of conflicts) {
+    result.warnings.push(conflict.message);
+  }
+
   // Sync each enabled tool
   for (const [toolId, config] of Object.entries(enabledTools)) {
     if (!config.enabled) {
@@ -202,6 +220,7 @@ export const syncCommand = new Command("sync")
   .description("Sync configurations to all tools")
   .option("-t, --tool <tool>", "Sync to specific tool only")
   .option("-v, --verbose", "Show detailed output")
+  .option("-w, --watch", "Watch for config changes and auto-sync")
   .action(async (options: SyncOptions) => {
     const projectRoot = process.cwd();
 
@@ -250,11 +269,42 @@ export const syncCommand = new Command("sync")
       }
     }
 
+    if (result.warnings.length > 0) {
+      console.warn("\nWarnings:");
+      for (const warning of result.warnings) {
+        console.warn(`  - ${warning}`);
+      }
+    }
+
     if (!result.success) {
       console.error("\nErrors:");
       for (const error of result.errors) {
         console.error(`  - ${error}`);
       }
-      process.exit(1);
+      if (!options.watch) {
+        process.exit(1);
+      }
+    }
+
+    if (options.watch) {
+      console.log("\nWatching for config changes... (Ctrl+C to stop)");
+      const stop = startWatcher(projectRoot, async () => {
+        console.log("\nConfig change detected, re-syncing...");
+        const watchResult = await syncAll(projectRoot, enabledTools, envVars);
+        for (const toolStatus of watchResult.tools) {
+          const statusIcon = toolStatus.status === "synced" ? "\u2713" : "\u2717";
+          console.log(
+            `${statusIcon} ${toolStatus.tool}: ${toolStatus.skillsCount} skills, ${toolStatus.mcpsCount} MCPs`
+          );
+        }
+      });
+
+      process.on("SIGINT", () => {
+        stop();
+        process.exit(0);
+      });
+
+      // Keep process alive
+      await new Promise(() => {});
     }
   });

@@ -14,6 +14,8 @@ import { doctorCommand } from "./commands/doctor.js";
 import { addCommand } from "./commands/add.js";
 import { enableCommand } from "./commands/enable.js";
 import { disableCommand } from "./commands/disable.js";
+import { teamsCommand } from "./commands/teams.js";
+import { presetCommand } from "./commands/preset.js";
 
 const program = new Command();
 
@@ -33,5 +35,7 @@ program.addCommand(doctorCommand);
 program.addCommand(addCommand);
 program.addCommand(enableCommand);
 program.addCommand(disableCommand);
+program.addCommand(teamsCommand);
+program.addCommand(presetCommand);
 
 program.parse();

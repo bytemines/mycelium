@@ -18,6 +18,12 @@ import type {
 // Mock the dependencies
 vi.mock("../core/config-merger.js", () => ({
   loadAndMergeAllConfigs: vi.fn(),
+  loadGlobalConfig: vi.fn().mockResolvedValue({}),
+  loadProjectConfig: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("../core/conflict-detector.js", () => ({
+  detectConflicts: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../core/symlink-manager.js", () => ({
