@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { fetchMarketplaceRegistry, addMarketplaceToRegistry, searchMarketplace as apiSearch, installMarketplaceEntry } from "@/lib/api";
+import { fetchMarketplaceRegistry, addMarketplaceToRegistry, removeMarketplaceFromRegistry, searchMarketplace as apiSearch, installMarketplaceEntry } from "@/lib/api";
 import type { MarketplaceConfig } from "@mycelium/core";
 
 interface MarketplaceItem {
@@ -30,6 +30,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newMpName, setNewMpName] = useState("");
   const [newMpUrl, setNewMpUrl] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [registry, setRegistry] = useState<Record<string, MarketplaceConfig>>({});
 
   useEffect(() => {
@@ -66,6 +67,17 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     } finally {
       setInstalling(null);
     }
+  }
+
+  async function handleRemoveMarketplace(name: string) {
+    await removeMarketplaceFromRegistry(name);
+    setRegistry(prev => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+    setMarketplaces(prev => prev.filter(m => m.value !== name));
+    if (source === name) setSource("all");
   }
 
   async function handleAddMarketplace() {
@@ -119,10 +131,58 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
                 <span className="font-medium">{name}</span>
                 <span className="text-xs text-muted-foreground">{config.type}</span>
                 {config.discovered && <span className="text-[10px] text-muted-foreground">(auto)</span>}
+                {config.url && (
+                  <a
+                    href={config.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="ml-1 text-xs text-muted-foreground hover:text-primary"
+                    title={config.url}
+                  >
+                    &#8599;
+                  </a>
+                )}
+                {!config.default && config.type === "remote" && !config.discovered && (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setConfirmRemove(name); }}
+                    className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-xs text-muted-foreground hover:bg-destructive/20 hover:text-destructive cursor-pointer"
+                    title="Remove marketplace"
+                  >
+                    x
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
+      )}
+
+      {/* Remove Confirmation Dialog */}
+      {confirmRemove && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setConfirmRemove(null)} />
+          <div className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-medium">Remove Marketplace</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Are you sure you want to remove <strong>{confirmRemove}</strong>? This will remove it from your configured sources.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmRemove(null)}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { handleRemoveMarketplace(confirmRemove); setConfirmRemove(null); }}
+                className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Search bar */}
