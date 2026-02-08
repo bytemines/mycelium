@@ -1,23 +1,115 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { ReactFlowProvider } from "@xyflow/react";
+import { Graph } from "./Graph";
+import { PluginDetailPanel } from "./PluginDetailPanel";
+import { scanTools, applyMigration } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 type WizardStep = "scan" | "review" | "apply" | "done";
+type Status = "synced" | "pending" | "error" | "disabled";
 
-interface ToolScanDisplay {
+interface ScanData {
   toolId: string;
   toolName: string;
   installed: boolean;
-  skillsCount: number;
-  mcpsCount: number;
-  memoryCount: number;
+  skills: Array<{ name: string; source: string; marketplace?: string; pluginName?: string }>;
+  mcps: Array<{ name: string; source: string; config: { command: string } }>;
+  memory: Array<{ name: string; source: string }>;
 }
 
-interface ScanItem {
-  id: string;
-  name: string;
-  type: "skill" | "mcp" | "memory";
-  source: string;
-  conflict?: string;
-  checked: boolean;
+interface ToggleState {
+  skills: Record<string, boolean>;
+  mcps: Record<string, boolean>;
+  memory: Record<string, boolean>;
+  tools: Record<string, boolean>; // destination tools
+}
+
+function buildGraphData(scans: ScanData[], toggleState: ToggleState) {
+  // Tools as destinations — installed ones are pre-selected
+  const toolSet = new Map<string, { id: string; name: string; installed: boolean }>();
+  for (const scan of scans) {
+    if (scan.installed) {
+      toolSet.set(scan.toolId, { id: scan.toolId, name: scan.toolName, installed: true });
+    }
+  }
+
+  const tools = Array.from(toolSet.values()).map(t => ({
+    id: t.id,
+    name: t.name,
+    status: (toggleState.tools[t.id] !== false ? "synced" : "disabled") as Status,
+    installed: true,
+  }));
+
+  // Group skills by plugin
+  const pluginMap = new Map<string, { marketplace: string; skills: string[]; enabled: boolean }>();
+  const standaloneSkills: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }> = [];
+
+  for (const scan of scans) {
+    for (const skill of scan.skills) {
+      if (skill.marketplace && skill.pluginName) {
+        const key = `${skill.marketplace}/${skill.pluginName}`;
+        const existing = pluginMap.get(key);
+        if (existing) {
+          if (!existing.skills.includes(skill.name)) existing.skills.push(skill.name);
+        } else {
+          pluginMap.set(key, {
+            marketplace: skill.marketplace,
+            skills: [skill.name],
+            enabled: toggleState.skills[skill.name] !== false,
+          });
+        }
+      } else {
+        standaloneSkills.push({
+          name: skill.name,
+          status: "pending",
+          enabled: toggleState.skills[skill.name] !== false,
+          connectedTools: [scan.toolId],
+        });
+      }
+    }
+  }
+
+  const plugins = Array.from(pluginMap.entries()).map(([key, val]) => {
+    const pluginName = key.split("/")[1] || key;
+    return {
+      name: pluginName,
+      marketplace: val.marketplace,
+      skillCount: val.skills.length,
+      enabled: val.skills.some(s => toggleState.skills[s] !== false),
+      skills: val.skills,
+    };
+  });
+
+  // MCPs — deduplicated by name
+  const mcpSeen = new Set<string>();
+  const mcps: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }> = [];
+  for (const scan of scans) {
+    for (const mcp of scan.mcps) {
+      if (!mcpSeen.has(mcp.name)) {
+        mcpSeen.add(mcp.name);
+        mcps.push({
+          name: mcp.name,
+          status: "pending",
+          enabled: toggleState.mcps[mcp.name] !== false,
+          connectedTools: [scan.toolId],
+        });
+      }
+    }
+  }
+
+  // Memory
+  const memSeen = new Set<string>();
+  const memory: Array<{ name: string; scope: "shared"; status: Status }> = [];
+  for (const scan of scans) {
+    for (const mem of scan.memory) {
+      if (!memSeen.has(mem.name)) {
+        memSeen.add(mem.name);
+        memory.push({ name: mem.name, scope: "shared", status: "pending" });
+      }
+    }
+  }
+
+  return { tools, skills: standaloneSkills, mcps, memory, plugins };
 }
 
 interface MigrateWizardProps {
@@ -27,42 +119,36 @@ interface MigrateWizardProps {
 export function MigrateWizard({ onClose }: MigrateWizardProps) {
   const [step, setStep] = useState<WizardStep>("scan");
   const [scanning, setScanning] = useState(false);
-  const [, setApplying] = useState(false);
-  const [tools, setTools] = useState<ToolScanDisplay[]>([]);
-  const [items, setItems] = useState<ScanItem[]>([]);
+  const [scans, setScans] = useState<ScanData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [appliedCount, setAppliedCount] = useState(0);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [toggleState, setToggleState] = useState<ToggleState>({ skills: {}, mcps: {}, memory: {}, tools: {} });
+
+  // Sidebar state
+  const [selectedPlugin, setSelectedPlugin] = useState<{
+    name: string; marketplace: string; version: string; description: string;
+    enabled: boolean; skills: string[]; agents: string[]; commands: string[];
+  } | null>(null);
 
   async function handleScan() {
     setScanning(true);
     setError(null);
     try {
-      const res = await fetch("http://localhost:3378/api/migrate/scan");
-      const data = await res.json();
-      setTools(
-        data.map((t: any) => ({
-          toolId: t.toolId,
-          toolName: t.toolName,
-          installed: t.installed,
-          skillsCount: t.skills?.length ?? 0,
-          mcpsCount: t.mcps?.length ?? 0,
-          memoryCount: t.memory?.length ?? 0,
-        }))
-      );
-      const allItems: ScanItem[] = [];
-      for (const t of data) {
-        for (const s of t.skills ?? []) {
-          allItems.push({ id: `${t.toolId}-skill-${s.name}`, name: s.name, type: "skill", source: t.toolName, conflict: s.conflict, checked: true });
-        }
-        for (const m of t.mcps ?? []) {
-          allItems.push({ id: `${t.toolId}-mcp-${m.name}`, name: m.name, type: "mcp", source: t.toolName, conflict: m.conflict, checked: true });
-        }
-        for (const mem of t.memory ?? []) {
-          allItems.push({ id: `${t.toolId}-memory-${mem.name}`, name: mem.name, type: "memory", source: t.toolName, conflict: mem.conflict, checked: true });
-        }
+      const data = await scanTools();
+      setScans(data as unknown as ScanData[]);
+
+      // Initialize all toggles to true
+      const skills: Record<string, boolean> = {};
+      const mcps: Record<string, boolean> = {};
+      const memory: Record<string, boolean> = {};
+      const tools: Record<string, boolean> = {};
+      for (const scan of data as unknown as ScanData[]) {
+        if (scan.installed) tools[scan.toolId] = true;
+        for (const s of scan.skills) skills[s.name] = true;
+        for (const m of scan.mcps) mcps[m.name] = true;
+        for (const mem of scan.memory) memory[mem.name] = true;
       }
-      setItems(allItems);
+      setToggleState({ skills, mcps, memory, tools });
       setStep("review");
     } catch (e: any) {
       setError(e.message ?? "Scan failed");
@@ -72,49 +158,102 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
   }
 
   async function handleApply() {
-    setApplying(true);
     setError(null);
     setStep("apply");
     try {
-      const selected = items.filter((i) => i.checked);
-      const res = await fetch("http://localhost:3378/api/migrate/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: selected.map((i) => ({ name: i.name, type: i.type, source: i.source })) }),
-      });
-      const result = await res.json();
-      setAppliedCount(result.applied ?? selected.length);
+      const graphData = buildGraphData(scans, toggleState);
+      // Build migration plan from enabled items
+      const enabledSkills = Object.entries(toggleState.skills).filter(([, v]) => v).map(([name]) => name);
+      const enabledMcps = Object.entries(toggleState.mcps).filter(([, v]) => v).map(([name]) => name);
+      const enabledMemory = Object.entries(toggleState.memory).filter(([, v]) => v).map(([name]) => name);
+
+      const plan = {
+        skills: graphData.plugins.flatMap(p => p.skills.filter(s => enabledSkills.includes(s)).map(s => ({ name: s, source: "scan" }))),
+        mcps: graphData.mcps.filter(m => enabledMcps.includes(m.name)).map(m => ({ name: m.name, source: "scan", config: { command: "", args: [] } })),
+        memory: graphData.memory.filter(m => enabledMemory.includes(m.name)).map(m => ({ name: m.name, source: "scan", content: "" })),
+        conflicts: [],
+      };
+
+      const result = await applyMigration(plan as any);
+      setAppliedCount((result as any).skillsImported + (result as any).mcpsImported + (result as any).memoryImported);
       setStep("done");
     } catch (e: any) {
       setError(e.message ?? "Migration failed");
       setStep("review");
-    } finally {
-      setApplying(false);
     }
   }
 
-  function toggleItem(id: string) {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, checked: !i.checked } : i)));
-  }
+  const handleToggle = useCallback((toggle: { type: string; name: string; enabled: boolean }) => {
+    setToggleState(prev => {
+      const key = toggle.type === "skill" ? "skills" : toggle.type === "mcp" ? "mcps" : toggle.type === "memory" ? "memory" : null;
+      if (!key) return prev;
+      return { ...prev, [key]: { ...prev[key], [toggle.name]: toggle.enabled } };
+    });
+  }, []);
 
-  function clearAll() {
-    setItems((prev) => prev.map((i) => ({ ...i, checked: false })));
-    setShowClearConfirm(false);
-  }
+  const handlePluginClick = useCallback((pluginName: string) => {
+    const graphData = buildGraphData(scans, toggleState);
+    const plugin = graphData.plugins.find(p => p.name === pluginName);
+    if (plugin) {
+      setSelectedPlugin({
+        name: plugin.name,
+        marketplace: plugin.marketplace,
+        version: "scanned",
+        description: `${plugin.skillCount} skills from ${plugin.marketplace}`,
+        enabled: plugin.enabled,
+        skills: plugin.skills,
+        agents: [],
+        commands: [],
+      });
+    }
+  }, [scans, toggleState]);
+
+  const handleTogglePlugin = useCallback((name: string, enabled: boolean) => {
+    // Toggle all skills in this plugin
+    const graphData = buildGraphData(scans, toggleState);
+    const plugin = graphData.plugins.find(p => p.name === name);
+    if (plugin) {
+      setToggleState(prev => {
+        const skills = { ...prev.skills };
+        for (const s of plugin.skills) skills[s] = enabled;
+        return { ...prev, skills };
+      });
+    }
+    setSelectedPlugin(prev => prev ? { ...prev, enabled } : null);
+  }, [scans, toggleState]);
+
+  const handleToggleSkill = useCallback((_pluginName: string, skillName: string, enabled: boolean) => {
+    setToggleState(prev => ({
+      ...prev,
+      skills: { ...prev.skills, [skillName]: enabled },
+    }));
+  }, []);
+
+  const handleAddTool = useCallback(() => {
+    // TODO: Show tool picker dialog
+    console.log("Add tool destination");
+  }, []);
+
+  const graphData = scans.length > 0 ? buildGraphData(scans, toggleState) : undefined;
+
+  const selectedCount = Object.values(toggleState.skills).filter(Boolean).length
+    + Object.values(toggleState.mcps).filter(Boolean).length
+    + Object.values(toggleState.memory).filter(Boolean).length;
 
   const stepLabels: Record<WizardStep, string> = { scan: "Scan", review: "Review", apply: "Apply", done: "Done" };
   const steps: WizardStep[] = ["scan", "review", "apply", "done"];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       {/* Step indicator */}
       <div className="flex items-center justify-center gap-2">
         {steps.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium",
                 s === step ? "bg-primary text-primary-foreground" : steps.indexOf(step) > i ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-              }`}
+              )}
             >
               {i + 1}
             </div>
@@ -145,70 +284,49 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
         </div>
       )}
 
-      {/* Step 2: Review */}
-      {step === "review" && (
-        <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Review Detected Items</h2>
+      {/* Step 2: Review — Visual Graph */}
+      {step === "review" && graphData && (
+        <div className="space-y-4">
+          {/* Summary bar */}
+          <div className="flex items-center justify-between rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
+            <div className="flex gap-6 text-sm">
+              <span><strong>{graphData.plugins.length}</strong> plugins</span>
+              <span><strong>{Object.values(toggleState.skills).filter(Boolean).length}</strong> skills</span>
+              <span><strong>{Object.values(toggleState.mcps).filter(Boolean).length}</strong> MCPs</span>
+              <span><strong>{Object.values(toggleState.memory).filter(Boolean).length}</strong> memory</span>
+              <span className="text-muted-foreground">→ <strong>{graphData.tools.length}</strong> destinations</span>
+            </div>
             <div className="flex gap-2">
-              {showClearConfirm ? (
-                <>
-                  <span className="text-sm text-muted-foreground">Clear all selections?</span>
-                  <button onClick={clearAll} className="rounded-md bg-red-500 px-3 py-1 text-sm text-white hover:bg-red-600">
-                    Confirm
-                  </button>
-                  <button onClick={() => setShowClearConfirm(false)} className="rounded-md border px-3 py-1 text-sm hover:bg-muted">
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button onClick={() => setShowClearConfirm(true)} className="rounded-md border px-3 py-1 text-sm hover:bg-muted">
-                  Clear All
-                </button>
-              )}
+              <button onClick={() => setStep("scan")} className="rounded-md border px-4 py-2 text-sm hover:bg-muted">
+                Rescan
+              </button>
+              <button
+                onClick={handleApply}
+                disabled={selectedCount === 0}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                Apply ({selectedCount} items)
+              </button>
             </div>
           </div>
 
-          {/* Tool summary */}
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            {tools.map((t) => (
-              <div key={t.toolId} className="rounded-md border p-3 text-sm">
-                <div className="font-medium">{t.toolName}</div>
-                <div className="text-muted-foreground">
-                  {t.skillsCount} skills, {t.mcpsCount} MCPs, {t.memoryCount} memory
-                </div>
-              </div>
-            ))}
+          {/* Graph */}
+          <div className="h-[500px] rounded-lg border bg-card/50">
+            <ReactFlowProvider>
+              <Graph
+                mode="migrate"
+                data={graphData}
+                showUninstalledTools={false}
+                onToggle={handleToggle}
+                onPluginClick={handlePluginClick}
+                onAddTool={handleAddTool}
+              />
+            </ReactFlowProvider>
           </div>
 
-          {/* Items list */}
-          <div className="mt-4 max-h-64 space-y-1 overflow-y-auto">
-            {items.map((item) => (
-              <label key={item.id} className="flex items-center gap-3 rounded-md p-2 hover:bg-muted/50">
-                <input type="checkbox" checked={item.checked} onChange={() => toggleItem(item.id)} className="rounded" />
-                <span className="text-sm font-medium">{item.name}</span>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{item.type}</span>
-                <span className="text-xs text-muted-foreground">from {item.source}</span>
-                {item.conflict && (
-                  <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs text-yellow-600">conflict: {item.conflict}</span>
-                )}
-              </label>
-            ))}
-            {items.length === 0 && <p className="text-sm text-muted-foreground">No items found.</p>}
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            <button onClick={() => setStep("scan")} className="rounded-md border px-4 py-2 text-sm hover:bg-muted">
-              Back
-            </button>
-            <button
-              onClick={handleApply}
-              disabled={items.filter((i) => i.checked).length === 0}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              Apply ({items.filter((i) => i.checked).length} items)
-            </button>
-          </div>
+          <p className="text-center text-sm text-muted-foreground">
+            Click plugin nodes to select individual skills. Toggle nodes to include/exclude from migration.
+          </p>
         </div>
       )}
 
@@ -232,10 +350,10 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
           </p>
           <div className="mt-4 flex gap-2">
             <button
-              onClick={() => { setStep("scan"); setTools([]); setItems([]); }}
+              onClick={() => { setStep("scan"); setScans([]); }}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Sync Now
+              Scan Again
             </button>
             {onClose && (
               <button onClick={onClose} className="rounded-md border px-4 py-2 text-sm hover:bg-muted">
@@ -245,6 +363,14 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
           </div>
         </div>
       )}
+
+      {/* Plugin Detail Sidebar */}
+      <PluginDetailPanel
+        plugin={selectedPlugin}
+        onClose={() => setSelectedPlugin(null)}
+        onTogglePlugin={handleTogglePlugin}
+        onToggleSkill={handleToggleSkill}
+      />
     </div>
   );
 }

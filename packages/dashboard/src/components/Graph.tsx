@@ -119,8 +119,8 @@ async function getLayoutedElements(
     },
     children: nodes.map((node) => ({
       ...node,
-      width: node.type === "tool" ? 140 : 120,
-      height: node.type === "tool" ? 60 : 50,
+      width: node.type === "tool" || node.type === "addTool" ? 140 : 120,
+      height: node.type === "tool" || node.type === "addTool" ? 60 : 50,
     })),
     edges: edges.map((edge) => ({
       id: edge.id,
@@ -297,11 +297,29 @@ export function PluginNode({ data }: { data: PluginNodeData }) {
   );
 }
 
+// Add Tool Node - for adding new destination tools in migrate mode
+export function AddToolNode({ data }: { data: { onClick?: () => void } }) {
+  return (
+    <div
+      className="px-4 py-3 rounded-lg border-2 border-dashed border-muted-foreground/40 bg-card/50 shadow-md min-w-[130px] cursor-pointer hover:border-primary/60 hover:bg-card transition-all"
+      onClick={() => data.onClick?.()}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-muted !w-3 !h-3" />
+      <div className="flex items-center gap-2 justify-center">
+        <span className="text-lg text-muted-foreground">+</span>
+        <span className="font-medium text-sm text-muted-foreground">Add Tool</span>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-muted !w-3 !h-3" />
+    </div>
+  );
+}
+
 // Node types registry
 const nodeTypes = {
   tool: ToolNode,
   resource: ResourceNode,
   plugin: PluginNode,
+  addTool: AddToolNode,
 };
 
 // Default tools - will be filtered based on what's installed
@@ -322,13 +340,17 @@ interface ToggleInfo {
 
 interface GraphProps {
   data?: GraphData;
+  mode?: "dashboard" | "migrate";
   onNodeClick?: (node: Node) => void;
   onToggle?: (toggle: ToggleInfo) => void;
   onPluginClick?: (pluginName: string) => void;
+  onMcpClick?: (mcpName: string) => void;
+  onSkillClick?: (skillName: string) => void;
+  onAddTool?: () => void;
   showUninstalledTools?: boolean;
 }
 
-export function Graph({ data, onNodeClick, onToggle, onPluginClick, showUninstalledTools = false }: GraphProps) {
+export function Graph({ data, mode = "dashboard", onNodeClick, onToggle, onPluginClick, onMcpClick, onSkillClick, onAddTool, showUninstalledTools = false }: GraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [layoutDirection, setLayoutDirection] = useState<"DOWN" | "RIGHT">("DOWN");
@@ -400,8 +422,10 @@ export function Graph({ data, onNodeClick, onToggle, onPluginClick, showUninstal
       });
     });
 
-    // Skill nodes
+    // Skill nodes — skip skills that belong to a plugin (they're collapsed into the plugin node)
     data?.skills.forEach((skill, index) => {
+      if (pluginSkillSet.has(skill.name)) return; // collapsed into plugin node
+
       const nodeId = `skill-${skill.name}`;
       nodes.push({
         id: nodeId,
@@ -411,21 +435,6 @@ export function Graph({ data, onNodeClick, onToggle, onPluginClick, showUninstal
       });
 
       const isEnabled = skill.enabled !== false;
-
-      // If this skill belongs to a plugin, connect to plugin instead of tools
-      if (pluginSkillSet.has(skill.name)) {
-        const parentPlugin = data?.plugins?.find((p) => p.skills.includes(skill.name));
-        if (parentPlugin) {
-          edges.push({
-            id: `${nodeId}-to-plugin-${parentPlugin.name}`,
-            source: nodeId,
-            target: `plugin-${parentPlugin.name}`,
-            animated: isEnabled && skill.status === "synced",
-            style: { stroke: "#3b82f6", strokeWidth: 2, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
-          });
-          return;
-        }
-      }
 
       // Connect to specified tools or all installed tools
       const targetTools = skill.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
@@ -501,8 +510,18 @@ export function Graph({ data, onNodeClick, onToggle, onPluginClick, showUninstal
       });
     });
 
+    // "+ Add Tool" node in migrate mode
+    if (mode === "migrate") {
+      nodes.push({
+        id: "add-tool",
+        type: "addTool",
+        position: { x: visibleTools.length * 160, y: 0 },
+        data: { onClick: onAddTool },
+      });
+    }
+
     return { initialNodes: nodes, initialEdges: edges };
-  }, [data, showUninstalledTools, handleToggle, onToggle, onPluginClick]);
+  }, [data, mode, showUninstalledTools, handleToggle, onToggle, onPluginClick, onAddTool]);
 
   // Apply ELK layout when data changes
   useEffect(() => {
@@ -533,8 +552,16 @@ export function Graph({ data, onNodeClick, onToggle, onPluginClick, showUninstal
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       onNodeClick?.(node);
+      // Dispatch to specific click handlers based on node type
+      if (node.type === "plugin") {
+        onPluginClick?.((node.data as unknown as PluginNodeData).name);
+      } else if (node.type === "resource") {
+        const rd = node.data as unknown as ResourceNodeData;
+        if (rd.type === "mcp") onMcpClick?.(rd.name);
+        else if (rd.type === "skill") onSkillClick?.(rd.name);
+      }
     },
-    [onNodeClick]
+    [onNodeClick, onPluginClick, onMcpClick, onSkillClick]
   );
 
   return (

@@ -55,7 +55,7 @@ interface ToggleState {
   mcps: Record<string, boolean>;
 }
 
-function GraphContainer({ onPluginClick }: { onPluginClick?: (name: string) => void }) {
+function GraphContainer({ onPluginClick, onMcpClick, onSkillClick }: { onPluginClick?: (name: string) => void; onMcpClick?: (name: string) => void; onSkillClick?: (name: string) => void }) {
   const [toggleState, setToggleState] = useState<ToggleState>({
     skills: { tdd: true, debugging: true, "git-workflow": true },
     mcps: { "git-mcp": true, "filesystem-mcp": true, context7: true },
@@ -111,9 +111,10 @@ function GraphContainer({ onPluginClick }: { onPluginClick?: (name: string) => v
         <Graph
           data={mockData}
           showUninstalledTools={false}
-          onNodeClick={(node) => console.log("Clicked:", node)}
           onToggle={handleToggle}
           onPluginClick={onPluginClick}
+          onMcpClick={onMcpClick}
+          onSkillClick={onSkillClick}
         />
       </ReactFlowProvider>
     </div>
@@ -154,6 +155,36 @@ export function Dashboard() {
 
   const handleTogglePluginSkill = useCallback(async (pluginName: string, skillName: string, enabled: boolean) => {
     await togglePluginSkill(pluginName, skillName, enabled).catch(() => {});
+  }, []);
+
+  const handleMcpClick = useCallback((mcpName: string) => {
+    setSelectedPlugin({
+      name: mcpName,
+      marketplace: "system",
+      version: "",
+      description: `MCP server: ${mcpName}`,
+      author: undefined,
+      enabled: true,
+      skills: [],
+      agents: [],
+      commands: [],
+      installPath: "",
+    });
+  }, []);
+
+  const handleSkillClick = useCallback((skillName: string) => {
+    setSelectedPlugin({
+      name: skillName,
+      marketplace: "standalone",
+      version: "",
+      description: `Standalone skill: ${skillName}`,
+      author: undefined,
+      enabled: true,
+      skills: [skillName],
+      agents: [],
+      commands: [],
+      installPath: "",
+    });
   }, []);
 
   const [stats, setStats] = useState({
@@ -222,7 +253,7 @@ export function Dashboard() {
       {activeTab === "graph" && (
         <>
           <section className="mb-8">
-            <GraphContainer onPluginClick={handlePluginClick} />
+            <GraphContainer onPluginClick={handlePluginClick} onMcpClick={handleMcpClick} onSkillClick={handleSkillClick} />
           </section>
           <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatsCard title="Skills" count={stats.skills.count} status={stats.skills.status} />
@@ -246,7 +277,7 @@ export function Dashboard() {
 
       {/* Footer hint */}
       <footer className="mt-8 text-center text-sm text-muted-foreground">
-        {activeTab === "graph" && "Click plugin nodes to manage skills"}
+        {activeTab === "graph" && "Click any node to view details and manage toggles"}
         {activeTab === "migrate" && "Scan tools to discover skills, MCPs, and memory"}
         {activeTab === "marketplace" && "Search and install skills from marketplace registries"}
       </footer>
