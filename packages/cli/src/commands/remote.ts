@@ -3,7 +3,7 @@
  */
 import * as path from "node:path";
 import { Command } from "commander";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { expandPath } from "@mycelium/core";
 import { ensureGitignore, generateEnvTemplate, getMissingEnvVars, setupEnvVars } from "../core/env-template.js";
 import { detectMcpOverrides, loadMachineOverrides, saveMachineOverrides, rescanOverrides } from "../core/machine-overrides.js";
@@ -16,8 +16,8 @@ const MYCELIUM_DIR = expandPath("~/.mycelium");
 // Helpers
 // ============================================================================
 
-function git(args: string): string {
-  return execSync(`git -C ${MYCELIUM_DIR} ${args}`, { encoding: "utf-8" }).trim();
+function git(...args: string[]): string {
+  return execFileSync("git", ["-C", MYCELIUM_DIR, ...args], { encoding: "utf-8" }).trim();
 }
 
 // ============================================================================
@@ -35,7 +35,7 @@ export const pushCommand = new Command("push")
         console.log(`Updated .env.template with ${keys.length} keys`);
       }
 
-      git("add -A");
+      git("add", "-A");
 
       const msg = options.message ?? `mycelium push: ${new Date().toISOString()}`;
       try {

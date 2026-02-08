@@ -1,8 +1,8 @@
+import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { cn } from "@/lib/utils";
+import type { Status } from "@/types";
 import { StatusDot } from "./StatusDot";
-
-type Status = "synced" | "pending" | "error" | "disabled" | "not_installed";
 
 export interface ResourceNodeData {
   name: string;
@@ -12,7 +12,7 @@ export interface ResourceNodeData {
   onToggle?: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
 }
 
-export function ResourceNode({ data }: { data: ResourceNodeData }) {
+function ResourceNodeInner({ data }: { data: ResourceNodeData }) {
   const isEnabled = data.enabled !== false;
   const typeStyles: Record<string, { border: string; bg: string }> = {
     skill: { border: "border-blue-500/60", bg: "bg-blue-500/10" },
@@ -63,3 +63,5 @@ export function ResourceNode({ data }: { data: ResourceNodeData }) {
     </div>
   );
 }
+
+export const ResourceNode = memo(ResourceNodeInner);

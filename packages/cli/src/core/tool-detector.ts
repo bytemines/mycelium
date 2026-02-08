@@ -1,7 +1,7 @@
 /**
  * Tool Detector - Detects which AI coding tools are installed on the system
  */
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as os from "os";
 import * as path from "path";
 
@@ -63,7 +63,7 @@ const SUPPORTED_TOOLS: ToolInfo[] = [
 function commandExists(command: string): boolean {
   try {
     const whichCommand = process.platform === "win32" ? "where" : "which";
-    execSync(`${whichCommand} ${command}`, { stdio: "pipe" });
+    execFileSync(whichCommand, [command], { stdio: "pipe" });
     return true;
   } catch {
     return false;

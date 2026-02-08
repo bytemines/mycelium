@@ -11,11 +11,12 @@
 import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { execSync, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { stringify as yamlStringify } from "yaml";
 import { expandPath, ensureDir, pathExists } from "@mycelium/core";
 import { ensureGitignore, generateEnvTemplate, getMissingEnvVars } from "../core/env-template.js";
 import { detectMcpOverrides, saveMachineOverrides, loadMachineOverrides } from "../core/machine-overrides.js";
+import { DEFAULT_PORT } from "../core/fs-helpers.js";
 
 /** Default repo name — consistent across all machines for frictionless sync */
 export const DEFAULT_REPO_NAME = "mycelium-config";
@@ -218,7 +219,7 @@ export async function initProject(options: InitProjectOptions): Promise<InitResu
 /** Check if gh CLI is available and authenticated */
 export function isGhAvailable(): boolean {
   try {
-    execSync("gh auth status", { stdio: "pipe", encoding: "utf-8" });
+    execFileSync("gh", ["auth", "status"], { stdio: "pipe", encoding: "utf-8" });
     return true;
   } catch {
     return false;
@@ -228,7 +229,7 @@ export function isGhAvailable(): boolean {
 /** Check if a GitHub repo exists */
 export function ghRepoExists(repoName: string): boolean {
   try {
-    execSync(`gh repo view ${repoName} --json name`, { stdio: "pipe", encoding: "utf-8" });
+    execFileSync("gh", ["repo", "view", repoName, "--json", "name"], { stdio: "pipe", encoding: "utf-8" });
     return true;
   } catch {
     return false;
@@ -237,7 +238,7 @@ export function ghRepoExists(repoName: string): boolean {
 
 /** Get the GitHub username */
 export function getGhUsername(): string {
-  return execSync("gh api user --jq .login", { stdio: "pipe", encoding: "utf-8" }).trim();
+  return execFileSync("gh", ["api", "user", "--jq", ".login"], { stdio: "pipe", encoding: "utf-8" }).trim();
 }
 
 /** Create a private GitHub repo and clone to ~/.mycelium */
@@ -249,9 +250,9 @@ export async function createAndCloneRepo(repoName: string): Promise<void> {
 
   // Init locally, add remote, push
   await ensureDir(myceliumDir);
-  execSync(`git -C ${myceliumDir} init`, { stdio: "pipe" });
+  execFileSync("git", ["-C", myceliumDir, "init"], { stdio: "pipe" });
   const url = getCloneUrl(repoName);
-  execSync(`git -C ${myceliumDir} remote add origin ${url}`, { stdio: "pipe" });
+  execFileSync("git", ["-C", myceliumDir, "remote", "add", "origin", url], { stdio: "pipe" });
 }
 
 /** Clone an existing repo to ~/.mycelium, trying SSH first then HTTPS */
@@ -272,7 +273,7 @@ export async function cloneRepo(repoUrl: string): Promise<void> {
 export function getCloneUrl(repoFullName: string): string {
   // Try SSH first (faster, no token needed if keys are set up)
   try {
-    execSync("ssh -T git@github.com 2>&1 || true", { stdio: "pipe", timeout: 5000 });
+    execFileSync("ssh", ["-T", "git@github.com"], { stdio: "pipe", timeout: 5000 });
     // If SSH doesn't throw a connection error, use SSH URL
     return `git@github.com:${repoFullName}.git`;
   } catch {
@@ -285,7 +286,7 @@ export function getCloneUrl(repoFullName: string): string {
 export function hasGitRemote(): boolean {
   const myceliumDir = expandPath("~/.mycelium");
   try {
-    const remote = execSync(`git -C ${myceliumDir} remote get-url origin`, { stdio: "pipe", encoding: "utf-8" }).trim();
+    const remote = execFileSync("git", ["-C", myceliumDir, "remote", "get-url", "origin"], { stdio: "pipe", encoding: "utf-8" }).trim();
     return remote.length > 0;
   } catch {
     return false;
@@ -357,8 +358,8 @@ export async function autoSetup(options: {
       } else {
         // Repo exists but not linked — add remote
         try {
-          execSync(`git -C ${myceliumDir} init`, { stdio: "pipe" });
-          execSync(`git -C ${myceliumDir} remote add origin ${getCloneUrl(repoName)}`, { stdio: "pipe" });
+          execFileSync("git", ["-C", myceliumDir, "init"], { stdio: "pipe" });
+          execFileSync("git", ["-C", myceliumDir, "remote", "add", "origin", getCloneUrl(repoName)], { stdio: "pipe" });
           console.log(`Linked to existing repo: ${repoName}`);
         } catch {
           console.log(`Remote already configured.`);
@@ -378,7 +379,7 @@ export async function autoSetup(options: {
   if (!hasSkills) {
     console.log("\nScanning installed tools for migration...");
     try {
-      const { scanAllTools, executeMigration, generateMigrationPlan } = await import("../core/migrator.js");
+      const { scanAllTools, executeMigration, generateMigrationPlan } = await import("../core/migrator/index.js");
       const scanResults = await scanAllTools();
       const totalItems =
         scanResults.reduce((sum, r) => sum + r.skills.length + r.mcps.length + r.memory.length + (r.hooks?.length ?? 0), 0);
@@ -433,10 +434,14 @@ export async function autoSetup(options: {
   if (hasGitRemote()) {
     try {
       const dir = myceliumDir;
-      execSync(`git -C ${dir} add -A`, { stdio: "pipe" });
+      execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "pipe" });
       try {
         execFileSync("git", ["-C", dir, "commit", "-m", "mycelium init: initial config"], { stdio: "pipe" });
-        execSync(`git -C ${dir} push -u origin main 2>/dev/null || git -C ${dir} push -u origin master`, { stdio: "pipe" });
+        try {
+          execFileSync("git", ["-C", dir, "push", "-u", "origin", "main"], { stdio: "pipe" });
+        } catch {
+          execFileSync("git", ["-C", dir, "push", "-u", "origin", "master"], { stdio: "pipe" });
+        }
         console.log("\nConfig pushed to GitHub.");
       } catch {
         // Nothing to commit or already pushed
@@ -448,7 +453,7 @@ export async function autoSetup(options: {
 
   console.log("\nSetup complete. Next steps:");
   console.log("  mycelium sync          # Push config to all installed tools");
-  console.log("  mycelium serve         # Start dashboard at http://localhost:3378");
+  console.log(`  mycelium serve         # Start dashboard at http://localhost:${DEFAULT_PORT}`);
   if (!hasGitRemote()) {
     console.log("  mycelium push          # Push config to remote (after setting up git)");
   }

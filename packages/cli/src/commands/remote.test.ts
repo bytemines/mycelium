@@ -30,14 +30,13 @@ vi.mock("../core/fs-helpers.js", () => ({
   mkdirp: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { execSync, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import { ensureGitignore, generateEnvTemplate, getMissingEnvVars } from "../core/env-template.js";
 import { detectMcpOverrides, saveMachineOverrides } from "../core/machine-overrides.js";
 import { readFileIfExists } from "../core/fs-helpers.js";
 import { pushCommand, pullCommand, envCommand, _parseMcpsForOverrides } from "./remote.js";
 
-const mockedExecSync = execSync as unknown as ReturnType<typeof vi.fn>;
 const mockedExecFileSync = execFileSync as unknown as ReturnType<typeof vi.fn>;
 const mockedReadFile = readFileIfExists as ReturnType<typeof vi.fn>;
 const mockedWriteFile = fs.writeFile as ReturnType<typeof vi.fn>;
@@ -51,30 +50,25 @@ beforeEach(() => {
 
 describe("pushCommand", () => {
   it("calls ensureGitignore, generateEnvTemplate, and git commands", async () => {
-    mockedExecSync.mockReturnValue("");
     mockedExecFileSync.mockReturnValue("");
 
     await pushCommand.parseAsync([], { from: "user" });
 
     expect(ensureGitignore).toHaveBeenCalled();
     expect(generateEnvTemplate).toHaveBeenCalled();
-    const gitCalls = mockedExecSync.mock.calls.map((c: string[]) => c[0]);
-    expect(gitCalls.some((c: string) => c.includes("add -A"))).toBe(true);
-    expect(gitCalls.some((c: string) => c.includes("push"))).toBe(true);
-    // commit uses execFileSync for injection safety
-    expect(mockedExecFileSync).toHaveBeenCalledWith(
-      "git", expect.arrayContaining(["commit", "-m"]), expect.anything(),
-    );
+    const gitCalls = mockedExecFileSync.mock.calls.map((c: any[]) => c[1] as string[]);
+    expect(gitCalls.some((args: string[]) => args.includes("add"))).toBe(true);
+    expect(gitCalls.some((args: string[]) => args.includes("push"))).toBe(true);
+    expect(gitCalls.some((args: string[]) => args.includes("commit"))).toBe(true);
   });
 
   it("uses custom commit message when provided", async () => {
-    mockedExecSync.mockReturnValue("");
     mockedExecFileSync.mockReturnValue("");
 
     await pushCommand.parseAsync(["-m", "my custom msg"], { from: "user" });
 
     const commitCall = mockedExecFileSync.mock.calls.find(
-      (c: unknown[][]) => (c[1] as string[]).includes("commit"),
+      (c: any[]) => (c[1] as string[]).includes("commit"),
     );
     expect(commitCall).toBeDefined();
     expect((commitCall![1] as string[]).includes("my custom msg")).toBe(true);
@@ -83,17 +77,17 @@ describe("pushCommand", () => {
 
 describe("pullCommand", () => {
   it("calls git pull and checks missing vars", async () => {
-    mockedExecSync.mockReturnValue("Already up to date.");
+    mockedExecFileSync.mockReturnValue("Already up to date.");
     mockedReadFile.mockResolvedValue(null);
 
     await pullCommand.parseAsync(["--no-sync"], { from: "user" });
 
-    const calls = mockedExecSync.mock.calls.map((c: string[]) => c[0]);
-    expect(calls.some((c: string) => c.includes("pull"))).toBe(true);
+    const calls = mockedExecFileSync.mock.calls.map((c: any[]) => c[1] as string[]);
+    expect(calls.some((args: string[]) => args.includes("pull"))).toBe(true);
   });
 
   it("warns about missing env vars", async () => {
-    mockedExecSync.mockReturnValue("Already up to date.");
+    mockedExecFileSync.mockReturnValue("Already up to date.");
     mockedReadFile.mockResolvedValue(null);
     mockedGetMissing.mockResolvedValue(["API_KEY", "SECRET"]);
 
@@ -105,7 +99,7 @@ describe("pullCommand", () => {
   });
 
   it("detects machine overrides when mcps.yaml exists", async () => {
-    mockedExecSync.mockReturnValue("Updated.");
+    mockedExecFileSync.mockReturnValue("Updated.");
     mockedReadFile.mockResolvedValue("server:\n  command: /usr/bin/node\n");
     mockedDetect.mockReturnValue([{ name: "server", oldCommand: "/usr/bin/node", newCommand: "/opt/bin/node" }]);
 

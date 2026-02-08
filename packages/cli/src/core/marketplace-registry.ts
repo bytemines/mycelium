@@ -6,78 +6,28 @@ import { MARKETPLACE_SOURCES as MS } from "@mycelium/core";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+import { MYCELIUM_HOME } from "./fs-helpers.js";
 
-const MYCELIUM_DIR = path.join(os.homedir(), ".mycelium");
+const MYCELIUM_DIR = MYCELIUM_HOME;
 const REGISTRY_PATH = path.join(MYCELIUM_DIR, "marketplaces.yaml");
 const CLAUDE_PLUGINS_DIR = path.join(os.homedir(), ".claude", "plugins");
 
 // ============================================================================
-// Simple YAML parser/serializer (no library needed)
+// YAML helpers (using `yaml` package)
 // ============================================================================
 
-function parseSimpleYaml(
+function parseRegistryYaml(
   text: string
 ): Record<string, Record<string, string | boolean>> {
-  const result: Record<string, Record<string, string | boolean>> = {};
-  let currentSection: string | null = null;
-  let currentKey: string | null = null;
-
-  for (const line of text.split("\n")) {
-    const trimmed = line.trimEnd();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const indent = line.length - line.trimStart().length;
-
-    if (indent === 0 && trimmed.endsWith(":")) {
-      // Top-level section like "marketplaces:"
-      currentSection = trimmed.slice(0, -1).trim();
-      continue;
-    }
-
-    if (indent === 2 && trimmed.endsWith(":")) {
-      // Marketplace name like "  claude-plugins:"
-      currentKey = trimmed.slice(0, -1).trim();
-      if (currentSection) {
-        result[currentKey] = {};
-      }
-      continue;
-    }
-
-    if (indent === 4 && currentKey && trimmed.includes(":")) {
-      // Property like "    type: local"
-      const colonIdx = trimmed.indexOf(":");
-      const key = trimmed.slice(0, colonIdx).trim();
-      let value: string | boolean = trimmed.slice(colonIdx + 1).trim();
-      // Remove quotes
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      if (value === "true") value = true;
-      if (value === "false") value = false;
-      result[currentKey][key] = value;
-    }
-  }
-
-  return result;
+  const doc = yamlParse(text) as { marketplaces?: Record<string, Record<string, string | boolean>> } | null;
+  return doc?.marketplaces ?? {};
 }
 
-function serializeSimpleYaml(
+function serializeRegistryYaml(
   registry: Record<string, MarketplaceConfig>
 ): string {
-  const lines: string[] = ["marketplaces:"];
-  for (const [name, config] of Object.entries(registry)) {
-    lines.push(`  ${name}:`);
-    lines.push(`    type: ${config.type}`);
-    lines.push(`    enabled: ${config.enabled}`);
-    if (config.default !== undefined) lines.push(`    default: ${config.default}`);
-    if (config.url) lines.push(`    url: "${config.url}"`);
-    if (config.description) lines.push(`    description: "${config.description}"`);
-    if (config.discovered !== undefined) lines.push(`    discovered: ${config.discovered}`);
-  }
-  return lines.join("\n") + "\n";
+  return yamlStringify({ marketplaces: registry });
 }
 
 // ============================================================================
@@ -174,7 +124,7 @@ export async function loadMarketplaceRegistry(): Promise<
   // Load saved config
   try {
     const raw = await fs.readFile(REGISTRY_PATH, "utf-8");
-    const parsed = parseSimpleYaml(raw);
+    const parsed = parseRegistryYaml(raw);
     for (const [name, props] of Object.entries(parsed)) {
       registry[name] = {
         type: (props.type as MarketplaceConfig["type"]) || "remote",
@@ -206,7 +156,7 @@ export async function saveMarketplaceRegistry(
   registry: Record<string, MarketplaceConfig>
 ): Promise<void> {
   await fs.mkdir(MYCELIUM_DIR, { recursive: true });
-  const yaml = serializeSimpleYaml(registry);
+  const yaml = serializeRegistryYaml(registry);
   await fs.writeFile(REGISTRY_PATH, yaml, "utf-8");
 }
 

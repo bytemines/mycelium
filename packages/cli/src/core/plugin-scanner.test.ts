@@ -295,7 +295,7 @@ describe("scanPluginCache", () => {
 
 describe("migrator integration", () => {
   it("generateMigrationPlan includes components from scans", async () => {
-    const { generateMigrationPlan } = await import("./migrator.js");
+    const { generateMigrationPlan } = await import("./migrator/index.js");
 
     const scan = {
       toolId: "claude-code" as const,
@@ -320,7 +320,7 @@ describe("migrator integration", () => {
   });
 
   it("generateMigrationPlan deduplicates components by type+name", async () => {
-    const { generateMigrationPlan } = await import("./migrator.js");
+    const { generateMigrationPlan } = await import("./migrator/index.js");
 
     const scan1 = {
       toolId: "claude-code" as const,
@@ -352,7 +352,7 @@ describe("migrator integration", () => {
   });
 
   it("generateMigrationPlan allows same name for different types", async () => {
-    const { generateMigrationPlan } = await import("./migrator.js");
+    const { generateMigrationPlan } = await import("./migrator/index.js");
 
     const scan = {
       toolId: "claude-code" as const,

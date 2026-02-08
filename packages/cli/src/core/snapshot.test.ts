@@ -17,6 +17,18 @@ vi.mock("node:os", async () => {
   };
 });
 
+// Mock fs-helpers to avoid MYCELIUM_HOME evaluation at import time (os.homedir() is undefined then)
+vi.mock("./fs-helpers.js", async () => {
+  const fsp = await import("node:fs/promises");
+  return {
+    mkdirp: (dir: string) => fsp.mkdir(dir, { recursive: true }),
+    MYCELIUM_HOME: "",
+    DEFAULT_PORT: 3378,
+    MEMORY_LINE_LIMIT: 200,
+    readFileIfExists: vi.fn(),
+  };
+});
+
 // Must import after mock setup
 const { createSnapshot, restoreSnapshot, listSnapshots, deleteSnapshot } =
   await import("./snapshot.js");

@@ -8,6 +8,7 @@ import {
 import type { MarketplaceConfig } from "@mycelium/core";
 import { SkillCard } from "./SkillCard";
 import type { MarketplaceItem } from "./SkillCard";
+import * as Dialog from "@radix-ui/react-dialog";
 
 const CATEGORIES = ["All", "Testing", "Git", "Debugging", "Frontend", "Backend", "DevOps", "AI", "Code Review", "Documentation"];
 
@@ -189,41 +190,46 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       )}
 
       {/* Remove Confirmation */}
-      {confirmRemove && (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setConfirmRemove(null)} />
-          <div className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-xl">
-            <h3 className="text-lg font-medium">Remove Marketplace</h3>
-            <p className="mt-2 text-sm text-muted-foreground">Remove <strong>{confirmRemove}</strong>?</p>
+      <Dialog.Root open={!!confirmRemove} onOpenChange={(open) => { if (!open) setConfirmRemove(null); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-xl">
+            <Dialog.Title className="text-lg font-medium">Remove Marketplace</Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm text-muted-foreground">Remove <strong>{confirmRemove}</strong>?</Dialog.Description>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setConfirmRemove(null)} className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cancel</button>
-              <button onClick={() => { handleRemoveMarketplace(confirmRemove); setConfirmRemove(null); }}
+              <Dialog.Close asChild>
+                <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cancel</button>
+              </Dialog.Close>
+              <button onClick={() => { handleRemoveMarketplace(confirmRemove!); setConfirmRemove(null); }}
                 className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90">Remove</button>
             </div>
-          </div>
-        </>
-      )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Add Marketplace Dialog */}
-      {showAddDialog && (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setShowAddDialog(false)} />
-          <div className="fixed left-1/2 top-1/2 z-50 w-96 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-medium">Add Marketplace</h3>
+      <Dialog.Root open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-96 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-xl">
+            <Dialog.Title className="mb-4 text-lg font-medium">Add Marketplace</Dialog.Title>
+            <Dialog.Description className="sr-only">Enter the name and URL for a new marketplace source.</Dialog.Description>
             <div className="space-y-3">
               <input type="text" value={newMpName} onChange={e => setNewMpName(e.target.value)} placeholder="Marketplace name"
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
               <input type="text" value={newMpUrl} onChange={e => setNewMpUrl(e.target.value)} placeholder="URL (required)"
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowAddDialog(false)} className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cancel</button>
+                <Dialog.Close asChild>
+                  <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cancel</button>
+                </Dialog.Close>
                 <button onClick={handleAddMarketplace} disabled={!newMpName.trim() || !newMpUrl.trim()}
                   className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Add</button>
               </div>
             </div>
-          </div>
-        </>
-      )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Search bar + Sort + Add Marketplace */}
       <div className="space-y-3">
@@ -266,7 +272,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div aria-live="polite" className="flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="ml-2 text-xs hover:underline">Dismiss</button>
         </div>
@@ -279,8 +285,8 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div aria-live="polite" className="flex items-center justify-center py-12">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" role="status" aria-label="Loading" />
         </div>
       )}
 

@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
 
-export function AddToolNode({ data }: { data: { onClick?: () => void } }) {
+function AddToolNodeInner({ data }: { data: { onClick?: () => void } }) {
   return (
     <div
       className="px-4 py-3 rounded-lg border-2 border-dashed border-muted-foreground/40 bg-card/50 shadow-md min-w-[130px] cursor-pointer hover:border-primary/60 hover:bg-card transition-all"
@@ -15,3 +16,5 @@ export function AddToolNode({ data }: { data: { onClick?: () => void } }) {
     </div>
   );
 }
+
+export const AddToolNode = memo(AddToolNodeInner);

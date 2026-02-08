@@ -91,16 +91,3 @@ export const machineOverridesSchema = z.object({
   memory: memoryConfigSchema.partial().optional(),
 });
 
-// ============================================================================
-// Type Exports (inferred from schemas)
-// ============================================================================
-
-export type ToolIdSchema = z.infer<typeof toolIdSchema>;
-export type McpServerConfigSchema = z.infer<typeof mcpServerConfigSchema>;
-export type McpsConfigSchema = z.infer<typeof mcpsConfigSchema>;
-export type SkillManifestSchema = z.infer<typeof skillManifestSchema>;
-export type MemoryScopeSchema = z.infer<typeof memoryScopeSchema>;
-export type MemoryScopeConfigSchema = z.infer<typeof memoryScopeConfigSchema>;
-export type MemoryConfigSchema = z.infer<typeof memoryConfigSchema>;
-export type ManifestSchema = z.infer<typeof manifestSchema>;
-export type MachineOverridesSchema = z.infer<typeof machineOverridesSchema>;

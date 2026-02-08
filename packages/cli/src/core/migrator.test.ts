@@ -2,13 +2,9 @@
  * Tests for the Migrator module
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import * as os from "node:os";
-import * as path from "node:path";
-
 import {
-  expandHome,
   generateMigrationPlan,
-} from "./migrator.js";
+} from "./migrator/index.js";
 
 import type {
   ToolScanResult,
@@ -17,8 +13,6 @@ import type {
   ScannedMemory,
   MigrationPlan,
 } from "@mycelium/core";
-
-const home = os.homedir();
 
 // ============================================================================
 // Helpers
@@ -44,28 +38,6 @@ function makeScan(
 ): ToolScanResult {
   return { toolId: toolId as any, toolName: toolId, installed: true, skills, mcps, memory, hooks: [], components: [] };
 }
-
-// ============================================================================
-// expandHome
-// ============================================================================
-
-describe("expandHome", () => {
-  it("replaces ~ with home directory", () => {
-    expect(expandHome("~/test")).toBe(path.join(home, "test"));
-  });
-
-  it("leaves absolute paths unchanged", () => {
-    expect(expandHome("/usr/local")).toBe("/usr/local");
-  });
-
-  it("handles ~ alone", () => {
-    expect(expandHome("~")).toBe(home);
-  });
-
-  it("does not replace ~ in middle of path", () => {
-    expect(expandHome("/home/~user")).toBe("/home/~user");
-  });
-});
 
 // ============================================================================
 // generateMigrationPlan
@@ -248,7 +220,7 @@ describe("scanners", () => {
   describe("scanTool", () => {
     it("returns not-installed for unsupported tools", async () => {
       mockDeps(makeFsMock());
-      const { scanTool } = await import("./migrator.js");
+      const { scanTool } = await import("./migrator/index.js");
       const result = await scanTool("opencode");
       expect(result.installed).toBe(false);
       expect(result.skills).toEqual([]);
@@ -256,7 +228,7 @@ describe("scanners", () => {
 
     it("returns not-installed for aider", async () => {
       mockDeps(makeFsMock());
-      const { scanTool } = await import("./migrator.js");
+      const { scanTool } = await import("./migrator/index.js");
       const result = await scanTool("aider");
       expect(result.installed).toBe(false);
     });
@@ -267,7 +239,7 @@ describe("scanners", () => {
       mockDeps(makeFsMock({
         readFile: vi.fn().mockResolvedValue("# Gemini Memory"),
       }));
-      const { scanGemini } = await import("./migrator.js");
+      const { scanGemini } = await import("./migrator/index.js");
       const result = await scanGemini();
       expect(result.toolId).toBe("gemini-cli");
       expect(result.memory).toHaveLength(1);
@@ -277,7 +249,7 @@ describe("scanners", () => {
 
     it("returns empty when GEMINI.md missing", async () => {
       mockDeps(makeFsMock());
-      const { scanGemini } = await import("./migrator.js");
+      const { scanGemini } = await import("./migrator/index.js");
       const result = await scanGemini();
       expect(result.memory).toEqual([]);
     });
@@ -293,7 +265,7 @@ describe("scanners", () => {
           throw new Error("ENOENT");
         }),
       }));
-      const { scanCodex } = await import("./migrator.js");
+      const { scanCodex } = await import("./migrator/index.js");
       const result = await scanCodex();
       expect(result.mcps).toHaveLength(2);
       expect(result.mcps[0].name).toBe("git");
@@ -310,7 +282,7 @@ describe("scanners", () => {
           throw new Error("ENOENT");
         }),
       }));
-      const { scanCodex } = await import("./migrator.js");
+      const { scanCodex } = await import("./migrator/index.js");
       const result = await scanCodex();
       expect(result.memory).toHaveLength(1);
       expect(result.memory[0].name).toBe("AGENTS");
@@ -334,7 +306,7 @@ describe("scanners", () => {
           throw new Error("ENOENT");
         }),
       }));
-      const { scanOpenClaw } = await import("./migrator.js");
+      const { scanOpenClaw } = await import("./migrator/index.js");
       const result = await scanOpenClaw();
       expect(result.skills).toHaveLength(1);
       expect(result.skills[0].name).toBe("oc-skill");
@@ -350,7 +322,7 @@ describe("scanners", () => {
           throw new Error("ENOENT");
         }),
       }));
-      const { scanOpenClaw } = await import("./migrator.js");
+      const { scanOpenClaw } = await import("./migrator/index.js");
       const result = await scanOpenClaw();
       expect(result.skills).toEqual([]);
     });
@@ -400,7 +372,7 @@ describe("scanClaudeCode provenance", () => {
       parseSkillMd: vi.fn().mockReturnValue({ name: "tdd", description: "TDD skill", tools: [], body: "Body" }),
     }));
 
-    const { scanClaudeCode } = await import("./migrator.js");
+    const { scanClaudeCode } = await import("./migrator/index.js");
     const result = await scanClaudeCode();
 
     expect(result.skills.length).toBeGreaterThanOrEqual(1);
@@ -429,7 +401,7 @@ describe("scanClaudeCode provenance", () => {
       parseSkillMd: vi.fn().mockReturnValue({ name: "basic", description: "", tools: [], body: "Body" }),
     }));
 
-    const { scanClaudeCode } = await import("./migrator.js");
+    const { scanClaudeCode } = await import("./migrator/index.js");
     const result = await scanClaudeCode();
     for (const skill of result.skills) {
       expect(skill.source).toBe("claude-code");
@@ -448,7 +420,7 @@ describe("execution", () => {
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       mockDeps(makeFsMock({ symlink: mockSymlink, writeFile: mockWriteFile }));
 
-      const { executeMigration } = await import("./migrator.js");
+      const { executeMigration } = await import("./migrator/index.js");
       const plan: MigrationPlan = {
         skills: [{ name: "tdd", path: "/src/tdd", source: "claude-code" }],
         mcps: [{ name: "git", config: { command: "git-mcp", args: ["--stdio"] }, source: "codex" }],
@@ -475,7 +447,7 @@ describe("execution", () => {
     it("reports errors without failing entirely", async () => {
       mockDeps(makeFsMock({ symlink: vi.fn().mockRejectedValue(new Error("EPERM")) }));
 
-      const { executeMigration } = await import("./migrator.js");
+      const { executeMigration } = await import("./migrator/index.js");
       const plan: MigrationPlan = {
         skills: [{ name: "sk", path: "/a", source: "claude-code" }],
         mcps: [],
@@ -495,7 +467,7 @@ describe("execution", () => {
   describe("clearMigration", () => {
     it("clears all when no toolId specified", async () => {
       mockDeps(makeFsMock());
-      const { clearMigration } = await import("./migrator.js");
+      const { clearMigration } = await import("./migrator/index.js");
       const result = await clearMigration();
       expect(result.cleared.length).toBeGreaterThan(0);
     });
@@ -513,7 +485,7 @@ describe("execution", () => {
         readFile: vi.fn().mockResolvedValue(JSON.stringify(manifest)),
         unlink: vi.fn().mockResolvedValue(undefined),
       }));
-      const { clearMigration } = await import("./migrator.js");
+      const { clearMigration } = await import("./migrator/index.js");
       const result = await clearMigration({ toolId: "claude-code" });
       expect(result.cleared).toContain("/b");
     });
@@ -522,7 +494,7 @@ describe("execution", () => {
   describe("loadManifest", () => {
     it("returns default manifest when file missing", async () => {
       mockDeps(makeFsMock());
-      const { loadManifest } = await import("./migrator.js");
+      const { loadManifest } = await import("./migrator/index.js");
       const manifest = await loadManifest();
       expect(manifest.version).toBe("1.0.0");
       expect(manifest.entries).toEqual([]);
@@ -533,7 +505,7 @@ describe("execution", () => {
     it("writes JSON to manifest path", async () => {
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       mockDeps(makeFsMock({ writeFile: mockWriteFile }));
-      const { saveManifest } = await import("./migrator.js");
+      const { saveManifest } = await import("./migrator/index.js");
       await saveManifest({ version: "1.0.0", lastMigration: "now", entries: [] });
       const call = mockWriteFile.mock.calls.find((c: any[]) => String(c[0]).includes("migration-manifest"));
       expect(call).toBeDefined();

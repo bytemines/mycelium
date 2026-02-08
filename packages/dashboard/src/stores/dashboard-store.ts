@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import { fetchDashboardState, sendToggle, fetchPlugins, togglePlugin as apiTogglePlugin, togglePluginSkill as apiTogglePluginSkill, removeSkill, removeMcp, removePlugin } from "@/lib/api";
 import type { PluginInfo } from "@mycelium/core";
-
-type Status = "synced" | "pending" | "error" | "disabled";
+import type { Status } from "@/types";
 type ApiStatus = "checking" | "connected" | "disconnected";
 
 interface GraphData {
@@ -125,7 +124,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   togglePlugin: async (name, enabled) => {
-    await apiTogglePlugin(name, enabled).catch(() => {});
+    await apiTogglePlugin(name, enabled).catch((err) => { console.error("togglePlugin failed:", err); });
     set((s) => ({
       selectedPlugin: s.selectedPlugin ? { ...s.selectedPlugin, enabled } : null,
       hasPendingChanges: true,
@@ -133,7 +132,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   togglePluginSkill: async (pluginName, skillName, enabled) => {
-    await apiTogglePluginSkill(pluginName, skillName, enabled).catch(() => {});
+    await apiTogglePluginSkill(pluginName, skillName, enabled).catch((err) => { console.error("togglePluginSkill failed:", err); });
     set({ hasPendingChanges: true });
   },
 
@@ -145,13 +144,15 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({ hasPendingChanges: true, syncBanner: { type: "pending", message: `Removed ${type}: ${name}. Click Sync to propagate.` } });
       setTimeout(() => { const { syncBanner } = get(); if (syncBanner?.message.includes(name)) set({ syncBanner: null }); }, 5000);
       get().fetchState();
-    } catch {}
+    } catch (err) {
+      console.error("removeItem failed:", err);
+    }
   },
 
   triggerSync: async () => {
     set({ syncBanner: { type: "pending", message: "Syncing to all tools..." } });
     try {
-      await fetch("http://localhost:3378/api/sync", { method: "POST" });
+      await fetch("/api/sync", { method: "POST" });
       set({ syncBanner: { type: "success", message: "Synced to all tools" }, hasPendingChanges: false });
       setTimeout(() => set({ syncBanner: null }), 3000);
     } catch {
@@ -174,7 +175,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     fetchPlugins().then((plugins) => {
       const found = plugins.find((p) => p.name === pluginName);
       if (found) set({ selectedPlugin: found });
-    }).catch(() => {});
+    }).catch((err) => { console.error("openPluginPanel fetch failed:", err); });
   },
 
   openMcpPanel: (mcpName) => {
@@ -201,7 +202,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
           },
         });
       }
-    }).catch(() => {
+    }).catch((err) => {
+      console.error("openSkillPanel fetch failed:", err);
       set({
         selectedPlugin: {
           name: skillName, marketplace: "standalone", version: "",

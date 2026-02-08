@@ -1,4 +1,4 @@
-type Status = "synced" | "pending" | "error" | "disabled";
+import type { Status } from "@/types";
 
 export interface ScanData {
   toolId: string;
@@ -102,4 +102,226 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
   }
 
   return { tools, skills: standaloneSkills, mcps, memory, plugins };
+}
+
+// ── Dashboard graph builder (extracted from Graph.tsx useMemo) ──
+
+import type { Node, Edge } from "@xyflow/react";
+
+interface SkillData {
+  name: string;
+  status: Status;
+  enabled?: boolean;
+  connectedTools?: string[];
+}
+
+interface McpData {
+  name: string;
+  status: Status;
+  enabled?: boolean;
+  connectedTools?: string[];
+}
+
+interface MemoryData {
+  name: string;
+  scope: "shared" | "coding" | "personal";
+  status: Status;
+}
+
+interface ToolDataDash {
+  id: string;
+  name: string;
+  status: Status;
+  installed: boolean;
+}
+
+interface PluginDataDash {
+  name: string;
+  marketplace: string;
+  componentCount: number;
+  enabled: boolean;
+  skills: string[];
+  agents?: string[];
+  commands?: string[];
+  hooks?: string[];
+  libs?: string[];
+}
+
+export interface DashboardGraphData {
+  tools?: ToolDataDash[];
+  skills: SkillData[];
+  mcps: McpData[];
+  memory: MemoryData[];
+  plugins?: PluginDataDash[];
+}
+
+export const ALL_TOOLS: ToolDataDash[] = [
+  { id: "claude-code", name: "Claude Code", status: "synced", installed: true },
+  { id: "codex", name: "Codex CLI", status: "synced", installed: true },
+  { id: "gemini", name: "Gemini CLI", status: "synced", installed: true },
+  { id: "opencode", name: "OpenCode", status: "synced", installed: true },
+  { id: "openclaw", name: "OpenClaw", status: "synced", installed: true },
+  { id: "aider", name: "Aider", status: "synced", installed: true },
+];
+
+export interface DashboardGraphHandlers {
+  handleToggle: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
+  onToggle?: (toggle: { type: "skill" | "mcp" | "memory"; name: string; enabled: boolean }) => void;
+  onPluginClick?: (pluginName: string) => void;
+  onAddTool?: () => void;
+}
+
+export function buildDashboardGraph(
+  data: DashboardGraphData | undefined,
+  mode: "dashboard" | "migrate",
+  showUninstalledTools: boolean,
+  handlers: DashboardGraphHandlers,
+): { initialNodes: Node[]; initialEdges: Edge[] } {
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  const tools = data?.tools || ALL_TOOLS;
+  const visibleTools = showUninstalledTools
+    ? tools
+    : tools.filter((t) => t.installed !== false);
+
+  // Tool nodes
+  visibleTools.forEach((tool, index) => {
+    nodes.push({
+      id: `tool-${tool.id}`,
+      type: "tool",
+      position: { x: index * 160, y: 0 },
+      data: { name: tool.name, status: tool.status, installed: tool.installed },
+    });
+  });
+
+  // Build a set of skills owned by plugins
+  const pluginSkillSet = new Set<string>();
+  data?.plugins?.forEach((plugin) => {
+    plugin.skills.forEach((s) => pluginSkillSet.add(s));
+  });
+
+  // Plugin nodes
+  data?.plugins?.forEach((plugin, index) => {
+    const nodeId = `plugin-${plugin.name}`;
+    nodes.push({
+      id: nodeId,
+      type: "plugin",
+      position: { x: index * 160, y: 75 },
+      data: {
+        name: plugin.name,
+        marketplace: plugin.marketplace,
+        componentCount: plugin.componentCount,
+        skillCount: plugin.skills?.length ?? 0,
+        agentCount: plugin.agents?.length ?? 0,
+        commandCount: plugin.commands?.length ?? 0,
+        hookCount: plugin.hooks?.length ?? 0,
+        libCount: plugin.libs?.length ?? 0,
+        enabled: plugin.enabled,
+        onToggle: (name: string, enabled: boolean) => handlers.onToggle?.({ type: "skill", name, enabled }),
+        onClick: (name: string) => handlers.onPluginClick?.(name),
+      },
+    });
+
+    visibleTools.filter(t => t.installed).forEach((tool) => {
+      edges.push({
+        id: `${nodeId}-to-tool-${tool.id}`,
+        source: nodeId,
+        target: `tool-${tool.id}`,
+        animated: plugin.enabled,
+        style: { stroke: "#14b8a6", strokeWidth: 2, ...(plugin.enabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+      });
+    });
+  });
+
+  // Skill nodes
+  data?.skills.forEach((skill, index) => {
+    if (pluginSkillSet.has(skill.name)) return;
+    const nodeId = `skill-${skill.name}`;
+    nodes.push({
+      id: nodeId,
+      type: "resource",
+      position: { x: index * 140, y: 150 },
+      data: { name: skill.name, type: "skill", status: skill.status, enabled: skill.enabled, onToggle: handlers.handleToggle },
+    });
+    const isEnabled = skill.enabled !== false;
+    const targetTools = skill.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
+    targetTools.forEach((toolId) => {
+      if (visibleTools.some(t => t.id === toolId)) {
+        edges.push({
+          id: `${nodeId}-to-${toolId}`,
+          source: nodeId,
+          target: `tool-${toolId}`,
+          animated: isEnabled && skill.status === "synced",
+          style: { stroke: "#3b82f6", strokeWidth: 2, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+        });
+      }
+    });
+  });
+
+  // MCP nodes
+  data?.mcps.forEach((mcp, index) => {
+    const nodeId = `mcp-${mcp.name}`;
+    nodes.push({
+      id: nodeId,
+      type: "resource",
+      position: { x: index * 140, y: 300 },
+      data: { name: mcp.name, type: "mcp", status: mcp.status, enabled: mcp.enabled, onToggle: handlers.handleToggle },
+    });
+    const isMcpEnabled = mcp.enabled !== false;
+    const targetTools = mcp.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
+    targetTools.forEach((toolId) => {
+      if (visibleTools.some(t => t.id === toolId)) {
+        edges.push({
+          id: `${nodeId}-to-${toolId}`,
+          source: nodeId,
+          target: `tool-${toolId}`,
+          animated: isMcpEnabled && mcp.status === "synced",
+          style: { stroke: "#a855f7", strokeWidth: 2, ...(isMcpEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+        });
+      }
+    });
+  });
+
+  // Memory nodes
+  data?.memory.forEach((mem, index) => {
+    const nodeId = `memory-${mem.name}`;
+    nodes.push({
+      id: nodeId,
+      type: "resource",
+      position: { x: index * 140, y: 450 },
+      data: { name: mem.name, type: "memory", status: mem.status, onToggle: handlers.handleToggle },
+    });
+    let targetToolIds: string[];
+    if (mem.scope === "personal") {
+      targetToolIds = ["openclaw"];
+    } else if (mem.scope === "coding") {
+      targetToolIds = visibleTools.filter(t => t.id !== "openclaw" && t.installed).map((t) => t.id);
+    } else {
+      targetToolIds = visibleTools.filter(t => t.installed).map((t) => t.id);
+    }
+    targetToolIds.forEach((toolId) => {
+      if (visibleTools.some(t => t.id === toolId)) {
+        edges.push({
+          id: `${nodeId}-to-${toolId}`,
+          source: nodeId,
+          target: `tool-${toolId}`,
+          animated: mem.status === "synced",
+          style: { stroke: "#f59e0b", strokeWidth: 2 },
+        });
+      }
+    });
+  });
+
+  // "+ Add Tool" node in migrate mode
+  if (mode === "migrate") {
+    nodes.push({
+      id: "add-tool",
+      type: "addTool",
+      position: { x: visibleTools.length * 160, y: 0 },
+      data: { onClick: handlers.onAddTool },
+    });
+  }
+
+  return { initialNodes: nodes, initialEdges: edges };
 }
