@@ -6,9 +6,9 @@
   "author": "Mycelium Contributors",
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@10.29.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "turbo build",
@@ -21,11 +21,14 @@
     "version-packages": "changeset version",
     "publish-packages": "pnpm build && changeset publish"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",
     "@changesets/cli": "^2.29.8",
-    "prettier": "^3.4.2",
-    "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "prettier": "^3.8.1",
+    "turbo": "^2.8.3",
+    "typescript": "^5.9.3"
   }
 }

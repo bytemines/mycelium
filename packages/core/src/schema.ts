@@ -24,14 +24,14 @@ export const toolIdSchema = z.enum([
 export const mcpServerConfigSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   enabled: z.boolean().optional().default(true),
   tools: z.array(toolIdSchema).optional(),
   excludeTools: z.array(toolIdSchema).optional(),
 });
 
 export const mcpsConfigSchema = z.object({
-  mcps: z.record(mcpServerConfigSchema),
+  mcps: z.record(z.string(), mcpServerConfigSchema),
 });
 
 // ============================================================================
@@ -86,8 +86,8 @@ export const manifestSchema = z.object({
 
 export const machineOverridesSchema = z.object({
   hostname: z.string(),
-  mcps: z.record(mcpServerConfigSchema.partial()).optional(),
-  skills: z.record(skillManifestSchema.partial()).optional(),
+  mcps: z.record(z.string(), mcpServerConfigSchema.partial()).optional(),
+  skills: z.record(z.string(), skillManifestSchema.partial()).optional(),
   memory: memoryConfigSchema.partial().optional(),
 });
 

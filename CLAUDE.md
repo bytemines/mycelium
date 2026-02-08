@@ -20,11 +20,11 @@ packages/
 - **Language**: TypeScript (ESM, `"type": "module"` everywhere)
 - **Monorepo**: pnpm workspaces + Turborepo
 - **CLI**: Commander.js, picocolors for output, yaml for YAML parsing
-- **Dashboard**: React 18, @xyflow/react (React Flow), Zustand, Tailwind CSS, Radix UI
-- **Validation**: Zod (core package)
+- **Dashboard**: React 19, @xyflow/react (React Flow), Zustand, Tailwind CSS 4, Radix UI
+- **Validation**: Zod 4 (core package)
 - **Server**: Express 5 (`mycelium serve` on port 3378)
-- **Testing**: Vitest across all packages
-- **Node**: >=20 required
+- **Testing**: Vitest 4 across all packages
+- **Node**: >=22 required
 
 ## Build & Test
 

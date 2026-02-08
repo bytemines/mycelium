@@ -17,6 +17,8 @@ import {
   exportPreset,
 } from "../core/presets.js";
 import { loadAndMergeAllConfigs } from "../core/config-merger.js";
+import { enableSkillOrMcp } from "./enable.js";
+import { disableSkillOrMcp } from "./disable.js";
 
 export const presetCommand = new Command("preset")
   .description("Manage configuration presets");
@@ -58,18 +60,33 @@ presetCommand
       allMcps: Object.keys(config.mcps),
     });
 
-    console.log(`Applied preset "${name}":`);
+    console.log(`Applying preset "${name}"...`);
+
+    for (const skill of actions.enableSkills) {
+      await enableSkillOrMcp({ name: skill, global: true });
+    }
+    for (const skill of actions.disableSkills) {
+      await disableSkillOrMcp({ name: skill, global: true });
+    }
+    for (const mcp of actions.enableMcps) {
+      await enableSkillOrMcp({ name: mcp, global: true });
+    }
+    for (const mcp of actions.disableMcps) {
+      await disableSkillOrMcp({ name: mcp, global: true });
+    }
+
+    console.log(`Preset "${name}" applied:`);
     if (actions.enableSkills.length > 0) {
-      console.log(`  Enable skills: ${actions.enableSkills.join(", ")}`);
+      console.log(`  Enabled skills: ${actions.enableSkills.join(", ")}`);
     }
     if (actions.disableSkills.length > 0) {
-      console.log(`  Disable skills: ${actions.disableSkills.join(", ")}`);
+      console.log(`  Disabled skills: ${actions.disableSkills.join(", ")}`);
     }
     if (actions.enableMcps.length > 0) {
-      console.log(`  Enable MCPs: ${actions.enableMcps.join(", ")}`);
+      console.log(`  Enabled MCPs: ${actions.enableMcps.join(", ")}`);
     }
     if (actions.disableMcps.length > 0) {
-      console.log(`  Disable MCPs: ${actions.disableMcps.join(", ")}`);
+      console.log(`  Disabled MCPs: ${actions.disableMcps.join(", ")}`);
     }
   });
 

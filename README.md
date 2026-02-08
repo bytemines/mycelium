@@ -9,7 +9,7 @@
   <a href="https://www.npmjs.com/package/@mycelium/cli"><img src="https://img.shields.io/npm/v/@mycelium/cli?color=cb3837&logo=npm" alt="npm" /></a>
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white" alt="pnpm" />
-  <img src="https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white" alt="Node >= 20" />
+  <img src="https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white" alt="Node >= 22" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/tools-6%20supported-blueviolet" alt="6 Tools" />
 </p>

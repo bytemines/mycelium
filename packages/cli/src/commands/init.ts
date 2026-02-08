@@ -428,7 +428,7 @@ export async function autoSetup(options: {
       await saveMachineOverrides(existing);
       console.log(`Detected ${detected.length} machine-specific MCP path(s).`);
     }
-  } catch { /* no mcps yet */ }
+  } catch { /* machine overrides detection is optional — skip if no MCPs configured yet */ }
 
   // Step 6: Initial push if repo is set up
   if (hasGitRemote()) {

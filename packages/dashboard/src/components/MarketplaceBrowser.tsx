@@ -45,13 +45,13 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       setRegistry(reg);
       const dynamic = Object.keys(reg).map(k => ({ value: k, label: k }));
       setMarketplaces([{ value: "all", label: "All" }, ...dynamic]);
-    }).catch(() => {});
+    }).catch((err) => { console.warn("Failed to load marketplace registry:", err); });
 
     setLoading(true);
     fetchPopularSkills().then(results => {
       const flat = results.flatMap(r => r.entries.map(e => ({ ...e, type: e.type as "skill" | "mcp" })));
       setResults(flat);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch((err) => { console.warn("Failed to load popular skills:", err); }).finally(() => setLoading(false));
   }, []);
 
   const handleSearch = useCallback(async (e?: React.FormEvent) => {

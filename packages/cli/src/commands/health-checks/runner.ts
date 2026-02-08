@@ -17,7 +17,8 @@ import {
   checkMcpConfigYaml,
   checkOrphanedConfigs,
 } from "./config-check.js";
-import { checkMemoryFilesExist, checkMemoryFileSize, MEMORY_LINE_LIMIT } from "./memory-check.js";
+import { checkMemoryFilesExist, checkMemoryFileSize } from "./memory-check.js";
+import { TOOL_MAX_LINES } from "../../core/fs-helpers.js";
 import { checkToolVersions } from "./tool-version-check.js";
 import type { DiagnosticResult, DoctorResult } from "./types.js";
 
@@ -73,10 +74,8 @@ export async function runAllChecks(): Promise<DoctorResult> {
   checks.push(await checkToolVersions());
 
   // 7. Check memory file sizes for tools with limits
-  const memoryLimits: Partial<Record<ToolId, number>> = {
-    "claude-code": MEMORY_LINE_LIMIT,
-  };
-  for (const [toolId, maxLines] of Object.entries(memoryLimits)) {
+  for (const [toolId, maxLines] of Object.entries(TOOL_MAX_LINES)) {
+    if (maxLines == null) continue;
     const toolConfig = SUPPORTED_TOOLS[toolId as ToolId];
     const memoryPath = expandPath(toolConfig.memoryPath);
     checks.push(await checkMemoryFileSize(memoryPath, maxLines));

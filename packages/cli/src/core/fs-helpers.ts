@@ -9,6 +9,11 @@ export const MYCELIUM_HOME = path.join(os.homedir(), ".mycelium");
 export const DEFAULT_PORT = 3378;
 export const MEMORY_LINE_LIMIT = 200;
 
+/** Per-tool max line limits for memory files */
+export const TOOL_MAX_LINES: Partial<Record<string, number>> = {
+  "claude-code": MEMORY_LINE_LIMIT,
+};
+
 export async function readFileIfExists(filePath: string): Promise<string | null> {
   try {
     return await fs.readFile(filePath, "utf-8");
