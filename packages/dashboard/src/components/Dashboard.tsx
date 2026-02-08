@@ -3,10 +3,15 @@
  * Implemented following TDD to pass Dashboard.test.tsx
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Graph } from "./Graph";
 import { ReactFlowProvider } from "@xyflow/react";
+import { MigrateWizard } from "./MigrateWizard";
+import { MarketplaceBrowser } from "./MarketplaceBrowser";
+import { PluginDetailPanel } from "./PluginDetailPanel";
+import type { PluginInfo } from "@mycelium/core";
+import { togglePlugin, togglePluginSkill, fetchDashboardState } from "@/lib/api";
 
 type Status = "synced" | "pending" | "error" | "disabled";
 
@@ -50,7 +55,7 @@ interface ToggleState {
   mcps: Record<string, boolean>;
 }
 
-function GraphContainer() {
+function GraphContainer({ onPluginClick }: { onPluginClick?: (name: string) => void }) {
   const [toggleState, setToggleState] = useState<ToggleState>({
     skills: { tdd: true, debugging: true, "git-workflow": true },
     mcps: { "git-mcp": true, "filesystem-mcp": true, context7: true },
@@ -92,6 +97,9 @@ function GraphContainer() {
       { name: "MEMORY.md", scope: "shared" as const, status: "synced" as Status },
       { name: "coding.md", scope: "coding" as const, status: "synced" as Status },
     ],
+    plugins: [
+      { name: "superpowers", marketplace: "superpowers-marketplace", skillCount: 3, enabled: true, skills: ["tdd", "debugging", "git-workflow"] },
+    ],
   };
 
   return (
@@ -105,6 +113,7 @@ function GraphContainer() {
           showUninstalledTools={false}
           onNodeClick={(node) => console.log("Clicked:", node)}
           onToggle={handleToggle}
+          onPluginClick={onPluginClick}
         />
       </ReactFlowProvider>
     </div>
@@ -112,13 +121,66 @@ function GraphContainer() {
 }
 
 export function Dashboard() {
-  // Mock data - will be replaced with real data from CLI
-  const stats = {
-    skills: { count: 12, status: "synced" as Status },
-    mcps: { count: 8, status: "synced" as Status },
-    memory: { count: 3, status: "synced" as Status },
-    machines: { count: 2, status: "synced" as Status },
-  };
+  const [activeTab, setActiveTab] = useState<"graph" | "migrate" | "marketplace">("graph");
+  const [selectedPlugin, setSelectedPlugin] = useState<PluginInfo | null>(null);
+  const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+
+  useEffect(() => {
+    fetchDashboardState()
+      .then(() => setApiStatus("connected"))
+      .catch(() => setApiStatus("disconnected"));
+  }, []);
+
+  const handlePluginClick = useCallback((pluginName: string) => {
+    // Mock plugin detail - in production this would fetch from API
+    setSelectedPlugin({
+      name: pluginName,
+      marketplace: "superpowers-marketplace",
+      version: "1.0.0",
+      description: "A collection of powerful development skills",
+      author: "mycelium-community",
+      enabled: true,
+      skills: ["tdd", "debugging", "git-workflow"],
+      agents: [],
+      commands: [],
+      installPath: "~/.mycelium/plugins/superpowers",
+    });
+  }, []);
+
+  const handleTogglePlugin = useCallback(async (name: string, enabled: boolean) => {
+    await togglePlugin(name, enabled).catch(() => {});
+    setSelectedPlugin(prev => prev ? { ...prev, enabled } : null);
+  }, []);
+
+  const handleTogglePluginSkill = useCallback(async (pluginName: string, skillName: string, enabled: boolean) => {
+    await togglePluginSkill(pluginName, skillName, enabled).catch(() => {});
+  }, []);
+
+  const [stats, setStats] = useState({
+    skills: { count: 0, status: "pending" as Status },
+    mcps: { count: 0, status: "pending" as Status },
+    memory: { count: 0, status: "pending" as Status },
+    machines: { count: 0, status: "pending" as Status },
+  });
+
+  useEffect(() => {
+    if (apiStatus !== "connected") return;
+    fetchDashboardState().then((state) => {
+      setStats({
+        skills: { count: state.skills?.length ?? 0, status: state.skills?.length ? "synced" : "pending" },
+        mcps: { count: state.mcps?.length ?? 0, status: state.mcps?.length ? "synced" : "pending" },
+        memory: { count: state.memory?.length ?? 0, status: state.memory?.length ? "synced" : "pending" },
+        machines: { count: 1, status: "synced" },
+      });
+    }).catch(() => {
+      setStats({
+        skills: { count: 0, status: "error" },
+        mcps: { count: 0, status: "error" },
+        memory: { count: 0, status: "error" },
+        machines: { count: 0, status: "error" },
+      });
+    });
+  }, [apiStatus]);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -126,8 +188,10 @@ export function Dashboard() {
       <header className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold tracking-tight">MYCELIUM</h1>
-          <StatusIndicator status="synced" />
-          <span className="text-sm text-muted-foreground">All Systems Go</span>
+          <StatusIndicator status={apiStatus === "connected" ? "synced" : apiStatus === "checking" ? "pending" : "error"} />
+          <span className="text-sm text-muted-foreground">
+            {apiStatus === "connected" ? "Connected" : apiStatus === "checking" ? "Connecting..." : "API Offline \u2014 run mycelium serve"}
+          </span>
         </div>
         <button
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -136,22 +200,55 @@ export function Dashboard() {
         </button>
       </header>
 
-      {/* Graph Section */}
-      <section className="mb-8">
-        <GraphContainer />
-      </section>
+      {/* Tab Bar */}
+      <nav className="mb-6 flex gap-1 rounded-lg border bg-muted p-1">
+        {(["graph", "migrate", "marketplace"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={cn(
+              "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+              activeTab === tab
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </nav>
 
-      {/* Stats Cards */}
-      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard title="Skills" count={stats.skills.count} status={stats.skills.status} />
-        <StatsCard title="MCPs" count={stats.mcps.count} status={stats.mcps.status} />
-        <StatsCard title="Memory" count={stats.memory.count} status={stats.memory.status} />
-        <StatsCard title="Machines" count={stats.machines.count} status={stats.machines.status} />
-      </section>
+      {/* Tab Content */}
+      {activeTab === "graph" && (
+        <>
+          <section className="mb-8">
+            <GraphContainer onPluginClick={handlePluginClick} />
+          </section>
+          <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <StatsCard title="Skills" count={stats.skills.count} status={stats.skills.status} />
+            <StatsCard title="MCPs" count={stats.mcps.count} status={stats.mcps.status} />
+            <StatsCard title="Memory" count={stats.memory.count} status={stats.memory.status} />
+            <StatsCard title="Machines" count={stats.machines.count} status={stats.machines.status} />
+          </section>
+        </>
+      )}
+
+      {activeTab === "migrate" && <MigrateWizard />}
+
+      {activeTab === "marketplace" && <MarketplaceBrowser />}
+
+      <PluginDetailPanel
+        plugin={selectedPlugin}
+        onClose={() => setSelectedPlugin(null)}
+        onTogglePlugin={handleTogglePlugin}
+        onToggleSkill={handleTogglePluginSkill}
+      />
 
       {/* Footer hint */}
       <footer className="mt-8 text-center text-sm text-muted-foreground">
-        Click any node in the graph or card to manage
+        {activeTab === "graph" && "Click plugin nodes to manage skills"}
+        {activeTab === "migrate" && "Scan tools to discover skills, MCPs, and memory"}
+        {activeTab === "marketplace" && "Search and install skills from marketplace registries"}
       </footer>
     </div>
   );

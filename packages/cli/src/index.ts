@@ -16,6 +16,9 @@ import { enableCommand } from "./commands/enable.js";
 import { disableCommand } from "./commands/disable.js";
 import { teamsCommand } from "./commands/teams.js";
 import { presetCommand } from "./commands/preset.js";
+import { migrateCommand } from "./commands/migrate.js";
+import { marketplaceCommand } from "./commands/marketplace.js";
+import { serveCommand } from "./commands/serve.js";
 
 const program = new Command();
 
@@ -37,5 +40,8 @@ program.addCommand(enableCommand);
 program.addCommand(disableCommand);
 program.addCommand(teamsCommand);
 program.addCommand(presetCommand);
+program.addCommand(migrateCommand);
+program.addCommand(marketplaceCommand);
+program.addCommand(serveCommand);
 
 program.parse();
