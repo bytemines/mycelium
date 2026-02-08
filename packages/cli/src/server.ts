@@ -494,7 +494,7 @@ export function createServer(port = 3378): Express {
   return app;
 }
 
-export function startServer(port = 3378): Express {
+export function startServer(port = 3378) {
   const app = createServer(port);
 
   // Serve dashboard static files
@@ -514,8 +514,8 @@ export function startServer(port = 3378): Express {
     });
   });
 
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`Mycelium dashboard running on http://localhost:${port}`);
   });
-  return app;
+  return server;
 }

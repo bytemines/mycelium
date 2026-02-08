@@ -11,7 +11,7 @@ export const serveCommand = new Command("serve")
   .description("Start the dashboard API server")
   .option("-p, --port <port>", "Port number", "3378")
   .option("--no-build", "Skip rebuilding before starting")
-  .action(async (opts) => {
+  .action((opts) => {
     if (opts.build !== false) {
       const root = path.resolve(__dirname, "..", "..", "..", "..");
       try {
@@ -21,7 +21,8 @@ export const serveCommand = new Command("serve")
         console.warn("Build failed, starting server with existing code.");
       }
     }
-    startServer(parseInt(opts.port, 10));
-    // Keep process alive — server runs until killed
-    await new Promise(() => {});
+    const server = startServer(parseInt(opts.port, 10));
+    // Prevent Node from exiting
+    process.on("SIGINT", () => { server.close(); process.exit(0); });
+    process.on("SIGTERM", () => { server.close(); process.exit(0); });
   });
