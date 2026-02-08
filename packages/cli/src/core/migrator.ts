@@ -623,6 +623,32 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
     }
   }
 
+  // Auto-register discovered marketplaces from migrated skills
+  const discoveredMarketplaces = new Set<string>();
+  for (const skill of plan.skills) {
+    if (skill.marketplace) {
+      discoveredMarketplaces.add(skill.marketplace);
+    }
+  }
+  if (discoveredMarketplaces.size > 0) {
+    try {
+      const { loadMarketplaceRegistry, saveMarketplaceRegistry } = await import("./marketplace-registry.js");
+      const registry = await loadMarketplaceRegistry();
+      for (const mp of discoveredMarketplaces) {
+        if (!registry[mp]) {
+          registry[mp] = {
+            type: "claude-marketplace",
+            enabled: true,
+            discovered: true,
+          };
+        }
+      }
+      await saveMarketplaceRegistry(registry);
+    } catch {
+      // Non-fatal: marketplace registry update failed
+    }
+  }
+
   const manifest: MigrationManifest = {
     version: "1.0.0",
     lastMigration: now,

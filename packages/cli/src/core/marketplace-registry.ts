@@ -151,6 +151,12 @@ export async function loadMarketplaceRegistry(): Promise<
       url: "https://github.com/anthropics/skills",
       description: "Official Anthropic skills",
     },
+    [MS.CLAWHUB]: {
+      type: "remote",
+      enabled: true,
+      url: "https://clawhub.ai",
+      description: "ClawHub marketplace",
+    },
   };
 
   // Load saved config
