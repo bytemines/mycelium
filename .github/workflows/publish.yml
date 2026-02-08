@@ -10,6 +10,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    environment: deploy
     permissions:
       contents: write
       pull-requests: write
