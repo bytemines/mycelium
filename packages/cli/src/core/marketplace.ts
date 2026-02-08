@@ -8,7 +8,6 @@ import type {
 } from "@mycelium/core";
 import { MARKETPLACE_SOURCES as MS } from "@mycelium/core";
 import {
-  searchRegistry,
   getRegistryEntry,
   parseRegistryEntry,
 } from "./mcp-registry.js";
@@ -18,48 +17,62 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 const MYCELIUM_DIR = path.join(os.homedir(), ".mycelium", "global");
+const MCP_REGISTRY_URL = "https://registry.modelcontextprotocol.io";
 
-async function searchSkillsmp(
-  query: string
-): Promise<MarketplaceSearchResult> {
-  const res = await fetch(
-    `https://skillsmp.com/api/v1/skills/search?q=${encodeURIComponent(query)}`
-  );
-  if (!res.ok) throw new Error(`skillsmp search failed: ${res.statusText}`);
-  const data = (await res.json()) as {
-    skills: { name: string; description: string; author: string; downloads: number }[];
-  };
-  const entries: MarketplaceEntry[] = data.skills.map((s) => ({
-    name: s.name,
-    description: s.description,
-    author: s.author,
-    downloads: s.downloads,
-    source: MS.SKILLSMP,
-    type: "skill" as const,
-  }));
-  return { entries, total: entries.length, source: MS.SKILLSMP };
+// ============================================================================
+// Helper: fetch npm weekly downloads for a list of packages
+// ============================================================================
+
+async function fetchNpmDownloads(names: string[]): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  if (names.length === 0) return result;
+  const fetches = names.slice(0, 20).map(async (name) => {
+    try {
+      const res = await fetch(`https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(name)}`);
+      if (res.ok) {
+        const data = (await res.json()) as { downloads?: number };
+        if (data.downloads) result[name] = data.downloads;
+      }
+    } catch {
+      // Non-critical
+    }
+  });
+  await Promise.allSettled(fetches);
+  return result;
 }
+
+// ============================================================================
+// Source: OpenSkills (npm registry)
+// ============================================================================
 
 async function searchOpenSkills(
   query: string
 ): Promise<MarketplaceSearchResult> {
   const res = await fetch(
-    `https://registry.npmjs.org/-/v1/search?text=openskills+${encodeURIComponent(query)}&size=10`
+    `https://registry.npmjs.org/-/v1/search?text=openskills+${encodeURIComponent(query)}&size=12`
   );
   if (!res.ok) throw new Error(`openskills search failed: ${res.statusText}`);
   const data = (await res.json()) as {
     objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
   };
+  const names = data.objects.map(o => o.package.name);
+  const downloads = await fetchNpmDownloads(names);
   const entries: MarketplaceEntry[] = data.objects.map((o) => ({
     name: o.package.name,
     description: o.package.description || "",
     author: o.package.author?.name,
     version: o.package.version,
+    latestVersion: o.package.version,
+    downloads: downloads[o.package.name],
     source: MS.OPENSKILLS,
     type: "skill" as const,
   }));
   return { entries, total: entries.length, source: MS.OPENSKILLS };
 }
+
+// ============================================================================
+// Source: Claude Plugins (local installed_plugins.json v2)
+// ============================================================================
 
 async function searchClaudePlugins(
   query: string
@@ -74,69 +87,101 @@ async function searchClaudePlugins(
   return { entries, total: entries.length, source: MS.CLAUDE_PLUGINS };
 }
 
+// ============================================================================
+// Source: MCP Registry (official registry.modelcontextprotocol.io)
+// ============================================================================
+
+interface McpRegistryServer {
+  server: {
+    name: string;
+    description?: string;
+    version?: string;
+    repository?: { url?: string; source?: string };
+  };
+}
+
+async function fetchMcpServers(query: string): Promise<McpRegistryServer[]> {
+  const url = query
+    ? `${MCP_REGISTRY_URL}/v0.1/servers?q=${encodeURIComponent(query)}&limit=20`
+    : `${MCP_REGISTRY_URL}/v0.1/servers?limit=20`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`MCP Registry failed: ${res.statusText}`);
+  const data = (await res.json()) as { servers: McpRegistryServer[] };
+  return data.servers || [];
+}
+
+function mcpServerToEntry(s: McpRegistryServer): MarketplaceEntry {
+  const srv = s.server;
+  return {
+    name: srv.name,
+    description: srv.description || "",
+    version: srv.version,
+    latestVersion: srv.version,
+    source: MS.MCP_REGISTRY,
+    type: "mcp" as const,
+  };
+}
+
 async function searchMcpRegistry(
   query: string
 ): Promise<MarketplaceSearchResult> {
-  const results = await searchRegistry(query);
-  const entries: MarketplaceEntry[] = results.map((r) => ({
-    name: r.name,
-    description: r.description || "",
-    source: MS.MCP_REGISTRY,
-    type: "mcp" as const,
-  }));
+  const servers = await fetchMcpServers(query);
+  const entries = servers.map(mcpServerToEntry);
   return { entries, total: entries.length, source: MS.MCP_REGISTRY };
+}
+
+// ============================================================================
+// Source: Anthropic Skills (GitHub repo anthropics/skills)
+// ============================================================================
+
+async function fetchAnthropicSkillsList(): Promise<string[]> {
+  // Skills live under skills/ directory
+  const res = await fetch(
+    "https://api.github.com/repos/anthropics/skills/git/trees/main?recursive=1",
+    { headers: { Accept: "application/vnd.github.v3+json" } }
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as { tree: { path: string; type: string }[] };
+  const skills: string[] = [];
+  for (const t of data.tree) {
+    // Match: skills/{name}/SKILL.md
+    if (t.type === "blob" && t.path.endsWith("/SKILL.md") && t.path.startsWith("skills/")) {
+      const parts = t.path.split("/");
+      if (parts.length === 3) {
+        skills.push(parts[1]);
+      }
+    }
+  }
+  return skills;
 }
 
 async function searchAnthropicSkills(
   query: string
 ): Promise<MarketplaceSearchResult> {
-  // Search Anthropic's official skills repo via GitHub API
-  const res = await fetch(
-    `https://api.github.com/search/code?q=${encodeURIComponent(query)}+filename:SKILL.md+repo:anthropics/skills`,
-    { headers: { Accept: "application/vnd.github.v3+json" } }
-  );
-  if (!res.ok) {
-    // Fallback: list top-level directories as skills
-    const treeRes = await fetch(
-      "https://api.github.com/repos/anthropics/skills/git/trees/main",
-      { headers: { Accept: "application/vnd.github.v3+json" } }
-    );
-    if (!treeRes.ok) return { entries: [], total: 0, source: MS.ANTHROPIC_SKILLS };
-    const tree = (await treeRes.json()) as { tree: { path: string; type: string }[] };
-    const q = query.toLowerCase();
-    const dirs = tree.tree
-      .filter(t => t.type === "tree" && t.path.toLowerCase().includes(q))
-      .map(t => ({
-        name: t.path,
-        description: `Official Anthropic skill: ${t.path}`,
-        author: "anthropics",
-        source: MS.ANTHROPIC_SKILLS,
-        type: "skill" as const,
-      }));
-    return { entries: dirs, total: dirs.length, source: MS.ANTHROPIC_SKILLS };
-  }
-  const data = (await res.json()) as {
-    items: { path: string; repository: { full_name: string } }[];
-  };
-  const entries: MarketplaceEntry[] = data.items.map((item) => {
-    const skillDir = path.dirname(item.path);
-    const name = skillDir === "." ? path.basename(item.path, ".md") : skillDir.split("/").pop() || item.path;
-    return {
-      name,
-      description: `Official Anthropic skill from ${item.path}`,
-      author: "anthropics",
-      source: MS.ANTHROPIC_SKILLS,
-      type: "skill" as const,
-    };
-  });
-  // Deduplicate by name
-  const seen = new Set<string>();
-  const unique = entries.filter(e => {
-    if (seen.has(e.name)) return false;
-    seen.add(e.name);
-    return true;
-  });
-  return { entries: unique, total: unique.length, source: MS.ANTHROPIC_SKILLS };
+  const allSkills = await fetchAnthropicSkillsList();
+  const q = query.toLowerCase();
+  const filtered = q ? allSkills.filter(s => s.toLowerCase().includes(q)) : allSkills;
+  const entries: MarketplaceEntry[] = filtered.map(name => ({
+    name,
+    description: `Official Anthropic skill: ${name}`,
+    author: "anthropics",
+    source: MS.ANTHROPIC_SKILLS,
+    type: "skill" as const,
+  }));
+  return { entries, total: entries.length, source: MS.ANTHROPIC_SKILLS };
+}
+
+// ============================================================================
+// Source: ClawHub (clawhub.ai)
+// ============================================================================
+
+interface ClawHubResult {
+  slug: string;
+  displayName: string;
+  summary: string;
+  version?: string;
+  updatedAt?: number;
+  score?: number;
 }
 
 async function searchClawHub(
@@ -147,22 +192,34 @@ async function searchClawHub(
     { headers: { Accept: "application/json" } }
   );
   if (!res.ok) throw new Error(`ClawHub search failed: ${res.statusText}`);
-  const data = (await res.json()) as {
-    items: { name: string; description: string; author?: string; type?: string; downloads?: number; stars?: number; version?: string }[];
-  };
-  const entries: MarketplaceEntry[] = data.items.map((item) => ({
-    name: item.name,
-    description: item.description || "",
-    author: item.author,
-    downloads: item.downloads,
-    stars: item.stars,
+  const data = (await res.json()) as { results: ClawHubResult[] };
+  const entries: MarketplaceEntry[] = (data.results || []).map((item) => ({
+    name: item.slug,
+    description: item.summary || item.displayName || "",
     version: item.version,
     latestVersion: item.version,
+    updatedAt: item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : undefined,
     source: MS.CLAWHUB,
-    type: (item.type as MarketplaceEntry["type"]) || "skill",
+    type: "skill" as const,
   }));
   return { entries, total: entries.length, source: MS.CLAWHUB };
 }
+
+// ============================================================================
+// Source: SkillsMP (requires API key — disabled for now)
+// ============================================================================
+
+async function searchSkillsmp(
+  _query: string
+): Promise<MarketplaceSearchResult> {
+  // SkillsMP requires an API key (Authorization: Bearer sk_live_xxx)
+  // Until API key support is added, return empty results
+  return { entries: [], total: 0, source: MS.SKILLSMP };
+}
+
+// ============================================================================
+// Unified search
+// ============================================================================
 
 const KNOWN_SEARCHERS: Record<
   string,
@@ -194,8 +251,13 @@ export async function searchMarketplace(
   const results = await Promise.allSettled(searches);
   return results
     .filter((r): r is PromiseFulfilledResult<MarketplaceSearchResult> => r.status === "fulfilled")
-    .map((r) => r.value);
+    .map((r) => r.value)
+    .filter((r) => r.entries.length > 0);
 }
+
+// ============================================================================
+// Install
+// ============================================================================
 
 export async function installFromMarketplace(
   entry: MarketplaceEntry
@@ -203,16 +265,7 @@ export async function installFromMarketplace(
   try {
     switch (entry.source) {
       case MS.SKILLSMP: {
-        const res = await fetch(
-          `https://skillsmp.com/api/v1/skills/${encodeURIComponent(entry.name)}/download`
-        );
-        if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
-        const content = await res.text();
-        const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
-        await fs.mkdir(dir, { recursive: true });
-        const filePath = path.join(dir, "SKILL.md");
-        await fs.writeFile(filePath, content, "utf-8");
-        return { success: true, path: filePath };
+        return { success: false, error: "SkillsMP requires an API key. Configure it in settings." };
       }
       case MS.OPENSKILLS: {
         const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
@@ -243,8 +296,8 @@ export async function installFromMarketplace(
         return { success: true, path: mcpsPath };
       }
       case MS.ANTHROPIC_SKILLS: {
-        // Download SKILL.md from Anthropic's GitHub repo
-        const rawUrl = `https://raw.githubusercontent.com/anthropics/skills/main/${encodeURIComponent(entry.name)}/SKILL.md`;
+        // Skills are under skills/{name}/SKILL.md
+        const rawUrl = `https://raw.githubusercontent.com/anthropics/skills/main/skills/${encodeURIComponent(entry.name)}/SKILL.md`;
         const ghRes = await fetch(rawUrl);
         if (!ghRes.ok) throw new Error(`Download failed: ${ghRes.statusText}`);
         const content = await ghRes.text();
@@ -275,127 +328,133 @@ export async function installFromMarketplace(
   }
 }
 
+// ============================================================================
+// Popular / Browse
+// ============================================================================
+
 export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
   const results: MarketplaceSearchResult[] = [];
 
-  // SkillsMP popular
-  try {
-    const res = await fetch("https://skillsmp.com/api/v1/skills/search?q=&sort=downloads&limit=12");
-    if (res.ok) {
-      const data = (await res.json()) as {
-        skills: { name: string; description: string; author: string; downloads: number; stars?: number; category?: string; version?: string }[];
-      };
-      const entries: MarketplaceEntry[] = data.skills.map((s) => ({
-        name: s.name,
-        description: s.description,
-        author: s.author,
-        downloads: s.downloads,
-        stars: s.stars,
-        category: s.category,
-        version: s.version,
-        latestVersion: s.version,
-        source: MS.SKILLSMP,
-        type: "skill" as const,
-      }));
-      results.push({ entries, total: entries.length, source: MS.SKILLSMP });
-    }
-  } catch (e) { console.warn("SkillsMP popular fetch failed:", e); }
-
-  // Anthropic skills (list all from repo tree)
-  try {
-    const treeRes = await fetch(
-      "https://api.github.com/repos/anthropics/skills/git/trees/main",
-      { headers: { Accept: "application/vnd.github.v3+json" } }
-    );
-    if (treeRes.ok) {
-      const tree = (await treeRes.json()) as { tree: { path: string; type: string }[] };
-      const entries: MarketplaceEntry[] = tree.tree
-        .filter((t) => t.type === "tree" && !t.path.startsWith("."))
-        .slice(0, 12)
-        .map((t) => ({
-          name: t.path,
-          description: `Official Anthropic skill: ${t.path}`,
-          author: "anthropics",
-          source: MS.ANTHROPIC_SKILLS,
+  const fetchers: Array<{ name: string; fn: () => Promise<void> }> = [
+    // Anthropic skills
+    {
+      name: "anthropic-skills",
+      fn: async () => {
+        const skills = await fetchAnthropicSkillsList();
+        if (skills.length > 0) {
+          const entries: MarketplaceEntry[] = skills.slice(0, 12).map(name => ({
+            name,
+            description: `Official Anthropic skill: ${name}`,
+            author: "anthropics",
+            source: MS.ANTHROPIC_SKILLS,
+            type: "skill" as const,
+          }));
+          results.push({ entries, total: entries.length, source: MS.ANTHROPIC_SKILLS });
+        }
+      },
+    },
+    // Claude plugins (local)
+    {
+      name: "claude-plugins",
+      fn: async () => {
+        const plugins = await listInstalledPlugins();
+        if (plugins.length > 0) {
+          results.push({ entries: plugins.slice(0, 12), total: plugins.length, source: MS.CLAUDE_PLUGINS });
+        }
+      },
+    },
+    // MCP Registry
+    {
+      name: "mcp-registry",
+      fn: async () => {
+        const servers = await fetchMcpServers("");
+        if (servers.length > 0) {
+          const entries = servers.slice(0, 12).map(mcpServerToEntry);
+          results.push({ entries, total: entries.length, source: MS.MCP_REGISTRY });
+        }
+      },
+    },
+    // OpenSkills (npm)
+    {
+      name: "openskills",
+      fn: async () => {
+        const res = await fetch("https://registry.npmjs.org/-/v1/search?text=openskills&size=12");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
+        };
+        const names = data.objects.map(o => o.package.name);
+        const downloads = await fetchNpmDownloads(names);
+        const entries: MarketplaceEntry[] = data.objects.map((o) => ({
+          name: o.package.name,
+          description: o.package.description || "",
+          author: o.package.author?.name,
+          version: o.package.version,
+          latestVersion: o.package.version,
+          downloads: downloads[o.package.name],
+          source: MS.OPENSKILLS,
           type: "skill" as const,
         }));
-      results.push({ entries, total: entries.length, source: MS.ANTHROPIC_SKILLS });
-    }
-  } catch (e) { console.warn("Anthropic skills fetch failed:", e); }
+        results.push({ entries, total: entries.length, source: MS.OPENSKILLS });
+      },
+    },
+    // ClawHub (requires search terms — aggregate broad queries for popular view)
+    {
+      name: "clawhub",
+      fn: async () => {
+        const queries = ["code", "git", "test", "debug"];
+        const allItems: ClawHubResult[] = [];
+        const seen = new Set<string>();
+        for (const q of queries) {
+          try {
+            const res = await fetch(`https://clawhub.ai/api/v1/search?q=${q}&limit=6`,
+              { headers: { Accept: "application/json" } });
+            if (!res.ok) continue;
+            const data = (await res.json()) as { results: ClawHubResult[] };
+            for (const item of data.results || []) {
+              if (!seen.has(item.slug)) {
+                seen.add(item.slug);
+                allItems.push(item);
+              }
+            }
+          } catch { /* skip */ }
+          if (allItems.length >= 12) break;
+        }
+        if (allItems.length > 0) {
+          const entries: MarketplaceEntry[] = allItems.slice(0, 12).map((item) => ({
+            name: item.slug,
+            description: item.summary || item.displayName || "",
+            version: item.version,
+            latestVersion: item.version,
+            updatedAt: item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : undefined,
+            source: MS.CLAWHUB,
+            type: "skill" as const,
+          }));
+          results.push({ entries, total: entries.length, source: MS.CLAWHUB });
+        }
+      },
+    },
+  ];
 
-  // Claude plugins (local installed)
-  try {
-    const plugins = await listInstalledPlugins();
-    if (plugins.length > 0) {
-      results.push({ entries: plugins.slice(0, 6), total: plugins.length, source: MS.CLAUDE_PLUGINS });
+  // Run all in parallel, swallow individual failures
+  const settled = await Promise.allSettled(fetchers.map(f => f.fn()));
+  for (let i = 0; i < settled.length; i++) {
+    if (settled[i].status === "rejected") {
+      console.warn(`${fetchers[i].name} popular fetch failed:`, (settled[i] as PromiseRejectedResult).reason);
     }
-  } catch (e) { console.warn("Claude plugins list failed:", e); }
-
-  // MCP Registry popular
-  try {
-    const mcpResults = await searchRegistry("");
-    if (mcpResults.length > 0) {
-      const entries: MarketplaceEntry[] = mcpResults.slice(0, 12).map((r) => ({
-        name: r.name,
-        description: r.description || "",
-        source: MS.MCP_REGISTRY,
-        type: "mcp" as const,
-      }));
-      results.push({ entries, total: entries.length, source: MS.MCP_REGISTRY });
-    }
-  } catch (e) { console.warn("MCP Registry popular fetch failed:", e); }
-
-  // OpenSkills popular (npm)
-  try {
-    const res = await fetch("https://registry.npmjs.org/-/v1/search?text=openskills&size=12");
-    if (res.ok) {
-      const data = (await res.json()) as {
-        objects: { package: { name: string; description: string; author?: { name: string }; version: string }; score?: { detail?: { popularity?: number } } }[];
-      };
-      const entries: MarketplaceEntry[] = data.objects.map((o) => ({
-        name: o.package.name,
-        description: o.package.description || "",
-        author: o.package.author?.name,
-        version: o.package.version,
-        latestVersion: o.package.version,
-        source: MS.OPENSKILLS,
-        type: "skill" as const,
-      }));
-      results.push({ entries, total: entries.length, source: MS.OPENSKILLS });
-    }
-  } catch (e) { console.warn("OpenSkills popular fetch failed:", e); }
-
-  // ClawHub popular
-  try {
-    const res = await fetch("https://clawhub.ai/api/v1/search?q=&sort=popular&limit=12",
-      { headers: { Accept: "application/json" } });
-    if (res.ok) {
-      const data = (await res.json()) as {
-        items: { name: string; description: string; author?: string; type?: string; downloads?: number; stars?: number; version?: string }[];
-      };
-      const entries: MarketplaceEntry[] = data.items.map((item) => ({
-        name: item.name,
-        description: item.description || "",
-        author: item.author,
-        downloads: item.downloads,
-        stars: item.stars,
-        version: item.version,
-        latestVersion: item.version,
-        source: MS.CLAWHUB,
-        type: (item.type as MarketplaceEntry["type"]) || "skill",
-      }));
-      results.push({ entries, total: entries.length, source: MS.CLAWHUB });
-    }
-  } catch (e) { console.warn("ClawHub popular fetch failed:", e); }
+  }
 
   return results;
 }
+
+// ============================================================================
+// Update
+// ============================================================================
 
 export async function updateSkill(
   name: string,
   source: MarketplaceSource
 ): Promise<{ success: boolean; path?: string; error?: string }> {
-  // Re-download skill to get latest version (same as install, overwrites existing)
   const entry: MarketplaceEntry = {
     name,
     description: "",
@@ -404,6 +463,10 @@ export async function updateSkill(
   };
   return installFromMarketplace(entry);
 }
+
+// ============================================================================
+// Claude Plugins reader (v2 format)
+// ============================================================================
 
 export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
   try {
@@ -414,20 +477,56 @@ export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
       "installed_plugins.json"
     );
     const raw = await fs.readFile(filePath, "utf-8");
-    const plugins = JSON.parse(raw) as {
-      name: string;
-      description?: string;
-      version?: string;
-      author?: string;
-    }[];
-    return plugins.map((p) => ({
-      name: p.name,
-      description: p.description || "",
-      version: p.version,
-      author: p.author,
-      source: MS.CLAUDE_PLUGINS,
-      type: "skill" as const,
-    }));
+    const data = JSON.parse(raw) as {
+      version?: number;
+      plugins?: Record<string, Array<{
+        scope: string;
+        installPath: string;
+        version: string;
+        installedAt?: string;
+        lastUpdated?: string;
+      }>>;
+      // v1 fallback: array
+    } | Array<{ name: string; description?: string; version?: string; author?: string }>;
+
+    // v2 format: { version: 2, plugins: { "name@marketplace": [...] } }
+    if (!Array.isArray(data) && data.version === 2 && data.plugins) {
+      const entries: MarketplaceEntry[] = [];
+      for (const [key, installs] of Object.entries(data.plugins)) {
+        const atIdx = key.indexOf("@");
+        const pluginName = atIdx > 0 ? key.slice(0, atIdx) : key;
+        const marketplace = atIdx > 0 ? key.slice(atIdx + 1) : undefined;
+        const latest = installs[installs.length - 1];
+        if (!latest) continue;
+        entries.push({
+          name: pluginName,
+          description: marketplace ? `From ${marketplace}` : "",
+          version: latest.version,
+          latestVersion: latest.version,
+          installedVersion: latest.version,
+          installed: true,
+          updatedAt: latest.lastUpdated ? new Date(latest.lastUpdated).toISOString().slice(0, 10) : undefined,
+          source: MS.CLAUDE_PLUGINS,
+          type: "plugin" as const,
+        });
+      }
+      return entries;
+    }
+
+    // v1 fallback: plain array
+    if (Array.isArray(data)) {
+      return data.map((p) => ({
+        name: p.name,
+        description: p.description || "",
+        version: p.version,
+        author: p.author,
+        installed: true,
+        source: MS.CLAUDE_PLUGINS,
+        type: "plugin" as const,
+      }));
+    }
+
+    return [];
   } catch (e) {
     console.warn("Failed to read installed plugins:", e);
     return [];
