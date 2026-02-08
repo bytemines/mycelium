@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/conradomateunavarro/mycelium/actions"><img src="https://img.shields.io/github/actions/workflow/status/conradomateunavarro/mycelium/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
+  <a href="https://github.com/bytemines/mycelium/actions"><img src="https://img.shields.io/github/actions/workflow/status/bytemines/mycelium/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@mycelium/cli"><img src="https://img.shields.io/npm/v/@mycelium/cli?color=cb3837&logo=npm" alt="npm" /></a>
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white" alt="pnpm" />

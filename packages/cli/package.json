@@ -27,7 +27,7 @@
   "files": ["dist", "README.md"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/conradomateunavarro/mycelium"
+    "url": "https://github.com/bytemines/mycelium"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
