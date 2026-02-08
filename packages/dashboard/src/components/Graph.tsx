@@ -195,7 +195,7 @@ export function Graph({ data, mode = "dashboard", onNodeClick, onToggle, onPlugi
         minZoom={0.3}
         maxZoom={2}
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-        proOptions={{ hideAttribution: true }}
+
       >
         <Panel position="top-right" className="flex gap-2">
           <button

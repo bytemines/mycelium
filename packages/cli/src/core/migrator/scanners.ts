@@ -93,7 +93,7 @@ export async function scanClaudeCode(): Promise<ToolScanResult> {
         const parsed = JSON.parse(content);
         const servers = parsed.mcpServers || parsed.mcps || {};
         for (const [name, config] of Object.entries(servers)) {
-          const cfg = config as Record<string, any>;
+          const cfg = config as { command?: string; args?: string[]; env?: Record<string, string> };
           result.mcps.push({
             name,
             config: {

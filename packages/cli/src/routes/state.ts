@@ -36,6 +36,7 @@ export function registerStateRoutes(app: Express): void {
   // GET /api/state
   stateRouter.get("/", asyncHandler(async (_req, res) => {
     const detectedTools = await detectInstalledTools();
+    const installedToolIds = detectedTools.filter((t) => t.installed).map((t) => t.id as ToolId);
     const tools = detectedTools.map((t) => ({
       id: t.id,
       name: t.name,
@@ -51,7 +52,7 @@ export function registerStateRoutes(app: Express): void {
         name,
         status: "synced" as const,
         enabled: true,
-        connectedTools: ["claude-code" as ToolId],
+        connectedTools: installedToolIds,
       }));
     } catch {
       // directory doesn't exist yet
@@ -70,7 +71,7 @@ export function registerStateRoutes(app: Express): void {
             name,
             status: enabled ? "synced" as const : "disabled" as const,
             enabled,
-            connectedTools: ["claude-code" as ToolId],
+            connectedTools: installedToolIds,
           };
         });
       }
@@ -135,11 +136,21 @@ export function registerStateRoutes(app: Express): void {
   // POST /api/toggle
   toggleRouter.post("/", asyncHandler(async (req, res) => {
     const { type, name, toolId, enabled } = req.body as {
-      type: "mcp" | "skill" | "memory";
+      type: string;
       name: string;
-      toolId?: ToolId;
-      enabled: boolean;
+      toolId?: string;
+      enabled: unknown;
     };
+
+    if (!type || !name || typeof enabled !== "boolean") {
+      res.status(400).json({ error: "Missing required fields: type, name, enabled (boolean)" });
+      return;
+    }
+
+    if (!["mcp", "skill", "memory"].includes(type)) {
+      res.status(400).json({ error: `Invalid type: ${type}. Must be mcp, skill, or memory` });
+      return;
+    }
 
     if (type !== "mcp") {
       res.json({ success: true, action: req.body, message: "Only MCP toggles are supported" });

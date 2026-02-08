@@ -1,16 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const mockLoadRegistry = vi.fn();
+const mockAddMarketplace = vi.fn();
+const mockRemoveMarketplace = vi.fn();
+const mockListPlugins = vi.fn();
+const mockTogglePlugin = vi.fn();
+
 vi.mock("../core/marketplace-registry.js", () => ({
-  loadMarketplaceRegistry: vi.fn(),
-  addMarketplace: vi.fn(),
-  removeMarketplace: vi.fn(),
-  listPlugins: vi.fn(),
-  togglePlugin: vi.fn(),
+  loadMarketplaceRegistry: mockLoadRegistry,
+  addMarketplace: mockAddMarketplace,
+  removeMarketplace: mockRemoveMarketplace,
+  listPlugins: mockListPlugins,
+  togglePlugin: mockTogglePlugin,
 }));
 
 describe("marketplaceCommand", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.resetModules();
+    mockLoadRegistry.mockResolvedValue({});
+    mockListPlugins.mockResolvedValue([]);
   });
 
   it("exports a Command named 'marketplace'", async () => {
@@ -29,19 +38,65 @@ describe("marketplaceCommand", () => {
     expect(names).toContain("disable");
   });
 
-  it("add subcommand has --url and --type options", async () => {
+  it("list calls loadMarketplaceRegistry", async () => {
+    mockLoadRegistry.mockResolvedValue({
+      "test-mp": { type: "remote", enabled: true, url: "https://example.com" },
+    });
     const { marketplaceCommand } = await import("./marketplace.js");
-    const addCmd = marketplaceCommand.commands.find((c) => c.name() === "add");
-    const urlOpt = addCmd?.options.find((o) => o.long === "--url");
-    const typeOpt = addCmd?.options.find((o) => o.long === "--type");
-    expect(urlOpt).toBeDefined();
-    expect(typeOpt).toBeDefined();
+    await marketplaceCommand.parseAsync(["list"], { from: "user" });
+
+    expect(mockLoadRegistry).toHaveBeenCalled();
   });
 
-  it("plugins subcommand has --marketplace option", async () => {
+  it("add calls addMarketplace with name and config", async () => {
     const { marketplaceCommand } = await import("./marketplace.js");
-    const pluginsCmd = marketplaceCommand.commands.find((c) => c.name() === "plugins");
-    const opt = pluginsCmd?.options.find((o) => o.long === "--marketplace");
-    expect(opt).toBeDefined();
+    await marketplaceCommand.parseAsync(
+      ["add", "my-mp", "--url", "https://example.com"],
+      { from: "user" },
+    );
+
+    expect(mockAddMarketplace).toHaveBeenCalledWith("my-mp", {
+      type: "remote",
+      enabled: true,
+      url: "https://example.com",
+    });
+  });
+
+  it("remove calls removeMarketplace with name", async () => {
+    const { marketplaceCommand } = await import("./marketplace.js");
+    await marketplaceCommand.parseAsync(["remove", "old-mp"], { from: "user" });
+
+    expect(mockRemoveMarketplace).toHaveBeenCalledWith("old-mp");
+  });
+
+  it("plugins calls listPlugins", async () => {
+    const { marketplaceCommand } = await import("./marketplace.js");
+    await marketplaceCommand.parseAsync(["plugins"], { from: "user" });
+
+    expect(mockListPlugins).toHaveBeenCalledWith(undefined);
+  });
+
+  it("plugins --marketplace filters by marketplace", async () => {
+    const { marketplaceCommand } = await import("./marketplace.js");
+    await marketplaceCommand.parseAsync(
+      ["plugins", "--marketplace", "my-mp"],
+      { from: "user" },
+    );
+
+    expect(mockListPlugins).toHaveBeenCalledWith("my-mp");
+  });
+
+  it("enable calls togglePlugin with true", async () => {
+    const { marketplaceCommand } = await import("./marketplace.js");
+    await marketplaceCommand.parseAsync(["enable", "my-plugin"], { from: "user" });
+
+    expect(mockTogglePlugin).toHaveBeenCalledWith("my-plugin", true);
+  });
+
+  it("disable calls togglePlugin with false", async () => {
+    const { marketplaceCommand } = await import("./marketplace.js");
+    await marketplaceCommand.parseAsync(["disable", "my-plugin"], { from: "user" });
+
+    expect(mockTogglePlugin).toHaveBeenCalledWith("my-plugin", false);
   });
 });

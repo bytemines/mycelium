@@ -1,24 +1,55 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const mockScanAllTools = vi.fn();
+const mockScanTool = vi.fn();
+const mockGenerateMigrationPlan = vi.fn();
+const mockExecuteMigration = vi.fn();
+const mockClearMigration = vi.fn();
+const mockWriteHooksYaml = vi.fn();
+const mockCreateSnapshot = vi.fn();
+const mockRestoreSnapshot = vi.fn();
+const mockListSnapshots = vi.fn();
+const mockDeleteSnapshot = vi.fn();
+
 vi.mock("../core/migrator/index.js", () => ({
-  scanAllTools: vi.fn(),
-  scanTool: vi.fn(),
-  generateMigrationPlan: vi.fn(),
-  executeMigration: vi.fn(),
-  clearMigration: vi.fn(),
-  writeHooksYaml: vi.fn(),
+  scanAllTools: mockScanAllTools,
+  scanTool: mockScanTool,
+  generateMigrationPlan: mockGenerateMigrationPlan,
+  executeMigration: mockExecuteMigration,
+  clearMigration: mockClearMigration,
+  writeHooksYaml: mockWriteHooksYaml,
 }));
 
 vi.mock("../core/snapshot.js", () => ({
-  createSnapshot: vi.fn(),
-  restoreSnapshot: vi.fn(),
-  listSnapshots: vi.fn(),
-  deleteSnapshot: vi.fn(),
+  createSnapshot: mockCreateSnapshot,
+  restoreSnapshot: mockRestoreSnapshot,
+  listSnapshots: mockListSnapshots,
+  deleteSnapshot: mockDeleteSnapshot,
 }));
+
+const emptyScan = {
+  toolName: "claude-code",
+  installed: true,
+  skills: [],
+  mcps: [],
+  memory: [],
+  hooks: [],
+};
+
+const emptyPlan = {
+  skills: [],
+  mcps: [],
+  memory: [],
+  conflicts: [],
+};
 
 describe("migrateCommand", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.resetModules();
+    mockScanAllTools.mockResolvedValue([emptyScan]);
+    mockGenerateMigrationPlan.mockReturnValue(emptyPlan);
+    mockExecuteMigration.mockResolvedValue({ skillsImported: 0, mcpsImported: 0, memoryImported: 0, errors: [] });
   });
 
   it("exports a Command named 'migrate'", async () => {
@@ -26,48 +57,77 @@ describe("migrateCommand", () => {
     expect(migrateCommand.name()).toBe("migrate");
   });
 
-  it("has --apply option", async () => {
+  it("dry-run scans all tools and generates plan without executing", async () => {
     const { migrateCommand } = await import("./migrate.js");
-    const opt = migrateCommand.options.find((o) => o.long === "--apply");
-    expect(opt).toBeDefined();
+    await migrateCommand.parseAsync([], { from: "user" });
+
+    expect(mockScanAllTools).toHaveBeenCalled();
+    expect(mockGenerateMigrationPlan).toHaveBeenCalled();
+    expect(mockExecuteMigration).not.toHaveBeenCalled();
   });
 
-  it("has --tool option", async () => {
+  it("--apply triggers executeMigration", async () => {
     const { migrateCommand } = await import("./migrate.js");
-    const opt = migrateCommand.options.find((o) => o.long === "--tool");
-    expect(opt).toBeDefined();
+    await migrateCommand.parseAsync(["--apply"], { from: "user" });
+
+    expect(mockScanAllTools).toHaveBeenCalled();
+    expect(mockExecuteMigration).toHaveBeenCalledWith(emptyPlan);
   });
 
-  it("has --skills-only and --mcps-only options", async () => {
+  it("--tool scans only that tool", async () => {
+    mockScanTool.mockResolvedValue(emptyScan);
     const { migrateCommand } = await import("./migrate.js");
-    const skillsOpt = migrateCommand.options.find((o) => o.long === "--skills-only");
-    const mcpsOpt = migrateCommand.options.find((o) => o.long === "--mcps-only");
-    expect(skillsOpt).toBeDefined();
-    expect(mcpsOpt).toBeDefined();
+    await migrateCommand.parseAsync(["--tool", "codex"], { from: "user" });
+
+    expect(mockScanTool).toHaveBeenCalledWith("codex");
+    expect(mockScanAllTools).not.toHaveBeenCalled();
   });
 
-  it("has --clear option", async () => {
+  it("--clear --apply triggers clearMigration", async () => {
+    mockClearMigration.mockResolvedValue({ cleared: [], errors: [] });
     const { migrateCommand } = await import("./migrate.js");
-    const opt = migrateCommand.options.find((o) => o.long === "--clear");
-    expect(opt).toBeDefined();
+    await migrateCommand.parseAsync(["--clear", "--apply"], { from: "user" });
+
+    expect(mockClearMigration).toHaveBeenCalledWith(undefined);
+    expect(mockScanAllTools).not.toHaveBeenCalled();
   });
 
-  it("has --strategy option with default 'latest'", async () => {
+  it("--snapshot creates a snapshot", async () => {
+    mockCreateSnapshot.mockResolvedValue({ name: "v1", fileList: ["a"], skillSymlinks: {} });
     const { migrateCommand } = await import("./migrate.js");
-    const opt = migrateCommand.options.find((o) => o.long === "--strategy");
-    expect(opt).toBeDefined();
-    expect(opt!.defaultValue).toBe("latest");
+    await migrateCommand.parseAsync(["--snapshot", "v1"], { from: "user" });
+
+    expect(mockCreateSnapshot).toHaveBeenCalledWith("v1");
   });
 
-  it("has snapshot-related options", async () => {
+  it("--restore restores a snapshot", async () => {
     const { migrateCommand } = await import("./migrate.js");
-    const snapshot = migrateCommand.options.find((o) => o.long === "--snapshot");
-    const restore = migrateCommand.options.find((o) => o.long === "--restore");
-    const snapshots = migrateCommand.options.find((o) => o.long === "--snapshots");
-    const del = migrateCommand.options.find((o) => o.long === "--snapshot-delete");
-    expect(snapshot).toBeDefined();
-    expect(restore).toBeDefined();
-    expect(snapshots).toBeDefined();
-    expect(del).toBeDefined();
+    await migrateCommand.parseAsync(["--restore", "v1"], { from: "user" });
+
+    expect(mockRestoreSnapshot).toHaveBeenCalledWith("v1");
+  });
+
+  it("--snapshots lists snapshots", async () => {
+    mockListSnapshots.mockResolvedValue([]);
+    const { migrateCommand } = await import("./migrate.js");
+    await migrateCommand.parseAsync(["--snapshots"], { from: "user" });
+
+    expect(mockListSnapshots).toHaveBeenCalled();
+  });
+
+  it("--snapshot-delete deletes a snapshot", async () => {
+    const { migrateCommand } = await import("./migrate.js");
+    await migrateCommand.parseAsync(["--snapshot-delete", "old"], { from: "user" });
+
+    expect(mockDeleteSnapshot).toHaveBeenCalledWith("old");
+  });
+
+  it("--apply writes hooks when scans contain hooks", async () => {
+    const scanWithHooks = { ...emptyScan, hooks: [{ event: "pre-commit", command: "lint" }] };
+    mockScanAllTools.mockResolvedValue([scanWithHooks]);
+    const { migrateCommand } = await import("./migrate.js");
+    await migrateCommand.parseAsync(["--apply"], { from: "user" });
+
+    expect(mockWriteHooksYaml).toHaveBeenCalledWith([{ event: "pre-commit", command: "lint" }]);
   });
 });
