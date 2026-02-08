@@ -1,6 +1,6 @@
 {
   "name": "@mycelium/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core types and utilities for Mycelium",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,7 +32,10 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run build"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "devDependencies": {
     "@types/node": "^22.10.5",
     "typescript": "^5.7.2",
