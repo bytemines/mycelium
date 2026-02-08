@@ -70,7 +70,8 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
 
   async function handleAddMarketplace() {
     if (!newMpName.trim()) return;
-    const config: MarketplaceConfig = { type: "remote", enabled: true, url: newMpUrl || undefined };
+    if (!newMpUrl.trim()) return;
+    const config: MarketplaceConfig = { type: "remote", enabled: true, url: newMpUrl };
     await addMarketplaceToRegistry(newMpName, config);
     setRegistry(prev => ({ ...prev, [newMpName]: config }));
     setMarketplaces(prev => [...prev, { value: newMpName, label: newMpName }]);
@@ -176,7 +177,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
                 type="text"
                 value={newMpUrl}
                 onChange={(e) => setNewMpUrl(e.target.value)}
-                placeholder="URL (optional)"
+                placeholder="URL (required)"
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <div className="flex justify-end gap-2">
@@ -188,7 +189,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
                 </button>
                 <button
                   onClick={handleAddMarketplace}
-                  disabled={!newMpName.trim()}
+                  disabled={!newMpName.trim() || !newMpUrl.trim()}
                   className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   Add
