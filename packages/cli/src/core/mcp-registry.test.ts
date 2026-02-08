@@ -30,19 +30,25 @@ describe("mcp-registry", () => {
     expect(config.env).toEqual({ DATABASE_URL: "postgres://localhost" });
   });
 
-  it("searchRegistry returns results matching query", async () => {
-    const mockResults = [
-      { name: "git-mcp", description: "Git operations" },
-      { name: "github-mcp", description: "GitHub API" },
-    ];
+  it("searchRegistry returns results from v0.1 API", async () => {
+    const mockResponse = {
+      servers: [
+        { server: { name: "git-mcp", description: "Git operations", version: "1.0.0", packages: [{ registryType: "npm", command: "npx", args: ["-y", "git-mcp"] }] } },
+        { server: { name: "github-mcp", description: "GitHub API", version: "2.0.0" } },
+      ],
+    };
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve(mockResults),
+      json: () => Promise.resolve(mockResponse),
     });
 
     const results = await searchRegistry("git");
-    expect(results.length).toBeGreaterThan(0);
-    expect(results[0].name).toContain("git");
+    expect(results).toHaveLength(2);
+    expect(results[0].name).toBe("git-mcp");
+    expect(results[0].command).toBe("npx");
+    expect(results[0].args).toEqual(["-y", "git-mcp"]);
+    expect(results[0].version).toBe("1.0.0");
+    expect(results[1].command).toBe("npx"); // fallback
   });
 
   it("searchRegistry throws on failed response", async () => {
@@ -55,15 +61,20 @@ describe("mcp-registry", () => {
   });
 
   it("getRegistryEntry returns entry for valid name", async () => {
-    const mockEntry = { name: "git-mcp", command: "npx", args: ["-y", "git-mcp"] };
+    const mockResponse = {
+      servers: [
+        { server: { name: "git-mcp", description: "Git ops", packages: [{ registryType: "npm", command: "npx", args: ["-y", "git-mcp"] }] } },
+      ],
+    };
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve(mockEntry),
+      json: () => Promise.resolve(mockResponse),
     });
 
     const entry = await getRegistryEntry("git-mcp");
     expect(entry).not.toBeNull();
     expect(entry!.name).toBe("git-mcp");
+    expect(entry!.command).toBe("npx");
   });
 
   it("getRegistryEntry returns null for missing entry", async () => {
