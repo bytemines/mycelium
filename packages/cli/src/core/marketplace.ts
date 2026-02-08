@@ -6,6 +6,7 @@ import type {
   MarketplaceSearchResult,
   MarketplaceSource,
 } from "@mycelium/core";
+import { MARKETPLACE_SOURCES as MS } from "@mycelium/core";
 import {
   searchRegistry,
   getRegistryEntry,
@@ -33,10 +34,10 @@ async function searchSkillsmp(
     description: s.description,
     author: s.author,
     downloads: s.downloads,
-    source: "skillsmp",
+    source: MS.SKILLSMP,
     type: "skill" as const,
   }));
-  return { entries, total: entries.length, source: "skillsmp" };
+  return { entries, total: entries.length, source: MS.SKILLSMP };
 }
 
 async function searchOpenSkills(
@@ -54,10 +55,10 @@ async function searchOpenSkills(
     description: o.package.description || "",
     author: o.package.author?.name,
     version: o.package.version,
-    source: "openskills",
+    source: MS.OPENSKILLS,
     type: "skill" as const,
   }));
-  return { entries, total: entries.length, source: "openskills" };
+  return { entries, total: entries.length, source: MS.OPENSKILLS };
 }
 
 async function searchClaudePlugins(
@@ -70,7 +71,7 @@ async function searchClaudePlugins(
       p.name.toLowerCase().includes(q) ||
       p.description.toLowerCase().includes(q)
   );
-  return { entries, total: entries.length, source: "claude-plugins" };
+  return { entries, total: entries.length, source: MS.CLAUDE_PLUGINS };
 }
 
 async function searchMcpRegistry(
@@ -80,10 +81,10 @@ async function searchMcpRegistry(
   const entries: MarketplaceEntry[] = results.map((r) => ({
     name: r.name,
     description: r.description || "",
-    source: "mcp-registry",
+    source: MS.MCP_REGISTRY,
     type: "mcp" as const,
   }));
-  return { entries, total: entries.length, source: "mcp-registry" };
+  return { entries, total: entries.length, source: MS.MCP_REGISTRY };
 }
 
 async function searchAnthropicSkills(
@@ -100,7 +101,7 @@ async function searchAnthropicSkills(
       "https://api.github.com/repos/anthropics/skills/git/trees/main",
       { headers: { Accept: "application/vnd.github.v3+json" } }
     );
-    if (!treeRes.ok) return { entries: [], total: 0, source: "anthropic-skills" };
+    if (!treeRes.ok) return { entries: [], total: 0, source: MS.ANTHROPIC_SKILLS };
     const tree = (await treeRes.json()) as { tree: { path: string; type: string }[] };
     const q = query.toLowerCase();
     const dirs = tree.tree
@@ -109,10 +110,10 @@ async function searchAnthropicSkills(
         name: t.path,
         description: `Official Anthropic skill: ${t.path}`,
         author: "anthropics",
-        source: "anthropic-skills" as const,
+        source: MS.ANTHROPIC_SKILLS,
         type: "skill" as const,
       }));
-    return { entries: dirs, total: dirs.length, source: "anthropic-skills" };
+    return { entries: dirs, total: dirs.length, source: MS.ANTHROPIC_SKILLS };
   }
   const data = (await res.json()) as {
     items: { path: string; repository: { full_name: string } }[];
@@ -124,7 +125,7 @@ async function searchAnthropicSkills(
       name,
       description: `Official Anthropic skill from ${item.path}`,
       author: "anthropics",
-      source: "anthropic-skills",
+      source: MS.ANTHROPIC_SKILLS,
       type: "skill" as const,
     };
   });
@@ -135,18 +136,18 @@ async function searchAnthropicSkills(
     seen.add(e.name);
     return true;
   });
-  return { entries: unique, total: unique.length, source: "anthropic-skills" };
+  return { entries: unique, total: unique.length, source: MS.ANTHROPIC_SKILLS };
 }
 
 const KNOWN_SEARCHERS: Record<
   string,
   (q: string) => Promise<MarketplaceSearchResult>
 > = {
-  skillsmp: searchSkillsmp,
-  openskills: searchOpenSkills,
-  "claude-plugins": searchClaudePlugins,
-  "mcp-registry": searchMcpRegistry,
-  "anthropic-skills": searchAnthropicSkills,
+  [MS.SKILLSMP]: searchSkillsmp,
+  [MS.OPENSKILLS]: searchOpenSkills,
+  [MS.CLAUDE_PLUGINS]: searchClaudePlugins,
+  [MS.MCP_REGISTRY]: searchMcpRegistry,
+  [MS.ANTHROPIC_SKILLS]: searchAnthropicSkills,
 };
 
 export async function searchMarketplace(
@@ -175,7 +176,7 @@ export async function installFromMarketplace(
 ): Promise<{ success: boolean; path?: string; error?: string }> {
   try {
     switch (entry.source) {
-      case "skillsmp": {
+      case MS.SKILLSMP: {
         const res = await fetch(
           `https://skillsmp.com/api/v1/skills/${encodeURIComponent(entry.name)}/download`
         );
@@ -187,7 +188,7 @@ export async function installFromMarketplace(
         await fs.writeFile(filePath, content, "utf-8");
         return { success: true, path: filePath };
       }
-      case "openskills": {
+      case MS.OPENSKILLS: {
         const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
         await fs.mkdir(dir, { recursive: true });
         const filePath = path.join(dir, "SKILL.md");
@@ -198,7 +199,7 @@ export async function installFromMarketplace(
         );
         return { success: true, path: filePath };
       }
-      case "claude-plugins": {
+      case MS.CLAUDE_PLUGINS: {
         const cacheDir = path.join(os.homedir(), ".claude", "plugins", "cache");
         const src = path.join(cacheDir, entry.name);
         const dest = path.join(MYCELIUM_DIR, "skills", entry.name);
@@ -206,7 +207,7 @@ export async function installFromMarketplace(
         await fs.symlink(src, dest);
         return { success: true, path: dest };
       }
-      case "mcp-registry": {
+      case MS.MCP_REGISTRY: {
         const registryEntry = await getRegistryEntry(entry.name);
         if (!registryEntry) throw new Error(`Entry not found: ${entry.name}`);
         const config = parseRegistryEntry(registryEntry);
@@ -215,7 +216,7 @@ export async function installFromMarketplace(
         await fs.appendFile(mcpsPath, yamlLine, "utf-8");
         return { success: true, path: mcpsPath };
       }
-      case "anthropic-skills": {
+      case MS.ANTHROPIC_SKILLS: {
         // Download SKILL.md from Anthropic's GitHub repo
         const rawUrl = `https://raw.githubusercontent.com/anthropics/skills/main/${encodeURIComponent(entry.name)}/SKILL.md`;
         const ghRes = await fetch(rawUrl);
@@ -254,12 +255,12 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
         category: s.category,
         version: s.version,
         latestVersion: s.version,
-        source: "skillsmp" as const,
+        source: MS.SKILLSMP,
         type: "skill" as const,
       }));
-      results.push({ entries, total: entries.length, source: "skillsmp" });
+      results.push({ entries, total: entries.length, source: MS.SKILLSMP });
     }
-  } catch {}
+  } catch (e) { console.warn("SkillsMP popular fetch failed:", e); }
 
   // Anthropic skills (list all from repo tree)
   try {
@@ -276,20 +277,20 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
           name: t.path,
           description: `Official Anthropic skill: ${t.path}`,
           author: "anthropics",
-          source: "anthropic-skills" as const,
+          source: MS.ANTHROPIC_SKILLS,
           type: "skill" as const,
         }));
-      results.push({ entries, total: entries.length, source: "anthropic-skills" });
+      results.push({ entries, total: entries.length, source: MS.ANTHROPIC_SKILLS });
     }
-  } catch {}
+  } catch (e) { console.warn("Anthropic skills fetch failed:", e); }
 
   // Claude plugins (local installed)
   try {
     const plugins = await listInstalledPlugins();
     if (plugins.length > 0) {
-      results.push({ entries: plugins.slice(0, 6), total: plugins.length, source: "claude-plugins" });
+      results.push({ entries: plugins.slice(0, 6), total: plugins.length, source: MS.CLAUDE_PLUGINS });
     }
-  } catch {}
+  } catch (e) { console.warn("Claude plugins list failed:", e); }
 
   // MCP Registry popular
   try {
@@ -298,12 +299,12 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
       const entries: MarketplaceEntry[] = mcpResults.slice(0, 12).map((r) => ({
         name: r.name,
         description: r.description || "",
-        source: "mcp-registry",
+        source: MS.MCP_REGISTRY,
         type: "mcp" as const,
       }));
-      results.push({ entries, total: entries.length, source: "mcp-registry" });
+      results.push({ entries, total: entries.length, source: MS.MCP_REGISTRY });
     }
-  } catch {}
+  } catch (e) { console.warn("MCP Registry popular fetch failed:", e); }
 
   return results;
 }
@@ -342,10 +343,11 @@ export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
       description: p.description || "",
       version: p.version,
       author: p.author,
-      source: "claude-plugins" as const,
+      source: MS.CLAUDE_PLUGINS,
       type: "skill" as const,
     }));
-  } catch {
+  } catch (e) {
+    console.warn("Failed to read installed plugins:", e);
     return [];
   }
 }
