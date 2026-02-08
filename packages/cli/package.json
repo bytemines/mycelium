@@ -1,6 +1,6 @@
 {
   "name": "@mycelium/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI for Mycelium - Universal AI Tool Orchestrator",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,10 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run build"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/bytemines/mycelium"
