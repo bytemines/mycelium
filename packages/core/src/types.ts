@@ -223,6 +223,154 @@ export interface ToggleAction {
   enabled: boolean;
 }
 
+// ============================================================================
+// Migration Types
+// ============================================================================
+
+export interface ToolScanResult {
+  toolId: ToolId;
+  toolName: string;
+  installed: boolean;
+  skills: ScannedSkill[];
+  mcps: ScannedMcp[];
+  memory: ScannedMemory[];
+  hooks: ScannedHook[];
+}
+
+export interface ScannedSkill {
+  name: string;
+  path: string;
+  source: ToolId;
+  version?: string;
+  lastUpdated?: Date;
+  metadata?: Record<string, string>;
+  marketplace?: string;
+  pluginName?: string;
+}
+
+export interface ScannedMcp {
+  name: string;
+  config: McpServerConfig;
+  source: ToolId;
+  projectPath?: string;
+}
+
+export interface ScannedMemory {
+  name: string;
+  path: string;
+  source: ToolId;
+  scope: MemoryScope;
+  content?: string;
+}
+
+export interface ScannedHook {
+  name: string;
+  path: string;
+  source: ToolId;
+}
+
+export type ConflictStrategy = "latest" | "interactive" | "all";
+
+export interface MigrationConflict {
+  name: string;
+  type: "skill" | "mcp";
+  entries: Array<{
+    source: ToolId;
+    version?: string;
+    lastUpdated?: Date;
+    config?: McpServerConfig;
+  }>;
+  resolved?: { source: ToolId };
+}
+
+export interface MigrationPlan {
+  skills: ScannedSkill[];
+  mcps: ScannedMcp[];
+  memory: ScannedMemory[];
+  conflicts: MigrationConflict[];
+  strategy: ConflictStrategy;
+}
+
+export interface MigrationResult {
+  success: boolean;
+  skillsImported: number;
+  mcpsImported: number;
+  memoryImported: number;
+  conflicts: MigrationConflict[];
+  errors: string[];
+  manifest: MigrationManifest;
+}
+
+export interface MigrationManifestEntry {
+  name: string;
+  type: "skill" | "mcp" | "memory";
+  source: ToolId;
+  originalPath: string;
+  importedPath: string;
+  importedAt: string;
+  version?: string;
+  strategy?: ConflictStrategy;
+  marketplace?: string;
+  pluginName?: string;
+}
+
+export interface MigrationManifest {
+  version: string;
+  lastMigration: string;
+  entries: MigrationManifestEntry[];
+}
+
+// ============================================================================
+// Marketplace Types
+// ============================================================================
+
+export type MarketplaceSource = string;
+
+export interface MarketplaceConfig {
+  type: "local" | "claude-marketplace" | "remote";
+  enabled: boolean;
+  default?: boolean;
+  url?: string;
+  description?: string;
+  discovered?: boolean;
+}
+
+export interface PluginInfo {
+  name: string;
+  marketplace: string;
+  version: string;
+  description: string;
+  author?: string;
+  enabled: boolean;
+  skills: string[];
+  agents: string[];
+  commands: string[];
+  installPath: string;
+  installedAt?: string;
+  lastUpdated?: string;
+}
+
+export interface MarketplaceEntry {
+  name: string;
+  description: string;
+  source: MarketplaceSource;
+  author?: string;
+  version?: string;
+  downloads?: number;
+  installed?: boolean;
+  type: "skill" | "mcp";
+}
+
+export interface MarketplaceSearchResult {
+  entries: MarketplaceEntry[];
+  total: number;
+  source: MarketplaceSource;
+}
+
+// ============================================================================
+// Dashboard Types
+// ============================================================================
+
 export interface DashboardState {
   tools: Array<{
     id: ToolId;

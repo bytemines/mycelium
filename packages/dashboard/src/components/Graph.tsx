@@ -54,11 +54,20 @@ interface ToolData {
   installed: boolean;
 }
 
+interface PluginData {
+  name: string;
+  marketplace: string;
+  skillCount: number;
+  enabled: boolean;
+  skills: string[];
+}
+
 interface GraphData {
   tools?: ToolData[];
   skills: SkillData[];
   mcps: McpData[];
   memory: MemoryData[];
+  plugins?: PluginData[];
 }
 
 // Node data types
@@ -74,6 +83,15 @@ interface ResourceNodeData {
   status: Status;
   enabled?: boolean;
   onToggle?: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
+}
+
+interface PluginNodeData {
+  name: string;
+  marketplace: string;
+  skillCount: number;
+  enabled: boolean;
+  onToggle?: (name: string, enabled: boolean) => void;
+  onClick?: (name: string) => void;
 }
 
 // ELK layout options
@@ -231,10 +249,59 @@ export function ResourceNode({ data }: { data: ResourceNodeData }) {
   );
 }
 
+// Plugin Node - represents installed plugins from marketplaces
+export function PluginNode({ data }: { data: PluginNodeData }) {
+  const isEnabled = data.enabled !== false;
+
+  return (
+    <div
+      className={cn(
+        "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-all hover:scale-105 cursor-pointer",
+        "border-teal-500/60",
+        "bg-teal-500/10",
+        !isEnabled && "opacity-50"
+      )}
+      onClick={() => data.onClick?.(data.name)}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-muted !w-2 !h-2" />
+      <div className="flex items-center gap-2">
+        <StatusDot status={isEnabled ? "synced" : "disabled"} />
+        <span className="text-sm font-medium truncate max-w-[100px]">{data.name}</span>
+        <button
+          role="switch"
+          aria-checked={isEnabled}
+          aria-label={`Toggle ${data.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onToggle?.(data.name, !isEnabled);
+          }}
+          className={cn(
+            "ml-auto relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+            isEnabled ? "bg-primary" : "bg-muted"
+          )}
+        >
+          <span
+            className={cn(
+              "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
+              isEnabled ? "translate-x-3" : "translate-x-0"
+            )}
+          />
+        </button>
+      </div>
+      <div className="flex items-center gap-2 mt-0.5">
+        <span className="rounded-full bg-teal-500/20 px-1.5 py-0 text-[9px] text-teal-400">{data.marketplace}</span>
+        <span className="text-[10px] text-muted-foreground">{data.skillCount} skills</span>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-muted !w-2 !h-2" />
+    </div>
+  );
+}
+
 // Node types registry
 const nodeTypes = {
   tool: ToolNode,
   resource: ResourceNode,
+  plugin: PluginNode,
 };
 
 // Default tools - will be filtered based on what's installed
@@ -257,10 +324,11 @@ interface GraphProps {
   data?: GraphData;
   onNodeClick?: (node: Node) => void;
   onToggle?: (toggle: ToggleInfo) => void;
+  onPluginClick?: (pluginName: string) => void;
   showUninstalledTools?: boolean;
 }
 
-export function Graph({ data, onNodeClick, onToggle, showUninstalledTools = false }: GraphProps) {
+export function Graph({ data, onNodeClick, onToggle, onPluginClick, showUninstalledTools = false }: GraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [layoutDirection, setLayoutDirection] = useState<"DOWN" | "RIGHT">("DOWN");
@@ -297,6 +365,41 @@ export function Graph({ data, onNodeClick, onToggle, showUninstalledTools = fals
       });
     });
 
+    // Build a set of skills owned by plugins
+    const pluginSkillSet = new Set<string>();
+    data?.plugins?.forEach((plugin) => {
+      plugin.skills.forEach((s) => pluginSkillSet.add(s));
+    });
+
+    // Plugin nodes
+    data?.plugins?.forEach((plugin, index) => {
+      const nodeId = `plugin-${plugin.name}`;
+      nodes.push({
+        id: nodeId,
+        type: "plugin",
+        position: { x: index * 160, y: 75 },
+        data: {
+          name: plugin.name,
+          marketplace: plugin.marketplace,
+          skillCount: plugin.skillCount,
+          enabled: plugin.enabled,
+          onToggle: (name: string, enabled: boolean) => onToggle?.({ type: "skill", name, enabled }),
+          onClick: (name: string) => onPluginClick?.(name),
+        },
+      });
+
+      // Connect plugin to all installed tools
+      visibleTools.filter(t => t.installed).forEach((tool) => {
+        edges.push({
+          id: `${nodeId}-to-tool-${tool.id}`,
+          source: nodeId,
+          target: `tool-${tool.id}`,
+          animated: plugin.enabled,
+          style: { stroke: "#14b8a6", strokeWidth: 2, ...(plugin.enabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+        });
+      });
+    });
+
     // Skill nodes
     data?.skills.forEach((skill, index) => {
       const nodeId = `skill-${skill.name}`;
@@ -308,6 +411,22 @@ export function Graph({ data, onNodeClick, onToggle, showUninstalledTools = fals
       });
 
       const isEnabled = skill.enabled !== false;
+
+      // If this skill belongs to a plugin, connect to plugin instead of tools
+      if (pluginSkillSet.has(skill.name)) {
+        const parentPlugin = data?.plugins?.find((p) => p.skills.includes(skill.name));
+        if (parentPlugin) {
+          edges.push({
+            id: `${nodeId}-to-plugin-${parentPlugin.name}`,
+            source: nodeId,
+            target: `plugin-${parentPlugin.name}`,
+            animated: isEnabled && skill.status === "synced",
+            style: { stroke: "#3b82f6", strokeWidth: 2, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+          });
+          return;
+        }
+      }
+
       // Connect to specified tools or all installed tools
       const targetTools = skill.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
       targetTools.forEach((toolId) => {
@@ -383,7 +502,7 @@ export function Graph({ data, onNodeClick, onToggle, showUninstalledTools = fals
     });
 
     return { initialNodes: nodes, initialEdges: edges };
-  }, [data, showUninstalledTools, handleToggle]);
+  }, [data, showUninstalledTools, handleToggle, onToggle, onPluginClick]);
 
   // Apply ELK layout when data changes
   useEffect(() => {
