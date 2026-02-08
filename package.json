@@ -1,7 +1,7 @@
 {
   "name": "mycelium",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Universal AI Tool Orchestrator - Sync skills, MCPs, and memory across Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, and Aider",
   "author": "Mycelium Contributors",
   "license": "MIT",
@@ -16,9 +16,14 @@
     "test": "turbo test",
     "typecheck": "turbo typecheck",
     "clean": "turbo clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "publish-packages": "pnpm build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.5.2",
+    "@changesets/cli": "^2.29.8",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
