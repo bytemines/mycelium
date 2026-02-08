@@ -357,6 +357,11 @@ export interface MarketplaceEntry {
   author?: string;
   version?: string;
   downloads?: number;
+  stars?: number;
+  category?: string;
+  updatedAt?: string;
+  installedVersion?: string;
+  latestVersion?: string;
   installed?: boolean;
   type: "skill" | "mcp";
 }

@@ -235,6 +235,93 @@ export async function installFromMarketplace(
   }
 }
 
+export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
+  const results: MarketplaceSearchResult[] = [];
+
+  // SkillsMP popular
+  try {
+    const res = await fetch("https://skillsmp.com/api/v1/skills/search?q=&sort=downloads&limit=12");
+    if (res.ok) {
+      const data = (await res.json()) as {
+        skills: { name: string; description: string; author: string; downloads: number; stars?: number; category?: string; version?: string }[];
+      };
+      const entries: MarketplaceEntry[] = data.skills.map((s) => ({
+        name: s.name,
+        description: s.description,
+        author: s.author,
+        downloads: s.downloads,
+        stars: s.stars,
+        category: s.category,
+        version: s.version,
+        latestVersion: s.version,
+        source: "skillsmp" as const,
+        type: "skill" as const,
+      }));
+      results.push({ entries, total: entries.length, source: "skillsmp" });
+    }
+  } catch {}
+
+  // Anthropic skills (list all from repo tree)
+  try {
+    const treeRes = await fetch(
+      "https://api.github.com/repos/anthropics/skills/git/trees/main",
+      { headers: { Accept: "application/vnd.github.v3+json" } }
+    );
+    if (treeRes.ok) {
+      const tree = (await treeRes.json()) as { tree: { path: string; type: string }[] };
+      const entries: MarketplaceEntry[] = tree.tree
+        .filter((t) => t.type === "tree" && !t.path.startsWith("."))
+        .slice(0, 12)
+        .map((t) => ({
+          name: t.path,
+          description: `Official Anthropic skill: ${t.path}`,
+          author: "anthropics",
+          source: "anthropic-skills" as const,
+          type: "skill" as const,
+        }));
+      results.push({ entries, total: entries.length, source: "anthropic-skills" });
+    }
+  } catch {}
+
+  // Claude plugins (local installed)
+  try {
+    const plugins = await listInstalledPlugins();
+    if (plugins.length > 0) {
+      results.push({ entries: plugins.slice(0, 6), total: plugins.length, source: "claude-plugins" });
+    }
+  } catch {}
+
+  // MCP Registry popular
+  try {
+    const mcpResults = await searchRegistry("");
+    if (mcpResults.length > 0) {
+      const entries: MarketplaceEntry[] = mcpResults.slice(0, 12).map((r) => ({
+        name: r.name,
+        description: r.description || "",
+        source: "mcp-registry",
+        type: "mcp" as const,
+      }));
+      results.push({ entries, total: entries.length, source: "mcp-registry" });
+    }
+  } catch {}
+
+  return results;
+}
+
+export async function updateSkill(
+  name: string,
+  source: MarketplaceSource
+): Promise<{ success: boolean; path?: string; error?: string }> {
+  // Re-download skill to get latest version (same as install, overwrites existing)
+  const entry: MarketplaceEntry = {
+    name,
+    description: "",
+    source,
+    type: "skill",
+  };
+  return installFromMarketplace(entry);
+}
+
 export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
   try {
     const filePath = path.join(
