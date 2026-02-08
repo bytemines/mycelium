@@ -139,6 +139,18 @@ export async function loadMarketplaceRegistry(): Promise<
       url: "https://skillsmp.com",
       description: "SkillsMP marketplace",
     },
+    [MS.OPENSKILLS]: {
+      type: "remote",
+      enabled: true,
+      url: "https://registry.npmjs.org",
+      description: "OpenSkills via npm",
+    },
+    [MS.CLAUDE_PLUGINS]: {
+      type: "local",
+      enabled: true,
+      default: true,
+      description: "Locally installed Claude plugins",
+    },
     [MS.MCP_REGISTRY]: {
       type: "remote",
       enabled: true,
