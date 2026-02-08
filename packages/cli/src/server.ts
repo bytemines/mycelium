@@ -3,6 +3,7 @@ import cors from "cors";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 
 import { scanAllTools, loadManifest } from "./core/migrator.js";
@@ -495,8 +496,26 @@ export function createServer(port = 3378): Express {
 
 export function startServer(port = 3378): Express {
   const app = createServer(port);
+
+  // Serve dashboard static files
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const dashboardDist = path.resolve(__dirname, "..", "..", "dashboard", "dist");
+
+  // Static assets first
+  app.use(express.static(dashboardDist));
+
+  // SPA fallback — non-API routes get index.html
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
+    const indexPath = path.join(dashboardDist, "index.html");
+    res.sendFile(indexPath, (err) => {
+      if (err) res.status(404).send("Dashboard not built. Run: pnpm -C packages/dashboard build");
+    });
+  });
+
   app.listen(port, () => {
-    console.log(`Mycelium dashboard API running on http://localhost:${port}`);
+    console.log(`Mycelium dashboard running on http://localhost:${port}`);
   });
   return app;
 }

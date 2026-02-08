@@ -11,7 +11,7 @@ export const serveCommand = new Command("serve")
   .description("Start the dashboard API server")
   .option("-p, --port <port>", "Port number", "3378")
   .option("--no-build", "Skip rebuilding before starting")
-  .action((opts) => {
+  .action(async (opts) => {
     if (opts.build !== false) {
       const root = path.resolve(__dirname, "..", "..", "..", "..");
       try {
@@ -22,4 +22,6 @@ export const serveCommand = new Command("serve")
       }
     }
     startServer(parseInt(opts.port, 10));
+    // Keep process alive — server runs until killed
+    await new Promise(() => {});
   });
