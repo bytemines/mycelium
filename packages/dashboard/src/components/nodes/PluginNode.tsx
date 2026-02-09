@@ -18,7 +18,7 @@ export interface PluginNodeData {
   onClick?: (name: string) => void;
 }
 
-function PluginNodeInner({ data }: { data: PluginNodeData }) {
+function PluginNodeInner({ data, sourcePosition, targetPosition }: { data: PluginNodeData; sourcePosition?: Position; targetPosition?: Position }) {
   const isEnabled = data.enabled !== false;
 
   return (
@@ -31,7 +31,7 @@ function PluginNodeInner({ data }: { data: PluginNodeData }) {
       )}
       onClick={() => data.onClick?.(data.name)}
     >
-      <Handle type="target" position={Position.Top} className="!bg-muted !w-2 !h-2" />
+      <Handle type="target" position={targetPosition ?? Position.Top} className="!bg-muted !w-2 !h-2" />
       <div className="flex items-center gap-2">
         <StatusDot status={isEnabled ? "synced" : "disabled"} />
         <span className="text-sm font-medium truncate max-w-[100px]">{data.name}</span>
@@ -66,7 +66,7 @@ function PluginNodeInner({ data }: { data: PluginNodeData }) {
           {data.libCount > 0 && <span className="flex items-center gap-0.5" title="Libraries"><Library size={10} className="text-pink-400" />{data.libCount}</span>}
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-muted !w-2 !h-2" />
+      <Handle type="source" position={sourcePosition ?? Position.Bottom} className="!bg-muted !w-2 !h-2" />
     </div>
   );
 }

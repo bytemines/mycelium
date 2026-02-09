@@ -12,7 +12,7 @@ export interface ResourceNodeData {
   onToggle?: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
 }
 
-function ResourceNodeInner({ data }: { data: ResourceNodeData }) {
+function ResourceNodeInner({ data, sourcePosition, targetPosition }: { data: ResourceNodeData; sourcePosition?: Position; targetPosition?: Position }) {
   const isEnabled = data.enabled !== false;
   const typeStyles: Record<string, { border: string; bg: string }> = {
     skill: { border: "border-blue-500/60", bg: "bg-blue-500/10" },
@@ -31,7 +31,7 @@ function ResourceNodeInner({ data }: { data: ResourceNodeData }) {
         !isEnabled && "opacity-50"
       )}
     >
-      <Handle type="target" position={Position.Top} className="!bg-muted !w-2 !h-2" />
+      <Handle type="target" position={targetPosition ?? Position.Top} className="!bg-muted !w-2 !h-2" />
       <div className="flex items-center gap-2">
         <StatusDot status={isEnabled ? data.status : "disabled"} />
         <span className="text-sm font-medium truncate max-w-[100px]">{data.name}</span>
@@ -59,7 +59,7 @@ function ResourceNodeInner({ data }: { data: ResourceNodeData }) {
       <div className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wider">
         {data.type}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-muted !w-2 !h-2" />
+      <Handle type="source" position={sourcePosition ?? Position.Bottom} className="!bg-muted !w-2 !h-2" />
     </div>
   );
 }

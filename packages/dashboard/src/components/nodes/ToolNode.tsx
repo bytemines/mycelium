@@ -11,7 +11,7 @@ export interface ToolNodeData {
   installed: boolean;
 }
 
-function ToolNodeInner({ data }: { data: ToolNodeData }) {
+function ToolNodeInner({ data, sourcePosition, targetPosition }: { data: ToolNodeData; sourcePosition?: Position; targetPosition?: Position }) {
   const isInstalled = data.installed !== false;
 
   return (
@@ -23,7 +23,7 @@ function ToolNodeInner({ data }: { data: ToolNodeData }) {
           : "border-gray-600 opacity-50"
       )}
     >
-      <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-3" />
+      <Handle type="target" position={targetPosition ?? Position.Top} className="!bg-primary !w-3 !h-3" />
       <div className="flex items-center gap-2">
         {TOOL_ICONS[data.name] ?? null}
         <StatusDot status={isInstalled ? data.status : "not_installed"} />
@@ -34,7 +34,7 @@ function ToolNodeInner({ data }: { data: ToolNodeData }) {
       {!isInstalled && (
         <div className="text-[10px] text-gray-500 mt-1">Not installed</div>
       )}
-      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-3 !h-3" />
+      <Handle type="source" position={sourcePosition ?? Position.Bottom} className="!bg-primary !w-3 !h-3" />
     </div>
   );
 }
