@@ -3,7 +3,7 @@
  * Compresses, deduplicates, and intelligently syncs memory across tools
  */
 
-import type { CompressOptions } from "@mycelium/core";
+import type { CompressOptions } from "@mycelish/core";
 
 const KEY_INSIGHT_PATTERN = /^[-*]\s*(Bug|Fix|Pattern|Important|Note|Key|Critical|Rule|Lesson|Remember):/i;
 

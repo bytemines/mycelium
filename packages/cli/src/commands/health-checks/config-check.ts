@@ -11,7 +11,7 @@ import {
   resolvePath,
   expandPath,
   pathExists,
-} from "@mycelium/core";
+} from "@mycelish/core";
 import type { DiagnosticResult } from "./types.js";
 
 /**

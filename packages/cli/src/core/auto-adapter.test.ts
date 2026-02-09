@@ -21,8 +21,8 @@ vi.mock("node:fs/promises", () => ({
   default: { writeFile: mockWriteFile, appendFile: vi.fn() },
 }));
 
-vi.mock("@mycelium/core", async () => {
-  const actual = await vi.importActual<typeof import("@mycelium/core")>("@mycelium/core");
+vi.mock("@mycelish/core", async () => {
+  const actual = await vi.importActual<typeof import("@mycelish/core")>("@mycelish/core");
   return {
     ...actual,
     expandPath: (p: string) => p.startsWith("~") ? `/mock/home${p.slice(1)}` : p,
@@ -36,7 +36,7 @@ vi.mock("./fs-helpers.js", () => ({
 
 import { GenericAdapter } from "./auto-adapter.js";
 import { getAdapter, createAdapter, OpenClawAdapter, AiderAdapter } from "./tool-adapter.js";
-import { TOOL_REGISTRY, ALL_TOOL_IDS } from "@mycelium/core";
+import { TOOL_REGISTRY, ALL_TOOL_IDS } from "@mycelish/core";
 
 const sampleMcp = {
   command: "npx",

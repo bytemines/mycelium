@@ -6,8 +6,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as jsonc from "jsonc-parser";
-import type { McpServerConfig } from "@mycelium/core";
-import { type ToolDescriptor, resolvePath } from "@mycelium/core";
+import type { McpServerConfig } from "@mycelish/core";
+import { type ToolDescriptor, resolvePath } from "@mycelish/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 import { replaceMcpSection } from "./toml-helpers.js";
 import {

@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { expandPath, pathExists } from "@mycelium/core";
+import { expandPath, pathExists } from "@mycelish/core";
 import { MEMORY_LINE_LIMIT } from "../../core/fs-helpers.js";
 import type { DiagnosticResult } from "./types.js";
 

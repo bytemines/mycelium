@@ -21,7 +21,7 @@ import {
   TOOL_REGISTRY,
   resolvePath,
   expandPath,
-} from "@mycelium/core";
+} from "@mycelish/core";
 import {
   loadAndMergeAllConfigs,
   loadGlobalConfig,

@@ -12,7 +12,7 @@
  */
 
 import { Command } from "commander";
-import type { ToolId, ConflictStrategy } from "@mycelium/core";
+import type { ToolId, ConflictStrategy } from "@mycelish/core";
 import {
   scanAllTools,
   scanTool,

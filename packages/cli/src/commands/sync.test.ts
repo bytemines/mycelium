@@ -13,7 +13,7 @@ import type {
   MergedConfig,
   SyncResult,
   ToolSyncStatus,
-} from "@mycelium/core";
+} from "@mycelish/core";
 
 // Mock the dependencies
 vi.mock("../core/config-merger.js", () => ({

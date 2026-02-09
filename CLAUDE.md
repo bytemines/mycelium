@@ -4,9 +4,9 @@
 
 ```
 packages/
-  core/     — shared types, Zod schemas, utilities (@mycelium/core)
-  cli/      — Commander-based CLI, all business logic (@mycelium/cli)
-  dashboard/ — React + React Flow visualization (@mycelium/dashboard)
+  core/     — shared types, Zod schemas, utilities (@mycelish/core)
+  cli/      — Commander-based CLI, all business logic (@mycelish/cli)
+  dashboard/ — React + React Flow visualization (@mycelish/dashboard)
 ```
 
 - `packages/core/src/types.ts` — shared interfaces (McpServerConfig, Skill, MemoryScope, etc.)

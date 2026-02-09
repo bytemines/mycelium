@@ -4,7 +4,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { TOOL_REGISTRY } from "@mycelium/core";
+import { TOOL_REGISTRY } from "@mycelish/core";
 
 export const MYCELIUM_HOME = path.join(os.homedir(), ".mycelium");
 export const DEFAULT_PORT = 3378;

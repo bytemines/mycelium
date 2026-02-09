@@ -7,7 +7,7 @@ import {
   TOOL_REGISTRY,
   resolvePath,
   pathExists,
-} from "@mycelium/core";
+} from "@mycelish/core";
 import {
   checkGlobalMyceliumExists,
   checkManifestValid,

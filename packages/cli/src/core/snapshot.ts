@@ -3,7 +3,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { SnapshotMetadata } from "@mycelium/core";
+import type { SnapshotMetadata } from "@mycelish/core";
 import { mkdirp, MYCELIUM_HOME } from "./fs-helpers.js";
 
 function getMyceliumDir(): string {

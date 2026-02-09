@@ -13,7 +13,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { stringify as yamlStringify } from "yaml";
-import { expandPath, ensureDir, pathExists } from "@mycelium/core";
+import { expandPath, ensureDir, pathExists } from "@mycelish/core";
 import { ensureGitignore, generateEnvTemplate, getMissingEnvVars } from "../core/env-template.js";
 import { detectMcpOverrides, saveMachineOverrides, loadMachineOverrides } from "../core/machine-overrides.js";
 import { DEFAULT_PORT } from "../core/fs-helpers.js";

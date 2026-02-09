@@ -5,8 +5,8 @@ import type {
   MarketplaceEntry,
   MarketplaceSearchResult,
   MarketplaceSource,
-} from "@mycelium/core";
-import { MARKETPLACE_SOURCES as MS } from "@mycelium/core";
+} from "@mycelish/core";
+import { MARKETPLACE_SOURCES as MS } from "@mycelish/core";
 import {
   getRegistryEntry,
   parseRegistryEntry,

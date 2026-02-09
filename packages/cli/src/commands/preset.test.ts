@@ -7,7 +7,7 @@ vi.mock("node:fs/promises", () => ({
   readdir: vi.fn(),
 }));
 
-vi.mock("@mycelium/core", () => ({
+vi.mock("@mycelish/core", () => ({
   expandPath: (p: string) => p.replace("~", "/mock/home"),
 }));
 

@@ -10,7 +10,7 @@ import type {
   MigrationPlan,
   MigrationConflict,
   ConflictStrategy,
-} from "@mycelium/core";
+} from "@mycelish/core";
 
 export function generateMigrationPlan(
   scans: ToolScanResult[],

@@ -2,7 +2,7 @@
  * MCP Registry Integration
  * Search and install from the official MCP registry (v0.1 API)
  */
-import type { McpServerConfig } from "@mycelium/core";
+import type { McpServerConfig } from "@mycelish/core";
 
 const REGISTRY_URL = "https://registry.modelcontextprotocol.io";
 

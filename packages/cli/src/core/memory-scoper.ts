@@ -13,7 +13,7 @@ import {
   expandPath,
   pathExists,
   ensureDir,
-} from "@mycelium/core";
+} from "@mycelish/core";
 import { compressMemory, mergeMemoryFiles } from "./smart-memory.js";
 
 // ============================================================================

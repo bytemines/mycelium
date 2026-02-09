@@ -1,4 +1,4 @@
-import type { MigrationManifest } from "@mycelium/core";
+import type { MigrationManifest } from "@mycelish/core";
 
 export interface PluginComponents {
   marketplace: string;

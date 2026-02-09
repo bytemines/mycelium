@@ -11,7 +11,7 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelium/core";
+import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelish/core";
 
 // ============================================================================
 // Types

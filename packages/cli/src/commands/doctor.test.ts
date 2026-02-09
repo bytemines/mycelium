@@ -29,8 +29,8 @@ vi.mock("node:fs/promises", () => ({
   readlink: vi.fn(),
 }));
 
-// Mock @mycelium/core
-vi.mock("@mycelium/core", () => ({
+// Mock @mycelish/core
+vi.mock("@mycelish/core", () => ({
   expandPath: (p: string) => {
     if (p.startsWith("~")) {
       return path.join("/mock/home", p.slice(1));
@@ -238,7 +238,7 @@ describe("doctor command", () => {
 
   describe("checkGlobalMyceliumExists", () => {
     it("returns pass when ~/.mycelium exists", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(true);
 
       const { checkGlobalMyceliumExists } = await import("./doctor.js");
@@ -250,7 +250,7 @@ describe("doctor command", () => {
     });
 
     it("returns fail when ~/.mycelium does not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkGlobalMyceliumExists } = await import("./doctor.js");
@@ -264,7 +264,7 @@ describe("doctor command", () => {
 
   describe("checkManifestValid", () => {
     it("returns pass when manifest.yaml is valid", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -289,7 +289,7 @@ memory:
     });
 
     it("returns fail when manifest.yaml does not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkManifestValid } = await import("./doctor.js");
@@ -301,7 +301,7 @@ memory:
     });
 
     it("returns fail when manifest.yaml has invalid YAML syntax", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -322,7 +322,7 @@ tools:
 
   describe("checkToolPathExists", () => {
     it("returns pass when tool skills directory exists", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(true);
 
       const { checkToolPathExists } = await import("./doctor.js");
@@ -333,7 +333,7 @@ tools:
     });
 
     it("returns warn when tool skills directory does not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkToolPathExists } = await import("./doctor.js");
@@ -347,7 +347,7 @@ tools:
 
   describe("checkBrokenSymlinks", () => {
     it("returns pass when no symlinks are broken", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -366,7 +366,7 @@ tools:
     });
 
     it("returns fail when symlinks are broken", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -388,7 +388,7 @@ tools:
     });
 
     it("returns pass when directory does not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkBrokenSymlinks } = await import("./doctor.js");
@@ -401,7 +401,7 @@ tools:
 
   describe("checkMcpConfigJson", () => {
     it("returns pass when MCP JSON config is valid", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -421,7 +421,7 @@ tools:
     });
 
     it("returns fail when MCP JSON config has invalid syntax", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -435,7 +435,7 @@ tools:
     });
 
     it("returns pass when config file does not exist (not required)", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkMcpConfigJson } = await import("./doctor.js");
@@ -448,7 +448,7 @@ tools:
 
   describe("checkMcpConfigYaml", () => {
     it("returns pass when MCP YAML config is valid", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -471,7 +471,7 @@ mcps:
     });
 
     it("returns fail when MCP YAML config has invalid syntax", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -492,7 +492,7 @@ mcps:
     });
 
     it("returns pass when config file does not exist (not required)", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkMcpConfigYaml } = await import("./doctor.js");
@@ -507,7 +507,7 @@ mcps:
 
   describe("checkMemoryFilesExist", () => {
     it("returns pass when memory directories have files", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -521,7 +521,7 @@ mcps:
     });
 
     it("returns warn when no memory files exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -535,7 +535,7 @@ mcps:
     });
 
     it("returns warn when memory directory does not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkMemoryFilesExist } = await import("./doctor.js");
@@ -548,7 +548,7 @@ mcps:
 
   describe("checkOrphanedConfigs", () => {
     it("returns pass when no orphaned configs exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       // Manifest has claude-code enabled
@@ -571,7 +571,7 @@ tools:
     });
 
     it("returns warn when orphaned skill symlinks exist for disabled tools", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       // Manifest has claude-code disabled
@@ -598,7 +598,7 @@ tools:
 
   describe("runAllChecks", () => {
     it("runs all diagnostic checks and returns summary", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       // Setup: everything is healthy
@@ -629,7 +629,7 @@ memory:
     });
 
     it("reports all issues found", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
 
       // Setup: mycelium not initialized
       vi.mocked(pathExists).mockResolvedValue(false);
@@ -779,7 +779,7 @@ memory:
 
   describe("checkMemoryFileSize", () => {
     it("returns pass when memory files are within limits", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -791,7 +791,7 @@ memory:
     });
 
     it("returns warn when memory file exceeds limit", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       const fs = await import("node:fs/promises");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -805,7 +805,7 @@ memory:
     });
 
     it("returns pass when file does not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelish/core");
       vi.mocked(pathExists).mockResolvedValue(false);
 
       const { checkMemoryFileSize } = await import("./doctor.js");

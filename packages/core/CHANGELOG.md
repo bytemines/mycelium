@@ -1,4 +1,4 @@
-# @mycelium/core
+# @mycelish/core
 
 ## 0.2.0
 

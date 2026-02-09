@@ -1,5 +1,5 @@
 /**
- * @mycelium/core
+ * @mycelish/core
  * Core types, schemas, and utilities for the Mycelium orchestration system
  */
 

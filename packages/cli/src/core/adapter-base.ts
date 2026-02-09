@@ -5,7 +5,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { McpServerConfig } from "@mycelium/core";
+import type { McpServerConfig } from "@mycelish/core";
 
 const execFileAsync = promisify(execFile);
 

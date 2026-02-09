@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { expandPath } from "@mycelium/core";
+import { expandPath } from "@mycelish/core";
 
 const CONFIG_FILE_PATTERNS = [
   "manifest.yaml",

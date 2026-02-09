@@ -22,8 +22,8 @@ vi.mock("node:fs/promises", () => ({
   default: { writeFile: mockWriteFile, appendFile: mockAppendFile },
 }));
 
-vi.mock("@mycelium/core", async () => {
-  const actual = await vi.importActual<typeof import("@mycelium/core")>("@mycelium/core");
+vi.mock("@mycelish/core", async () => {
+  const actual = await vi.importActual<typeof import("@mycelish/core")>("@mycelish/core");
   return {
     ...actual,
     expandPath: (p: string) => p.startsWith("~") ? `/mock/home${p.slice(1)}` : p,

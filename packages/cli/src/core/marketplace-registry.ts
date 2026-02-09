@@ -1,8 +1,8 @@
 /**
  * Marketplace Registry — manage marketplace sources and plugin discovery
  */
-import type { MarketplaceConfig, PluginInfo } from "@mycelium/core";
-import { MARKETPLACE_SOURCES as MS } from "@mycelium/core";
+import type { MarketplaceConfig, PluginInfo } from "@mycelish/core";
+import { MARKETPLACE_SOURCES as MS } from "@mycelish/core";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";

@@ -12,7 +12,7 @@ import type {
   ScannedMcp,
   ScannedMemory,
   MigrationPlan,
-} from "@mycelium/core";
+} from "@mycelish/core";
 
 // ============================================================================
 // Helpers

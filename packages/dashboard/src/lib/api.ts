@@ -1,4 +1,4 @@
-import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceSearchResult, MarketplaceConfig, PluginInfo, MarketplaceSource } from "@mycelium/core";
+import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceSearchResult, MarketplaceConfig, PluginInfo, MarketplaceSource } from "@mycelish/core";
 
 export async function fetchDashboardState(): Promise<DashboardState> {
   const res = await fetch(`/api/state`);

@@ -5,7 +5,7 @@ import {
   searchMarketplace as apiSearch, installMarketplaceEntry, fetchPopularSkills,
   updateMarketplaceEntry,
 } from "@/lib/api";
-import type { MarketplaceConfig } from "@mycelium/core";
+import type { MarketplaceConfig } from "@mycelish/core";
 import { SkillCard } from "./SkillCard";
 import type { MarketplaceItem } from "./SkillCard";
 import * as Dialog from "@radix-ui/react-dialog";
