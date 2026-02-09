@@ -1,7 +1,6 @@
 {
   "name": "@mycelish/core",
-  "version": "0.0.0",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Core types and utilities for Mycelium",
   "type": "module",
   "main": "./dist/index.js",

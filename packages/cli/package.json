@@ -1,7 +1,6 @@
 {
   "name": "@mycelish/cli",
-  "version": "0.0.0",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "CLI for Mycelium - Universal AI Tool Orchestrator",
   "type": "module",
   "main": "./dist/index.js",
