@@ -22,17 +22,13 @@ vi.mock("node:fs/promises", () => ({
   default: { writeFile: mockWriteFile, appendFile: mockAppendFile },
 }));
 
-vi.mock("@mycelium/core", () => ({
-  expandPath: (p: string) => p.startsWith("~") ? `/mock/home${p.slice(1)}` : p,
-  SUPPORTED_TOOLS: {
-    "claude-code": { id: "claude-code", name: "Claude Code", mcpConfigPath: "~/.claude.json", mcpConfigFormat: "json", cliCommand: "claude", enabled: true, skillsPath: "~/.claude/skills", memoryPath: "~/.claude/CLAUDE.md" },
-    codex: { id: "codex", name: "Codex CLI", mcpConfigPath: "~/.codex/config.toml", mcpConfigFormat: "toml", cliCommand: "codex", enabled: true, skillsPath: "~/.codex/skills", memoryPath: "~/.codex/AGENTS.md" },
-    "gemini-cli": { id: "gemini-cli", name: "Gemini CLI", mcpConfigPath: "~/.gemini/settings.json", mcpConfigFormat: "json", cliCommand: "gemini", enabled: true, skillsPath: "~/.gemini/extensions", memoryPath: "~/.gemini/GEMINI.md" },
-    opencode: { id: "opencode", name: "OpenCode", mcpConfigPath: "~/.config/opencode/opencode.json", mcpConfigFormat: "json", cliCommand: "opencode", enabled: true, skillsPath: "~/.config/opencode/plugin", memoryPath: "~/.opencode/context.md" },
-    openclaw: { id: "openclaw", name: "OpenClaw", mcpConfigPath: "~/.openclaw/openclaw.json", mcpConfigFormat: "json", enabled: true, skillsPath: "~/.openclaw/skills", memoryPath: "~/.openclaw/MEMORY.md" },
-    aider: { id: "aider", name: "Aider", mcpConfigPath: "~/.aider.conf.yml", mcpConfigFormat: "yaml", enabled: true, skillsPath: "~/.aider/plugins", memoryPath: "~/.aider/MEMORY.md" },
-  },
-}));
+vi.mock("@mycelium/core", async () => {
+  const actual = await vi.importActual<typeof import("@mycelium/core")>("@mycelium/core");
+  return {
+    ...actual,
+    expandPath: (p: string) => p.startsWith("~") ? `/mock/home${p.slice(1)}` : p,
+  };
+});
 
 vi.mock("./fs-helpers.js", () => ({
   readFileIfExists: mockReadFileIfExists,
@@ -41,13 +37,10 @@ vi.mock("./fs-helpers.js", () => ({
 
 import {
   getAdapter,
-  ClaudeCodeAdapter,
-  CodexAdapter,
-  GeminiAdapter,
-  OpenCodeAdapter,
   OpenClawAdapter,
   AiderAdapter,
 } from "./tool-adapter.js";
+import { GenericAdapter } from "./auto-adapter.js";
 
 const sampleMcp = {
   command: "npx",
@@ -65,23 +58,26 @@ describe("tool-adapter", () => {
   // getAdapter
   // -----------------------------------------------------------------------
   describe("getAdapter", () => {
-    it("returns ClaudeCodeAdapter for claude-code", () => {
-      expect(getAdapter("claude-code")).toBeInstanceOf(ClaudeCodeAdapter);
+    it("returns GenericAdapter for claude-code", () => {
+      expect(getAdapter("claude-code")).toBeInstanceOf(GenericAdapter);
     });
-    it("returns CodexAdapter for codex", () => {
-      expect(getAdapter("codex")).toBeInstanceOf(CodexAdapter);
+    it("returns GenericAdapter for codex", () => {
+      expect(getAdapter("codex")).toBeInstanceOf(GenericAdapter);
     });
-    it("returns GeminiAdapter for gemini-cli", () => {
-      expect(getAdapter("gemini-cli")).toBeInstanceOf(GeminiAdapter);
+    it("returns GenericAdapter for gemini-cli", () => {
+      expect(getAdapter("gemini-cli")).toBeInstanceOf(GenericAdapter);
     });
-    it("returns OpenCodeAdapter for opencode", () => {
-      expect(getAdapter("opencode")).toBeInstanceOf(OpenCodeAdapter);
+    it("returns GenericAdapter for opencode", () => {
+      expect(getAdapter("opencode")).toBeInstanceOf(GenericAdapter);
     });
     it("returns OpenClawAdapter for openclaw", () => {
       expect(getAdapter("openclaw")).toBeInstanceOf(OpenClawAdapter);
     });
     it("returns AiderAdapter for aider", () => {
       expect(getAdapter("aider")).toBeInstanceOf(AiderAdapter);
+    });
+    it("throws for unknown tool", () => {
+      expect(() => getAdapter("nope")).toThrow("No adapter for tool: nope");
     });
   });
 

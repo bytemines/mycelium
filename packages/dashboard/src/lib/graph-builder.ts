@@ -1,4 +1,5 @@
 import type { Status } from "@/types";
+import { TOOL_REGISTRY } from "@mycelium/core";
 
 export interface ScanData {
   toolId: string;
@@ -156,14 +157,12 @@ export interface DashboardGraphData {
   plugins?: PluginDataDash[];
 }
 
-export const ALL_TOOLS: ToolDataDash[] = [
-  { id: "claude-code", name: "Claude Code", status: "synced", installed: true },
-  { id: "codex", name: "Codex CLI", status: "synced", installed: true },
-  { id: "gemini", name: "Gemini CLI", status: "synced", installed: true },
-  { id: "opencode", name: "OpenCode", status: "synced", installed: true },
-  { id: "openclaw", name: "OpenClaw", status: "synced", installed: true },
-  { id: "aider", name: "Aider", status: "synced", installed: true },
-];
+export const ALL_TOOLS: ToolDataDash[] = Object.values(TOOL_REGISTRY).map(desc => ({
+  id: desc.id,
+  name: desc.display.name,
+  status: "synced" as Status,
+  installed: true,
+}));
 
 export interface DashboardGraphHandlers {
   handleToggle: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;

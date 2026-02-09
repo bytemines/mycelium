@@ -11,3 +11,6 @@ export * from "./schema.js";
 
 // Utilities
 export * from "./utils.js";
+
+// Tool Registry
+export * from "./tools/index.js";

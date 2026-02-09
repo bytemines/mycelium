@@ -4,15 +4,18 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { TOOL_REGISTRY } from "@mycelium/core";
 
 export const MYCELIUM_HOME = path.join(os.homedir(), ".mycelium");
 export const DEFAULT_PORT = 3378;
 export const MEMORY_LINE_LIMIT = 200;
 
-/** Per-tool max line limits for memory files */
-export const TOOL_MAX_LINES: Partial<Record<string, number>> = {
-  "claude-code": MEMORY_LINE_LIMIT,
-};
+/** Per-tool max line limits for memory files — derived from registry */
+export const TOOL_MAX_LINES: Partial<Record<string, number>> = Object.fromEntries(
+  Object.values(TOOL_REGISTRY)
+    .filter(t => t.memoryMaxLines !== null)
+    .map(t => [t.id, t.memoryMaxLines!])
+);
 
 export async function readFileIfExists(filePath: string): Promise<string | null> {
   try {

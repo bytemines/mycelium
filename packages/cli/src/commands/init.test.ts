@@ -26,16 +26,20 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 // Mock @mycelium/core
-vi.mock("@mycelium/core", () => ({
-  expandPath: (p: string) => {
-    if (p.startsWith("~")) {
-      return path.join("/mock/home", p.slice(1));
-    }
-    return p;
-  },
-  ensureDir: vi.fn(),
-  pathExists: vi.fn(),
-}));
+vi.mock("@mycelium/core", async () => {
+  const actual = await vi.importActual("@mycelium/core");
+  return {
+    ...actual,
+    expandPath: (p: string) => {
+      if (p.startsWith("~")) {
+        return path.join("/mock/home", p.slice(1));
+      }
+      return p;
+    },
+    ensureDir: vi.fn(),
+    pathExists: vi.fn(),
+  };
+});
 
 describe("initGlobal", () => {
   beforeEach(() => {

@@ -2,8 +2,7 @@
  * Tool Detector - Detects which AI coding tools are installed on the system
  */
 import { execFileSync } from "child_process";
-import * as os from "os";
-import * as path from "path";
+import { TOOL_REGISTRY, resolvePath } from "@mycelium/core";
 
 export interface ToolInfo {
   id: string;
@@ -17,45 +16,13 @@ export interface DetectedTool extends ToolInfo {
   status: "synced" | "pending" | "error" | "disabled";
 }
 
-// All supported AI coding tools
-const SUPPORTED_TOOLS: ToolInfo[] = [
-  {
-    id: "claude-code",
-    name: "Claude Code",
-    command: "claude",
-    configPath: path.join(os.homedir(), ".claude"),
-  },
-  {
-    id: "codex",
-    name: "Codex CLI",
-    command: "codex",
-    configPath: path.join(os.homedir(), ".codex"),
-  },
-  {
-    id: "gemini",
-    name: "Gemini CLI",
-    command: "gemini",
-    configPath: path.join(os.homedir(), ".gemini"),
-  },
-  {
-    id: "opencode",
-    name: "OpenCode",
-    command: "opencode",
-    configPath: path.join(os.homedir(), ".config", "opencode"),
-  },
-  {
-    id: "openclaw",
-    name: "OpenClaw",
-    command: "openclaw",
-    configPath: path.join(os.homedir(), ".openclaw"),
-  },
-  {
-    id: "aider",
-    name: "Aider",
-    command: "aider",
-    configPath: path.join(os.homedir(), ".aider"),
-  },
-];
+// Derive tool list from registry
+const TOOL_LIST: ToolInfo[] = Object.values(TOOL_REGISTRY).map(desc => ({
+  id: desc.id,
+  name: desc.display.name,
+  command: desc.cli?.command ?? "",
+  configPath: resolvePath(desc.paths.mcp) ?? "",
+}));
 
 /**
  * Check if a command exists on the system
@@ -74,7 +41,7 @@ function commandExists(command: string): boolean {
  * Check if a specific tool is installed
  */
 export async function isToolInstalled(toolId: string): Promise<boolean> {
-  const tool = SUPPORTED_TOOLS.find((t) => t.id === toolId);
+  const tool = TOOL_LIST.find((t) => t.id === toolId);
   if (!tool) return false;
   return commandExists(tool.command);
 }
@@ -83,14 +50,14 @@ export async function isToolInstalled(toolId: string): Promise<boolean> {
  * Get info about a specific tool
  */
 export function getToolInfo(toolId: string): ToolInfo | undefined {
-  return SUPPORTED_TOOLS.find((t) => t.id === toolId);
+  return TOOL_LIST.find((t) => t.id === toolId);
 }
 
 /**
  * Detect all installed AI coding tools
  */
 export async function detectInstalledTools(): Promise<DetectedTool[]> {
-  return SUPPORTED_TOOLS.map((tool) => {
+  return TOOL_LIST.map((tool) => {
     const installed = commandExists(tool.command);
     return {
       ...tool,
@@ -112,5 +79,5 @@ export async function getInstalledTools(): Promise<DetectedTool[]> {
  * Get all supported tool IDs
  */
 export function getSupportedToolIds(): string[] {
-  return SUPPORTED_TOOLS.map((t) => t.id);
+  return TOOL_LIST.map((t) => t.id);
 }

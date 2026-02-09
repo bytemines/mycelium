@@ -3,19 +3,13 @@
  */
 
 import { z } from "zod";
+import { TOOL_ID_VALUES } from "./tools/_registry.js";
 
 // ============================================================================
 // Tool Schemas
 // ============================================================================
 
-export const toolIdSchema = z.enum([
-  "claude-code",
-  "codex",
-  "gemini-cli",
-  "opencode",
-  "openclaw",
-  "aider",
-]);
+export const toolIdSchema = z.enum(TOOL_ID_VALUES);
 
 // ============================================================================
 // MCP Schemas

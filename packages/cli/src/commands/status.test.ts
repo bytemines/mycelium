@@ -245,8 +245,8 @@ describe("status command", () => {
 
       const statuses = await getAllStatusFromPath(mockMyceliumDir);
 
-      // Should have status for all 6 supported tools
-      expect(statuses.length).toBe(6);
+      // Should have status for all supported tools
+      expect(statuses.length).toBe((await import("@mycelium/core")).ALL_TOOL_IDS.length);
 
       // Verify all tool IDs are present
       const toolIds = statuses.map((s) => s.tool);

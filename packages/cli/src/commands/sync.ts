@@ -17,7 +17,9 @@ import {
   type MergedConfig,
   type SyncResult,
   type ToolSyncStatus,
-  SUPPORTED_TOOLS,
+  ALL_TOOL_IDS,
+  TOOL_REGISTRY,
+  resolvePath,
   expandPath,
 } from "@mycelium/core";
 import {
@@ -115,8 +117,8 @@ export async function syncTool(
   mergedConfig: MergedConfig,
   envVars: Record<string, string> = {}
 ): Promise<ToolSyncStatus> {
-  const toolConfig = SUPPORTED_TOOLS[toolId];
-  const toolSkillsDir = expandPath(toolConfig.skillsPath);
+  const desc = TOOL_REGISTRY[toolId];
+  const toolSkillsDir = resolvePath(desc.paths.skills) ?? "";
 
   try {
     // 1. Sync skills via symlinks
@@ -259,19 +261,14 @@ export const syncCommand = new Command("sync")
     const envVars = { ...globalEnvVars, ...projectEnvVars };
 
     // Get enabled tools from manifest (default all enabled)
-    const enabledTools: Record<ToolId, { enabled: boolean }> = {
-      "claude-code": { enabled: true },
-      codex: { enabled: true },
-      "gemini-cli": { enabled: true },
-      opencode: { enabled: true },
-      openclaw: { enabled: true },
-      aider: { enabled: true },
-    };
+    const enabledTools: Record<string, { enabled: boolean }> = Object.fromEntries(
+      ALL_TOOL_IDS.map(id => [id, { enabled: true }])
+    );
 
     if (options.tool) {
       // Sync only the specified tool
       const toolId = options.tool as ToolId;
-      if (!SUPPORTED_TOOLS[toolId]) {
+      if (!TOOL_REGISTRY[toolId]) {
         console.error(`Unknown tool: ${toolId}`);
         process.exit(1);
       }

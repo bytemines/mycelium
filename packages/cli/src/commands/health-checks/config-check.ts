@@ -7,7 +7,8 @@ import * as path from "node:path";
 import * as yaml from "yaml";
 import {
   type ToolId,
-  SUPPORTED_TOOLS,
+  TOOL_REGISTRY,
+  resolvePath,
   expandPath,
   pathExists,
 } from "@mycelium/core";
@@ -77,22 +78,22 @@ export async function checkManifestValid(): Promise<DiagnosticResult> {
 export async function checkToolPathExists(
   toolId: ToolId
 ): Promise<DiagnosticResult> {
-  const toolConfig = SUPPORTED_TOOLS[toolId];
-  const skillsPath = expandPath(toolConfig.skillsPath);
-  const exists = await pathExists(skillsPath);
+  const desc = TOOL_REGISTRY[toolId];
+  const skillsPath = resolvePath(desc.paths.skills);
+  const exists = skillsPath ? await pathExists(skillsPath) : false;
 
   if (exists) {
     return {
-      name: `${toolConfig.name} Skills Path`,
+      name: `${desc.display.name} Skills Path`,
       status: "pass",
-      message: `Skills directory exists: ${toolConfig.skillsPath}`,
+      message: `Skills directory exists: ${skillsPath}`,
     };
   }
 
   return {
-    name: `${toolConfig.name} Skills Path`,
+    name: `${desc.display.name} Skills Path`,
     status: "warn",
-    message: `Skills directory not found: ${toolConfig.skillsPath}`,
+    message: `Skills directory not found: ${skillsPath ?? "(none)"}`,
     fix: "Run: mycelium sync",
   };
 }
@@ -267,16 +268,16 @@ export async function checkOrphanedConfigs(): Promise<DiagnosticResult> {
     // Check if disabled tools have skills synced
     const orphanedTools: string[] = [];
     for (const toolId of disabledTools) {
-      const toolConfig = SUPPORTED_TOOLS[toolId];
-      if (!toolConfig) continue;
+      const desc = TOOL_REGISTRY[toolId];
+      if (!desc) continue;
 
-      const skillsPath = expandPath(toolConfig.skillsPath);
-      if (await pathExists(skillsPath)) {
+      const skillsPath = resolvePath(desc.paths.skills);
+      if (skillsPath && await pathExists(skillsPath)) {
         try {
           const entries = await fs.readdir(skillsPath, { withFileTypes: true });
           const symlinks = entries.filter((e) => e.isSymbolicLink());
           if (symlinks.length > 0) {
-            orphanedTools.push(toolConfig.name);
+            orphanedTools.push(desc.display.name);
           }
         } catch {
           // Ignore read errors

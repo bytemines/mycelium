@@ -1,6 +1,6 @@
 # Mycelium Architecture
 
-> Universal AI Tool Orchestrator — syncs skills, MCPs, and memory across Claude Code, Codex, Gemini, OpenCode, OpenClaw, and Aider.
+> Universal AI Tool Orchestrator — syncs skills, MCPs, and memory across 9 AI coding tools.
 
 ## Design Philosophy
 
@@ -50,16 +50,26 @@ For tools with a native CLI (Claude Code, Codex, Gemini), Mycelium prefers the C
 
 Snapshots are taken before any destructive write, stored in `~/.mycelium/snapshots/`. The `mycelium snapshot restore` command rolls back to any previous state.
 
-## Tool Adapter Pattern
+## Tool Registry & Auto-Adapter
 
-Each supported tool has an adapter (subclass of `BaseToolAdapter`) that encapsulates:
+All tool knowledge lives in `packages/core/src/tools/` as **ToolDescriptor** objects — one file per tool. Each descriptor declares paths, MCP config format, CLI commands, capabilities, memory scopes, and display metadata.
 
-- How to detect the tool's CLI (`hasCli()` via `which`)
-- How to add/remove/disable MCPs via CLI or file editing
-- The tool's config file format and path
-- Tool-specific quirks (e.g., OpenCode uses `mcp.name.type=local`, Aider uses a separate `mcp-servers.json` referenced from YAML)
+```
+packages/core/src/tools/
+  _types.ts       ToolDescriptor interface
+  _registry.ts    TOOL_REGISTRY + helper functions
+  claude-code.ts  codex.ts  gemini-cli.ts  opencode.ts
+  openclaw.ts     aider.ts  cursor.ts      vscode.ts  antigravity.ts
+```
 
-This isolates tool-specific knowledge so adding a new tool requires only a new adapter class.
+The **auto-adapter factory** (`packages/cli/src/core/auto-adapter.ts`) generates a `GenericAdapter` from any descriptor, handling JSON/JSONC/TOML formats and all MCP entry shapes automatically. Tools with non-standard formats (OpenClaw's array-based plugins, Aider's dual-file write) provide custom adapters.
+
+**Adding a new tool requires:**
+1. One descriptor file in `packages/core/src/tools/` (~30 lines)
+2. One import in `_registry.ts`
+3. One SVG icon in `packages/dashboard/src/components/icons/svg/`
+
+Everything else — schema validation, adapters, dashboard, memory scoping, sync — is derived from the registry.
 
 ## Migration Design
 
@@ -113,4 +123,4 @@ Smart memory compression keeps files within tool-specific line limits (e.g., Cla
 | Express for API server | Serves both REST API and dashboard static files from one process |
 | YAML for manifests, JSON for tool configs | YAML is human-editable for Mycelium's own config; JSON matches what most tools expect |
 | Symlinks for skills | Zero-copy, real-time sync; changes to skill files are immediately visible to all tools |
-| Adapter pattern for tools | Isolates tool-specific quirks; adding a tool is one file, not a cross-cutting change |
+| Tool Registry + auto-adapter | One descriptor per tool; auto-adapter handles standard formats; adding a tool is 1 file + 1 SVG |

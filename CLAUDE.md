@@ -9,8 +9,9 @@ packages/
   dashboard/ — React + React Flow visualization (@mycelium/dashboard)
 ```
 
-- `packages/core/src/types.ts` — all shared interfaces (ToolConfig, McpServerConfig, Skill, etc.)
-- `packages/core/src/schema.ts` — Zod validation schemas
+- `packages/core/src/types.ts` — shared interfaces (McpServerConfig, Skill, MemoryScope, etc.)
+- `packages/core/src/tools/` — **Tool Registry**: one ToolDescriptor per tool, auto-derived everything
+- `packages/core/src/schema.ts` — Zod validation schemas (toolIdSchema derived from registry)
 - `packages/cli/src/commands/` — one file per CLI command (init, sync, status, doctor, etc.)
 - `packages/cli/src/core/` — business logic modules (config-merger, symlink-manager, migrator, etc.)
 - `packages/dashboard/src/components/` — React components (Graph, panels, wizards)
@@ -35,8 +36,8 @@ pnpm test             # turbo test across all packages
 pnpm typecheck        # tsc --noEmit in all packages
 
 # Per-package
-cd packages/cli && pnpm test          # 426 tests
-cd packages/core && pnpm test         # 28 tests
+cd packages/cli && pnpm test          # 546 tests
+cd packages/core && pnpm test         # 42 tests
 cd packages/dashboard && pnpm test    # 17 tests
 ```
 
@@ -71,10 +72,21 @@ and imports skills/MCPs/memory into mycelium. Manifest tracked at `~/.mycelium/m
 Registry-driven (YAML config at `~/.mycelium/marketplace-registry.yaml`).
 Sources are pluggable — add/remove via CLI. `marketplace-registry.ts` manages discovery and state.
 
+## Tool Registry (packages/core/src/tools/)
+
+Single source of truth for all tool knowledge. 9 tools: Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, Aider, Cursor, VS Code, Antigravity.
+
+- `_types.ts` — `ToolDescriptor`, `Capability`, `McpFormat`, `McpEntryShape`, `PathSpec`
+- `_registry.ts` — `TOOL_REGISTRY`, `ALL_TOOL_IDS`, `resolvePath()`, `toolsWithCapability()`, `toolsForScope()`
+- One file per tool (e.g., `claude-code.ts`) exporting a `ToolDescriptor`
+
+**Adding a new tool**: 1 descriptor file + 1 import in `_registry.ts` + 1 SVG icon.
+
+The auto-adapter (`packages/cli/src/core/auto-adapter.ts`) generates adapters from descriptors. Custom adapters exist only for OpenClaw (array format) and Aider (dual-file).
+
 ## Key Types (packages/core/src/types.ts)
 
-- `ToolId` — union of 6 supported tools
-- `ToolConfig` — paths, format, enabled state per tool
+- `ToolId` — `string` (derived from registry at runtime)
 - `McpServerConfig` — command, args, env, tool targeting
 - `MergedConfig` — result of 3-tier config merge with source tracking
 - `MigrationPlan` / `MigrationResult` — migration workflow types
@@ -97,4 +109,5 @@ Sources are pluggable — add/remove via CLI. `marketplace-registry.ts` manages 
 - `preset load` prints planned actions but does not execute enable/disable
 - `Graph.tsx` is ~600 lines — should be refactored (extract edge-building, plugin nodes)
 - `doctor.ts` checkMcpServerConnectivity spawns actual MCP commands (could use `which` instead)
-- Duplicate `memoryLimits` map exists in both `doctor.ts` and `memory-scoper.ts`
+- `memoryLimits` in `doctor.ts` could derive from `TOOL_REGISTRY` (currently separate)
+- `dryRunSync` doesn't use `entryShape` for vscode/opencode preview (cosmetic)

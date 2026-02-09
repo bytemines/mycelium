@@ -64,7 +64,7 @@ describe("ToolDetector", () => {
       });
 
       const tools = await detectInstalledTools();
-      const gemini = tools.find((t) => t.id === "gemini");
+      const gemini = tools.find((t) => t.id === "gemini-cli");
 
       expect(gemini).toBeDefined();
       expect(gemini?.installed).toBe(true);
@@ -94,14 +94,17 @@ describe("ToolDetector", () => {
 
       const tools = await detectInstalledTools();
 
-      expect(tools).toHaveLength(6);
+      expect(tools).toHaveLength(9);
       expect(tools.map((t) => t.id)).toEqual([
         "claude-code",
         "codex",
-        "gemini",
+        "gemini-cli",
         "opencode",
         "openclaw",
         "aider",
+        "cursor",
+        "vscode",
+        "antigravity",
       ]);
     });
   });

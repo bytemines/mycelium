@@ -13,9 +13,13 @@ vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn(),
 }));
 
-vi.mock("@mycelium/core", () => ({
-  expandPath: (p: string) => p.replace("~", "/home/test"),
-}));
+vi.mock("@mycelium/core", async () => {
+  const actual = await vi.importActual("@mycelium/core");
+  return {
+    ...actual,
+    expandPath: (p: string) => p.replace("~", "/home/test"),
+  };
+});
 
 import * as fs from "node:fs/promises";
 

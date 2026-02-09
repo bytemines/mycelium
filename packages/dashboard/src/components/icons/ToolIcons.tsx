@@ -9,6 +9,10 @@ import geminiSvg from "./svg/gemini.svg?raw";
 import opencodeSvg from "./svg/opencode.svg?raw";
 import openclawSvg from "./svg/openclaw.svg?raw";
 import aiderSvg from "./svg/aider.svg?raw";
+import cursorSvg from "./svg/cursor.svg?raw";
+import vscodeSvg from "./svg/vscode.svg?raw";
+import antigravitySvg from "./svg/antigravity.svg?raw";
+import { TOOL_REGISTRY } from "@mycelium/core";
 
 interface IconProps {
   size?: number;
@@ -48,11 +52,33 @@ export function AiderIcon({ size = 16 }: IconProps) {
   return <SvgIcon svg={aiderSvg} size={size} />;
 }
 
-export const TOOL_ICONS: Record<string, React.ReactNode> = {
-  "Claude Code": <ClaudeIcon />,
-  "Codex CLI": <OpenAIIcon />,
-  "Gemini CLI": <GeminiIcon />,
-  "OpenCode": <OpenCodeIcon />,
-  "OpenClaw": <OpenClawIcon />,
-  "Aider": <AiderIcon />,
+export function CursorIcon({ size = 16 }: IconProps) {
+  return <SvgIcon svg={cursorSvg} size={size} />;
+}
+
+export function VscodeIcon({ size = 16 }: IconProps) {
+  return <SvgIcon svg={vscodeSvg} size={size} />;
+}
+
+export function AntigravityIcon({ size = 16 }: IconProps) {
+  return <SvgIcon svg={antigravitySvg} size={size} />;
+}
+
+const SVG_MAP: Record<string, string> = {
+  claude: claudeSvg,
+  openai: openaiSvg,
+  gemini: geminiSvg,
+  opencode: opencodeSvg,
+  openclaw: openclawSvg,
+  aider: aiderSvg,
+  cursor: cursorSvg,
+  vscode: vscodeSvg,
+  antigravity: antigravitySvg,
 };
+
+export const TOOL_ICONS: Record<string, React.ReactNode> = Object.fromEntries(
+  Object.values(TOOL_REGISTRY).map(desc => [
+    desc.display.name,
+    <SvgIcon svg={SVG_MAP[desc.display.icon] ?? ""} />,
+  ])
+);

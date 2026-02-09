@@ -15,7 +15,9 @@ import {
   type ToolId,
   type SyncStatus,
   type ToolSyncStatus,
-  SUPPORTED_TOOLS,
+  TOOL_REGISTRY,
+  ALL_TOOL_IDS,
+  resolvePath,
   expandPath,
   pathExists,
   formatStatus,
@@ -39,15 +41,10 @@ export interface StatusOutputOptions {
   projectConfigExists?: boolean;
 }
 
-// Memory scope mapping - which tools get which scopes
-const TOOL_MEMORY_SCOPES: Record<ToolId, string[]> = {
-  "claude-code": ["shared", "coding"],
-  codex: ["shared", "coding"],
-  "gemini-cli": ["shared", "coding"],
-  opencode: ["shared", "coding"],
-  openclaw: ["shared", "personal"],
-  aider: ["shared", "coding"],
-};
+// Memory scope mapping - derived from registry
+const TOOL_MEMORY_SCOPES: Record<string, string[]> = Object.fromEntries(
+  Object.values(TOOL_REGISTRY).map(desc => [desc.id, desc.scopes])
+);
 
 // ============================================================================
 // Core Functions
@@ -180,10 +177,10 @@ export async function getToolStatusFromPath(
  */
 export async function getToolStatus(toolId: ToolId): Promise<ToolSyncStatus> {
   const myceliumPath = expandPath("~/.mycelium");
-  const toolConfig = SUPPORTED_TOOLS[toolId];
+  const desc = TOOL_REGISTRY[toolId];
 
   // Check if tool is disabled in manifest
-  let isDisabled = !toolConfig.enabled;
+  let isDisabled = !desc.enabled;
   try {
     const manifestPath = path.join(myceliumPath, "manifest.json");
     const manifestContent = await fs.readFile(manifestPath, "utf-8");
@@ -197,9 +194,9 @@ export async function getToolStatus(toolId: ToolId): Promise<ToolSyncStatus> {
 
   return getToolStatusFromPath(toolId, {
     myceliumPath,
-    toolSkillsPath: expandPath(toolConfig.skillsPath),
-    toolMcpPath: expandPath(toolConfig.mcpConfigPath),
-    toolMemoryPath: expandPath(toolConfig.memoryPath),
+    toolSkillsPath: resolvePath(desc.paths.skills) ?? "",
+    toolMcpPath: resolvePath(desc.paths.mcp) ?? "",
+    toolMemoryPath: resolvePath(desc.paths.globalMemory) ?? "",
     isDisabled,
   });
 }
@@ -210,7 +207,7 @@ export async function getToolStatus(toolId: ToolId): Promise<ToolSyncStatus> {
 export async function getAllStatusFromPath(
   myceliumPath: string
 ): Promise<ToolSyncStatus[]> {
-  const toolIds = Object.keys(SUPPORTED_TOOLS) as ToolId[];
+  const toolIds = ALL_TOOL_IDS;
   const statuses: ToolSyncStatus[] = [];
 
   // Load manifest to check disabled tools
@@ -229,14 +226,14 @@ export async function getAllStatusFromPath(
   }
 
   for (const toolId of toolIds) {
-    const toolConfig = SUPPORTED_TOOLS[toolId];
-    const isDisabled = !toolConfig.enabled || disabledTools.has(toolId);
+    const desc = TOOL_REGISTRY[toolId];
+    const isDisabled = !desc.enabled || disabledTools.has(toolId);
 
     const status = await getToolStatusFromPath(toolId, {
       myceliumPath,
-      toolSkillsPath: expandPath(toolConfig.skillsPath),
-      toolMcpPath: expandPath(toolConfig.mcpConfigPath),
-      toolMemoryPath: expandPath(toolConfig.memoryPath),
+      toolSkillsPath: resolvePath(desc.paths.skills) ?? "",
+      toolMcpPath: resolvePath(desc.paths.mcp) ?? "",
+      toolMemoryPath: resolvePath(desc.paths.globalMemory) ?? "",
       isDisabled,
     });
     statuses.push(status);
@@ -274,8 +271,8 @@ export function formatStatusOutput(
 
   // Format each tool status
   for (const status of statuses) {
-    const toolConfig = SUPPORTED_TOOLS[status.tool];
-    const toolName = toolConfig.name.padEnd(14);
+    const desc2 = TOOL_REGISTRY[status.tool];
+    const toolName = desc2.display.name.padEnd(14);
     const statusStr = formatStatus(status.status);
 
     if (status.status === "disabled") {

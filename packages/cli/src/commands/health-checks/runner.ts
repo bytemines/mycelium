@@ -4,8 +4,8 @@
 
 import {
   type ToolId,
-  SUPPORTED_TOOLS,
-  expandPath,
+  TOOL_REGISTRY,
+  resolvePath,
   pathExists,
 } from "@mycelium/core";
 import {
@@ -46,22 +46,25 @@ export async function runAllChecks(): Promise<DoctorResult> {
   }
 
   // 4. Check each tool's paths and configs
-  for (const [toolId, toolConfig] of Object.entries(SUPPORTED_TOOLS)) {
+  for (const [toolId, desc] of Object.entries(TOOL_REGISTRY)) {
     // Check skills path
     checks.push(await checkToolPathExists(toolId as ToolId));
 
     // Check for broken symlinks in skills directory
-    const skillsPath = expandPath(toolConfig.skillsPath);
-    if (await pathExists(skillsPath)) {
+    const skillsPath = resolvePath(desc.paths.skills);
+    if (skillsPath && await pathExists(skillsPath)) {
       checks.push(await checkBrokenSymlinks(skillsPath));
     }
 
     // Check MCP config validity based on format
-    const mcpConfigPath = expandPath(toolConfig.mcpConfigPath);
-    if (toolConfig.mcpConfigFormat === "json") {
-      checks.push(await checkMcpConfigJson(mcpConfigPath));
-    } else if (toolConfig.mcpConfigFormat === "yaml") {
-      checks.push(await checkMcpConfigYaml(mcpConfigPath));
+    const mcpConfigPath = resolvePath(desc.paths.mcp);
+    const fmt = desc.mcp.format === "jsonc" ? "json" : desc.mcp.format;
+    if (mcpConfigPath) {
+      if (fmt === "json") {
+        checks.push(await checkMcpConfigJson(mcpConfigPath));
+      } else if (fmt === "yaml") {
+        checks.push(await checkMcpConfigYaml(mcpConfigPath));
+      }
     }
   }
 
@@ -76,8 +79,8 @@ export async function runAllChecks(): Promise<DoctorResult> {
   // 7. Check memory file sizes for tools with limits
   for (const [toolId, maxLines] of Object.entries(TOOL_MAX_LINES)) {
     if (maxLines == null) continue;
-    const toolConfig = SUPPORTED_TOOLS[toolId as ToolId];
-    const memoryPath = expandPath(toolConfig.memoryPath);
+    const desc = TOOL_REGISTRY[toolId];
+    const memoryPath = resolvePath(desc.paths.globalMemory) ?? "";
     checks.push(await checkMemoryFileSize(memoryPath, maxLines));
   }
 

@@ -4,9 +4,9 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as os from "node:os";
 
-import { type ToolId, type McpServerConfig, type ScannedHook, SUPPORTED_TOOLS, expandPath } from "@mycelium/core";
+import type { McpServerConfig, ScannedHook } from "@mycelium/core";
+import { TOOL_REGISTRY, resolvePath, expandPath } from "@mycelium/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 import { getAdapter } from "./tool-adapter.js";
 
@@ -36,14 +36,11 @@ export async function restoreBackups(): Promise<{ restored: string[]; errors: st
   const restored: string[] = [];
   const errors: string[] = [];
 
-  const searchDirs = [
-    path.join(os.homedir(), ".claude"),
-    path.join(os.homedir(), ".codex"),
-    path.join(os.homedir(), ".gemini"),
-    path.join(os.homedir(), ".openclaw"),
-    path.join(os.homedir(), ".config", "opencode"),
-    os.homedir(), // for ~/.claude.json
-  ];
+  const searchDirs = [...new Set(
+    Object.values(TOOL_REGISTRY).flatMap(t =>
+      t.paths.backupDirs.map(d => expandPath(d))
+    )
+  )];
 
   for (const dir of searchDirs) {
     try {
@@ -75,10 +72,15 @@ export async function restoreBackups(): Promise<{ restored: string[]; errors: st
 // ============================================================================
 
 export async function syncToTool(
-  toolId: ToolId,
+  toolId: string,
   mcps: Record<string, McpServerConfig>,
   hooks?: ScannedHook[],
 ): Promise<SyncWriteResult> {
+  const desc = TOOL_REGISTRY[toolId];
+  if (!desc) {
+    return { configPath: "", backupPath: "", sectionsUpdated: [], success: false, error: `Unsupported tool: ${toolId}` };
+  }
+
   let adapter;
   try {
     adapter = getAdapter(toolId);
@@ -94,7 +96,7 @@ export async function syncToTool(
   }
 
   return {
-    configPath: expandPath(SUPPORTED_TOOLS[toolId].mcpConfigPath),
+    configPath: resolvePath(desc.paths.mcp) ?? "",
     backupPath: "",
     sectionsUpdated: result.success ? ["mcpServers"] : [],
     success: result.success,
@@ -128,24 +130,16 @@ async function writeClaudeCodeHooks(hooks: ScannedHook[]): Promise<void> {
 }
 
 export async function dryRunSync(
-  toolId: ToolId,
+  toolId: string,
   mcps: Record<string, McpServerConfig>,
 ): Promise<{ configPath: string; currentContent: string | null; newContent: string }> {
-  const paths: Record<string, string> = {
-    "claude-code": expandPath("~/.claude.json"),
-    codex: expandPath("~/.codex/config.toml"),
-    "gemini-cli": expandPath("~/.gemini/settings.json"),
-    openclaw: expandPath("~/.openclaw/openclaw.json"),
-    opencode: expandPath("~/.config/opencode/opencode.json"),
-    aider: expandPath("~/.aider/mcp-servers.json"),
-  };
-
-  const configPath = paths[toolId] ?? "";
-  const currentContent = await readFileIfExists(configPath);
+  const desc = TOOL_REGISTRY[toolId];
+  const configPath = resolvePath(desc?.paths.mcp) ?? "";
+  const currentContent = configPath ? await readFileIfExists(configPath) : null;
 
   // Build what the new content would be
   let newContent: string;
-  if (toolId === "codex") {
+  if (desc?.mcp.format === "toml") {
     const lines: string[] = [];
     for (const [name, mcp] of Object.entries(mcps)) {
       lines.push(`[mcp.servers."${name}"]`);
@@ -156,16 +150,17 @@ export async function dryRunSync(
       lines.push("");
     }
     newContent = lines.join("\n");
-  } else if (toolId === "openclaw") {
+  } else if (desc?.mcp.entryShape === "openclaw") {
     const config: Record<string, unknown> = currentContent ? JSON.parse(currentContent) : {};
     const plugins = (config.plugins as Record<string, unknown>) ?? {};
     const existingEntries = (plugins.entries as Array<Record<string, unknown>>) ?? [];
     const nonMcpEntries = existingEntries.filter((e) => e.type !== "mcp-adapter");
     const mcpEntries = Object.entries(mcps).map(([name, mcp]) => ({
-      name,
       type: "mcp-adapter",
-      enabled: true,
-      config: { serverUrl: mcp.command, transport: mcp.args?.[0] ?? "stdio" },
+      name,
+      command: mcp.command,
+      args: mcp.args || [],
+      ...(mcp.env && Object.keys(mcp.env).length > 0 ? { env: mcp.env } : {}),
     }));
     config.plugins = { ...plugins, entries: [...nonMcpEntries, ...mcpEntries] };
     newContent = JSON.stringify(config, null, 2);
@@ -179,10 +174,10 @@ export async function dryRunSync(
       if (mcp.env && Object.keys(mcp.env).length > 0) entry.env = mcp.env;
       cleanMcps[name] = entry;
     }
-    config.mcpServers = cleanMcps;
+    const key = desc?.mcp.key ?? "mcpServers";
+    config[key] = cleanMcps;
     newContent = JSON.stringify(config, null, 2);
   }
 
   return { configPath, currentContent, newContent };
 }
-

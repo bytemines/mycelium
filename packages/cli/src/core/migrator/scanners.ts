@@ -6,9 +6,10 @@ import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-import type {
-  ToolId,
-  ToolScanResult,
+import {
+  type ToolId,
+  type ToolScanResult,
+  TOOL_REGISTRY,
 } from "@mycelium/core";
 
 import { parseSkillMd } from "../skill-parser.js";
@@ -611,10 +612,13 @@ export async function scanTool(toolId: ToolId): Promise<ToolScanResult> {
       return scanOpenCode();
     case "aider":
       return scanAider();
+    case "cursor":
+    case "vscode":
+    case "antigravity":
     default:
       return {
         toolId,
-        toolName: toolId,
+        toolName: TOOL_REGISTRY[toolId]?.display.name ?? toolId,
         installed: false,
         skills: [],
         mcps: [],

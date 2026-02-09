@@ -8,7 +8,8 @@ import * as path from "node:path";
 import {
   type ToolId,
   type MemoryScope,
-  SUPPORTED_TOOLS,
+  TOOL_REGISTRY,
+  toolsForScope,
   expandPath,
   pathExists,
   ensureDir,
@@ -47,17 +48,21 @@ export interface SyncResult {
  */
 export const MEMORY_SCOPE_CONFIG: Record<MemoryScope, MemoryScopeDefinition> = {
   shared: {
-    syncTo: ["claude-code", "codex", "gemini-cli", "opencode", "openclaw", "aider"],
+    syncTo: toolsForScope("shared").map(t => t.id),
     path: "global/memory/shared/",
   },
   coding: {
-    syncTo: ["claude-code", "codex", "gemini-cli", "opencode", "aider"],
-    excludeFrom: ["openclaw"],
+    syncTo: toolsForScope("coding").map(t => t.id),
+    excludeFrom: Object.values(TOOL_REGISTRY)
+      .filter(t => !t.scopes.includes("coding"))
+      .map(t => t.id),
     path: "global/memory/coding/",
   },
   personal: {
-    syncTo: ["openclaw"],
-    excludeFrom: ["claude-code", "codex", "gemini-cli", "opencode", "aider"],
+    syncTo: toolsForScope("personal").map(t => t.id),
+    excludeFrom: Object.values(TOOL_REGISTRY)
+      .filter(t => !t.scopes.includes("personal"))
+      .map(t => t.id),
     path: "global/memory/personal/",
   },
 };
@@ -187,9 +192,18 @@ export async function syncMemoryToTool(tool: ToolId): Promise<SyncResult> {
       content = compressMemory(content, { maxLines });
     }
 
-    // Get tool's memory path
-    const toolConfig = SUPPORTED_TOOLS[tool];
-    const memoryPath = expandPath(toolConfig.memoryPath);
+    // Get tool's memory path — use expandPath so mocks work in tests
+    const desc = TOOL_REGISTRY[tool];
+    const gm = desc.paths.globalMemory;
+    const rawMemPath = typeof gm === "string"
+      ? gm
+      : gm === null
+        ? null
+        : (gm as unknown as Record<string, string>)[process.platform] ?? (gm as unknown as Record<string, string>).linux;
+    const memoryPath = rawMemPath ? expandPath(rawMemPath) : null;
+    if (!memoryPath) {
+      return { success: true, filesWritten: 0 };
+    }
     const memoryDir = path.dirname(memoryPath);
 
     // Ensure target directory exists

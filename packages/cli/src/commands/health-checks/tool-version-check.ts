@@ -2,7 +2,7 @@
  * Tool installation and version detection checks for doctor command.
  */
 
-import { SUPPORTED_TOOLS, expandPath, pathExists } from "@mycelium/core";
+import { TOOL_REGISTRY, resolvePath, pathExists } from "@mycelium/core";
 import type { DiagnosticResult } from "./types.js";
 
 /**
@@ -12,13 +12,13 @@ export async function checkToolVersions(): Promise<DiagnosticResult> {
   const installed: string[] = [];
   const missing: string[] = [];
 
-  for (const [toolId, toolConfig] of Object.entries(SUPPORTED_TOOLS)) {
-    const skillsPath = expandPath(toolConfig.skillsPath);
-    const configPath = expandPath(toolConfig.mcpConfigPath);
-    if ((await pathExists(skillsPath)) || (await pathExists(configPath))) {
-      installed.push(toolConfig.name);
+  for (const [toolId, desc] of Object.entries(TOOL_REGISTRY)) {
+    const skillsPath = resolvePath(desc.paths.skills);
+    const configPath = resolvePath(desc.paths.mcp);
+    if ((skillsPath && await pathExists(skillsPath)) || (configPath && await pathExists(configPath))) {
+      installed.push(desc.display.name);
     } else {
-      missing.push(toolConfig.name);
+      missing.push(desc.display.name);
     }
   }
 

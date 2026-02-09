@@ -41,6 +41,9 @@ describe("memory-scoper", () => {
         "opencode",
         "openclaw",
         "aider",
+        "cursor",
+        "vscode",
+        "antigravity",
       ]);
       expect(MEMORY_SCOPE_CONFIG.shared.path).toBe("global/memory/shared/");
     });
@@ -53,6 +56,9 @@ describe("memory-scoper", () => {
         "gemini-cli",
         "opencode",
         "aider",
+        "cursor",
+        "vscode",
+        "antigravity",
       ]);
       expect(MEMORY_SCOPE_CONFIG.coding.excludeFrom).toEqual(["openclaw"]);
       expect(MEMORY_SCOPE_CONFIG.coding.path).toBe("global/memory/coding/");
@@ -67,6 +73,9 @@ describe("memory-scoper", () => {
         "gemini-cli",
         "opencode",
         "aider",
+        "cursor",
+        "vscode",
+        "antigravity",
       ]);
       expect(MEMORY_SCOPE_CONFIG.personal.path).toBe("global/memory/personal/");
     });

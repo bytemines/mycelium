@@ -67,7 +67,8 @@ describe("sync-writer", () => {
   describe("restoreBackups", () => {
     it("restores backup files and removes them", async () => {
       mockFs.readdir.mockImplementation(async (dir) => {
-        if (String(dir) === home) {
+        const d = String(dir).replace(/\/$/, "");
+        if (d === home) {
           return [".claude.json.mycelium-backup"] as any;
         }
         throw new Error("no dir");

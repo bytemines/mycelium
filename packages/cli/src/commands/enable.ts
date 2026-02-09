@@ -11,7 +11,7 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import { type ToolId, SUPPORTED_TOOLS, expandPath } from "@mycelium/core";
+import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelium/core";
 
 // ============================================================================
 // Types
@@ -88,7 +88,7 @@ async function saveManifest(manifestDir: string, manifest: ManifestConfig): Prom
  * Check if a tool ID is valid
  */
 function isValidToolId(toolId: string): toolId is ToolId {
-  return toolId in SUPPORTED_TOOLS;
+  return toolId in TOOL_REGISTRY;
 }
 
 /**
@@ -140,7 +140,7 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     return {
       success: false,
       name,
-      error: `Invalid tool: ${tool}. Supported tools: ${Object.keys(SUPPORTED_TOOLS).join(", ")}`,
+      error: `Invalid tool: ${tool}. Supported tools: ${ALL_TOOL_IDS.join(", ")}`,
     };
   }
 
