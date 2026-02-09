@@ -25,9 +25,9 @@ vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
 }));
 
-// Mock @mycelium/core
-vi.mock("@mycelium/core", async () => {
-  const actual = await vi.importActual("@mycelium/core");
+// Mock @mycelsh/core
+vi.mock("@mycelsh/core", async () => {
+  const actual = await vi.importActual("@mycelsh/core");
   return {
     ...actual,
     expandPath: (p: string) => {
@@ -47,7 +47,7 @@ describe("initGlobal", () => {
   });
 
   it("creates ~/.mycelium/ directory structure", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -70,7 +70,7 @@ describe("initGlobal", () => {
   });
 
   it("creates manifest.yaml with default config", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal, DEFAULT_MANIFEST_CONFIG } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -102,7 +102,7 @@ describe("initGlobal", () => {
   });
 
   it("creates .env.example template", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -122,7 +122,7 @@ describe("initGlobal", () => {
   });
 
   it("creates empty .env.local (gitignored)", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -142,7 +142,7 @@ describe("initGlobal", () => {
   });
 
   it("creates global/mcps.yaml", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -162,7 +162,7 @@ describe("initGlobal", () => {
   });
 
   it("does NOT overwrite existing config without --force", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal } = await import("./init.js");
 
     // Config already exists
@@ -181,7 +181,7 @@ describe("initGlobal", () => {
   });
 
   it("overwrites with --force flag", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal } = await import("./init.js");
 
     // Config already exists
@@ -199,7 +199,7 @@ describe("initGlobal", () => {
   });
 
   it("returns success result with created path", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initGlobal } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -222,7 +222,7 @@ describe("initProject", () => {
   });
 
   it("creates .mycelium/ in project root", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initProject } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -239,7 +239,7 @@ describe("initProject", () => {
   });
 
   it("creates project mcps.yaml", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initProject } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -259,7 +259,7 @@ describe("initProject", () => {
   });
 
   it("does NOT overwrite existing config without --force", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initProject } = await import("./init.js");
 
     // Config already exists
@@ -278,7 +278,7 @@ describe("initProject", () => {
   });
 
   it("overwrites with --force flag", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initProject } = await import("./init.js");
 
     // Config already exists
@@ -296,7 +296,7 @@ describe("initProject", () => {
   });
 
   it("returns success result with created path", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initProject } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -313,7 +313,7 @@ describe("initProject", () => {
   });
 
   it("uses current directory if projectRoot not specified", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { initProject } = await import("./init.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);

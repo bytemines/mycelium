@@ -21,7 +21,7 @@ import {
   expandPath,
   pathExists,
   formatStatus,
-} from "@mycelium/core";
+} from "@mycelsh/core";
 
 // ============================================================================
 // Types

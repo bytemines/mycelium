@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ToolId, MemoryScope } from "@mycelium/core";
+import type { ToolId, MemoryScope } from "@mycelsh/core";
 
 // Mock fs/promises
 vi.mock("node:fs/promises", () => ({
@@ -15,9 +15,9 @@ vi.mock("node:fs/promises", () => ({
   access: vi.fn(),
 }));
 
-// Mock @mycelium/core utilities
-vi.mock("@mycelium/core", async () => {
-  const actual = await vi.importActual("@mycelium/core");
+// Mock @mycelsh/core utilities
+vi.mock("@mycelsh/core", async () => {
+  const actual = await vi.importActual("@mycelsh/core");
   return {
     ...actual,
     expandPath: vi.fn((p: string) => p.replace("~", "/home/user")),
@@ -164,7 +164,7 @@ describe("memory-scoper", () => {
   describe("getMemoryFilesForTool", () => {
     it("should return files from shared and coding scopes for claude-code", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { getMemoryFilesForTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -214,7 +214,7 @@ describe("memory-scoper", () => {
 
     it("should return files from shared and personal scopes for openclaw", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { getMemoryFilesForTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -258,7 +258,7 @@ describe("memory-scoper", () => {
 
     it("should NOT return coding files for openclaw", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { getMemoryFilesForTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -294,7 +294,7 @@ describe("memory-scoper", () => {
     });
 
     it("should return empty array when scope directories do not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { getMemoryFilesForTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(false);
@@ -306,7 +306,7 @@ describe("memory-scoper", () => {
 
     it("should only include .md files", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { getMemoryFilesForTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -335,7 +335,7 @@ describe("memory-scoper", () => {
   describe("loadMemoryFiles", () => {
     it("should load all memory files from a scope directory", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { loadMemoryFiles } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -372,7 +372,7 @@ describe("memory-scoper", () => {
     });
 
     it("should return empty array when scope directory does not exist", async () => {
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { loadMemoryFiles } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(false);
@@ -386,7 +386,7 @@ describe("memory-scoper", () => {
   describe("syncMemoryToTool", () => {
     it("should concatenate memory files and write to tool path", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists, ensureDir } = await import("@mycelium/core");
+      const { pathExists, ensureDir } = await import("@mycelsh/core");
       const { syncMemoryToTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -434,7 +434,7 @@ describe("memory-scoper", () => {
 
     it("should add scope headers between sections", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists, ensureDir } = await import("@mycelium/core");
+      const { pathExists, ensureDir } = await import("@mycelsh/core");
       const { syncMemoryToTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -483,7 +483,7 @@ describe("memory-scoper", () => {
 
     it("should write to correct tool memory path", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists, ensureDir } = await import("@mycelium/core");
+      const { pathExists, ensureDir } = await import("@mycelsh/core");
       const { syncMemoryToTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -505,7 +505,7 @@ describe("memory-scoper", () => {
 
     it("should ensure target directory exists before writing", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists, ensureDir } = await import("@mycelium/core");
+      const { pathExists, ensureDir } = await import("@mycelsh/core");
       const { syncMemoryToTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -522,7 +522,7 @@ describe("memory-scoper", () => {
 
     it("should sync personal scope only to openclaw", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists, ensureDir } = await import("@mycelium/core");
+      const { pathExists, ensureDir } = await import("@mycelsh/core");
       const { syncMemoryToTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -563,7 +563,7 @@ describe("memory-scoper", () => {
 
     it("should return error result when write fails", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists, ensureDir } = await import("@mycelium/core");
+      const { pathExists, ensureDir } = await import("@mycelsh/core");
       const { syncMemoryToTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(true);
@@ -581,7 +581,7 @@ describe("memory-scoper", () => {
 
     it("should handle empty memory files gracefully", async () => {
       const fs = await import("node:fs/promises");
-      const { pathExists } = await import("@mycelium/core");
+      const { pathExists } = await import("@mycelsh/core");
       const { syncMemoryToTool } = await import("./memory-scoper.js");
 
       vi.mocked(pathExists).mockResolvedValue(false);

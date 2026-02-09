@@ -3,7 +3,7 @@ import { Router } from "express";
 import { scanAllTools, executeMigration, clearMigration } from "../core/migrator/index.js";
 import { asyncHandler } from "./async-handler.js";
 
-import type { MigrationPlan } from "@mycelium/core";
+import type { MigrationPlan } from "@mycelsh/core";
 import type { Express } from "express";
 
 export function registerMigrateRoutes(app: Express): void {

@@ -3,8 +3,8 @@
  *
  * Extracted from marketplace.ts to keep functions under 60 lines.
  */
-import type { MarketplaceEntry, MarketplaceSearchResult } from "@mycelium/core";
-import { MARKETPLACE_SOURCES as MS } from "@mycelium/core";
+import type { MarketplaceEntry, MarketplaceSearchResult } from "@mycelsh/core";
+import { MARKETPLACE_SOURCES as MS } from "@mycelsh/core";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

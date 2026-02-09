@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import { expandPath, ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelium/core";
+import { expandPath, ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelsh/core";
 import { getRegistryEntry, parseRegistryEntry } from "./mcp-registry.js";
 import { parseSkillMd, isValidSkillMd } from "./skill-parser.js";
 

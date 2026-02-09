@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { McpServerConfig } from "@mycelium/core";
+import type { McpServerConfig } from "@mycelsh/core";
 
 // Import the module under test (doesn't exist yet - tests will fail)
 import {

@@ -1,5 +1,5 @@
 import type { Status } from "@/types";
-import { TOOL_REGISTRY } from "@mycelium/core";
+import { TOOL_REGISTRY } from "@mycelsh/core";
 
 export interface ScanData {
   toolId: string;

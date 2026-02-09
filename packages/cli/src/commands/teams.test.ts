@@ -5,7 +5,7 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(),
 }));
 
-vi.mock("@mycelium/core", () => ({
+vi.mock("@mycelsh/core", () => ({
   ensureDir: vi.fn(),
   pathExists: vi.fn(),
   getGlobalMyceliumPath: () => "/mock/home/.mycelium",
@@ -72,7 +72,7 @@ describe("listTeams", () => {
   });
 
   it("returns team names from yaml files", async () => {
-    const { pathExists } = await import("@mycelium/core");
+    const { pathExists } = await import("@mycelsh/core");
     const fs = await import("node:fs/promises");
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(fs.readdir).mockResolvedValue(["team-a.yaml", "team-b.yml", "readme.txt"] as any);
@@ -84,7 +84,7 @@ describe("listTeams", () => {
   });
 
   it("returns empty array when dir does not exist", async () => {
-    const { pathExists } = await import("@mycelium/core");
+    const { pathExists } = await import("@mycelsh/core");
     vi.mocked(pathExists).mockResolvedValue(false);
 
     const { listTeams } = await import("./teams.js");

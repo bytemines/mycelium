@@ -27,17 +27,25 @@ describe("serveCommand", () => {
     expect(serveCommand.name()).toBe("serve");
   });
 
-  it("has --port and --no-build options", async () => {
+  it("has --port and --build options", async () => {
     const { serveCommand } = await import("./serve.js");
     const portOpt = serveCommand.options.find((o) => o.long === "--port");
-    const buildOpt = serveCommand.options.find((o) => o.long === "--no-build");
+    const buildOpt = serveCommand.options.find((o) => o.long === "--build");
     expect(portOpt).toBeDefined();
     expect(buildOpt).toBeDefined();
   });
 
-  it("runs build with execFileSync then starts server on default port", async () => {
+  it("starts server on default port without building by default", async () => {
     const { serveCommand } = await import("./serve.js");
     await serveCommand.parseAsync([], { from: "user" });
+
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+    expect(mockStartServer).toHaveBeenCalledWith(3378);
+  });
+
+  it("runs build when --build is passed", async () => {
+    const { serveCommand } = await import("./serve.js");
+    await serveCommand.parseAsync(["--build"], { from: "user" });
 
     expect(mockExecFileSync).toHaveBeenCalledWith(
       "pnpm",
@@ -47,17 +55,9 @@ describe("serveCommand", () => {
     expect(mockStartServer).toHaveBeenCalledWith(3378);
   });
 
-  it("skips build when --no-build is passed", async () => {
-    const { serveCommand } = await import("./serve.js");
-    await serveCommand.parseAsync(["--no-build"], { from: "user" });
-
-    expect(mockExecFileSync).not.toHaveBeenCalled();
-    expect(mockStartServer).toHaveBeenCalledWith(3378);
-  });
-
   it("uses custom port when --port is specified", async () => {
     const { serveCommand } = await import("./serve.js");
-    await serveCommand.parseAsync(["--no-build", "--port", "4000"], { from: "user" });
+    await serveCommand.parseAsync(["--port", "4000"], { from: "user" });
 
     expect(mockStartServer).toHaveBeenCalledWith(4000);
   });
@@ -65,7 +65,7 @@ describe("serveCommand", () => {
   it("starts server even if build fails", async () => {
     mockExecFileSync.mockImplementation(() => { throw new Error("build failed"); });
     const { serveCommand } = await import("./serve.js");
-    await serveCommand.parseAsync([], { from: "user" });
+    await serveCommand.parseAsync(["--build"], { from: "user" });
 
     expect(mockStartServer).toHaveBeenCalledWith(3378);
   });

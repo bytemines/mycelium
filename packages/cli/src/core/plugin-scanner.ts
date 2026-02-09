@@ -9,7 +9,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import type { PluginComponent, PluginComponentType, PluginManifest } from "@mycelium/core";
+import type { PluginComponent, PluginComponentType, PluginManifest } from "@mycelsh/core";
 import { readFileIfExists } from "./fs-helpers.js";
 
 // ============================================================================

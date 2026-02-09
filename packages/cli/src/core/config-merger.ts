@@ -18,7 +18,7 @@ import type {
   ConfigLevel,
   MemoryConfig,
   Skill,
-} from "@mycelium/core";
+} from "@mycelsh/core";
 
 /**
  * Default empty memory config

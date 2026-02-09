@@ -10,7 +10,7 @@ import {
   type ToolId,
   type ToolScanResult,
   TOOL_REGISTRY,
-} from "@mycelium/core";
+} from "@mycelsh/core";
 
 import { parseSkillMd } from "../skill-parser.js";
 import { detectInstalledTools } from "../tool-detector.js";

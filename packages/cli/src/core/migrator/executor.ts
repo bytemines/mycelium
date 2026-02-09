@@ -10,7 +10,7 @@ import type {
   MigrationResult,
   MigrationManifest,
   MigrationManifestEntry,
-} from "@mycelium/core";
+} from "@mycelsh/core";
 
 import { mkdirp, MYCELIUM_HOME } from "../fs-helpers.js";
 import { serializeMcpsYaml } from "./manifest.js";

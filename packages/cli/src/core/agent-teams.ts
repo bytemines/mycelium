@@ -3,7 +3,7 @@
  * Parse and generate Claude Code Agent Teams configurations
  */
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import type { AgentConfig, TeamConfig } from "@mycelium/core";
+import type { AgentConfig, TeamConfig } from "@mycelsh/core";
 
 /**
  * Parse a team config from YAML string

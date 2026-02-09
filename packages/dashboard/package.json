@@ -1,5 +1,5 @@
 {
-  "name": "@mycelium/dashboard",
+  "name": "@mycelsh/dashboard",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mycelium/core": "workspace:*",
+    "@mycelsh/core": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-slot": "^1.2.4",

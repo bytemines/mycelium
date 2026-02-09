@@ -1,5 +1,5 @@
 {
-  "name": "@mycelium/core",
+  "name": "@mycelsh/core",
   "version": "0.2.0",
   "description": "Core types and utilities for Mycelium",
   "type": "module",

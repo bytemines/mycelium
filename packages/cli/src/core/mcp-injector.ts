@@ -4,8 +4,8 @@
  */
 
 import YAML from "yaml";
-import type { ToolId, McpServerConfig } from "@mycelium/core";
-import { resolveEnvVarsInObject } from "@mycelium/core";
+import type { ToolId, McpServerConfig } from "@mycelsh/core";
+import { resolveEnvVarsInObject } from "@mycelsh/core";
 
 // ============================================================================
 // Types

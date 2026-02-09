@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { McpServerConfig, McpsConfig, MergedConfig, ConfigLevel, MemoryConfig, Skill } from "@mycelium/core";
+import type { McpServerConfig, McpsConfig, MergedConfig, ConfigLevel, MemoryConfig, Skill } from "@mycelsh/core";
 
 // Mock fs module
 vi.mock("node:fs/promises", () => ({

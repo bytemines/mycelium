@@ -2,7 +2,7 @@
  * Tool Detector - Detects which AI coding tools are installed on the system
  */
 import { execFileSync } from "child_process";
-import { TOOL_REGISTRY, resolvePath } from "@mycelium/core";
+import { TOOL_REGISTRY, resolvePath } from "@mycelsh/core";
 
 export interface ToolInfo {
   id: string;

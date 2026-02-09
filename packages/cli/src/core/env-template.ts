@@ -3,7 +3,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { expandPath } from "@mycelium/core";
+import { expandPath } from "@mycelsh/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 
 const MYCELIUM_DIR = "~/.mycelium";

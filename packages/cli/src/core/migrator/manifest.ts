@@ -8,7 +8,7 @@ import type {
   ScannedMcp,
   ScannedHook,
   MigrationManifest,
-} from "@mycelium/core";
+} from "@mycelsh/core";
 
 import { readFileIfExists, mkdirp, MYCELIUM_HOME } from "../fs-helpers.js";
 

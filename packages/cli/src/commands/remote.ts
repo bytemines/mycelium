@@ -4,7 +4,7 @@
 import * as path from "node:path";
 import { Command } from "commander";
 import { execFileSync } from "node:child_process";
-import { expandPath } from "@mycelium/core";
+import { expandPath } from "@mycelsh/core";
 import { ensureGitignore, generateEnvTemplate, getMissingEnvVars, setupEnvVars } from "../core/env-template.js";
 import { detectMcpOverrides, loadMachineOverrides, saveMachineOverrides, rescanOverrides } from "../core/machine-overrides.js";
 import { readFileIfExists, mkdirp } from "../core/fs-helpers.js";

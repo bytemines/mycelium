@@ -26,7 +26,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@mycelium/core':
+      '@mycelsh/core':
         specifier: workspace:*
         version: link:../core
       commander:
@@ -76,7 +76,7 @@ importers:
 
   packages/dashboard:
     dependencies:
-      '@mycelium/core':
+      '@mycelsh/core':
         specifier: workspace:*
         version: link:../core
       '@radix-ui/react-dialog':

@@ -2,7 +2,7 @@
  * Tool installation and version detection checks for doctor command.
  */
 
-import { TOOL_REGISTRY, resolvePath, pathExists } from "@mycelium/core";
+import { TOOL_REGISTRY, resolvePath, pathExists } from "@mycelsh/core";
 import type { DiagnosticResult } from "./types.js";
 
 /**

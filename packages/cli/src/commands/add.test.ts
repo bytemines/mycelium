@@ -49,8 +49,8 @@ vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
 }));
 
-// Mock @mycelium/core
-vi.mock("@mycelium/core", () => ({
+// Mock @mycelsh/core
+vi.mock("@mycelsh/core", () => ({
   expandPath: (p: string) => {
     if (p.startsWith("~")) {
       return path.join("/mock/home", p.slice(1));
@@ -153,7 +153,7 @@ describe("addSkill", () => {
   });
 
   it("adds skill entry to manifest.yaml for GitHub source", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
     const cp = await import("node:child_process");
@@ -183,7 +183,7 @@ skills: {}
   });
 
   it("creates skill directory if needed", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
     const cp = await import("node:child_process");
@@ -209,7 +209,7 @@ skills: {}
   });
 
   it("clones GitHub repo for remote skills", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
     const cp = await import("node:child_process");
@@ -237,7 +237,7 @@ skills: {}
   });
 
   it("copies files for local skills", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -266,7 +266,7 @@ skills: {}
   });
 
   it("returns error when skill already exists without force flag", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -286,7 +286,7 @@ skills:
   });
 
   it("overwrites skill when force flag is set", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
     const cp = await import("node:child_process");
@@ -316,7 +316,7 @@ skills:
   });
 
   it("handles git clone failure gracefully", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
     const cp = await import("node:child_process");
@@ -340,7 +340,7 @@ skills: {}
   });
 
   it("handles local path not found gracefully", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
 
     vi.mocked(pathExists).mockResolvedValue(false);
@@ -353,7 +353,7 @@ skills: {}
   });
 
   it("returns success message with skill name", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addSkill } = await import("./add.js");
     const fs = await import("node:fs/promises");
     const cp = await import("node:child_process");
@@ -444,7 +444,7 @@ describe("addMcp", () => {
   });
 
   it("adds MCP config to mcps.yaml", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -470,7 +470,7 @@ mcps: {}
   });
 
   it("creates mcps.yaml if it doesn't exist", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -500,7 +500,7 @@ mcps: {}
   });
 
   it("returns error when MCP already exists without force flag", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -526,7 +526,7 @@ mcps:
   });
 
   it("overwrites MCP when force flag is set", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -551,7 +551,7 @@ mcps:
   });
 
   it("handles errors gracefully", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -571,7 +571,7 @@ mcps:
   });
 
   it("returns success message with MCP name", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -592,7 +592,7 @@ mcps:
   });
 
   it("adds MCP to project config when global is false", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -617,7 +617,7 @@ mcps:
   });
 
   it("includes enabled flag when specified", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 
@@ -641,7 +641,7 @@ mcps:
   });
 
   it("includes env vars when specified", async () => {
-    const { ensureDir, pathExists } = await import("@mycelium/core");
+    const { ensureDir, pathExists } = await import("@mycelsh/core");
     const { addMcp } = await import("./add.js");
     const fs = await import("node:fs/promises");
 

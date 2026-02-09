@@ -10,7 +10,7 @@ import { MYCELIUM_HOME } from "../core/fs-helpers.js";
 import { buildPluginMap } from "./plugin-map.js";
 import { asyncHandler } from "./async-handler.js";
 
-import type { ToolId, McpServerConfig } from "@mycelium/core";
+import type { ToolId, McpServerConfig } from "@mycelsh/core";
 import type { Express } from "express";
 
 const DISABLED_MCPS_FILE = path.join(MYCELIUM_HOME, "disabled-mcps.json");

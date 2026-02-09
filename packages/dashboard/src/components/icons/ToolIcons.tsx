@@ -12,7 +12,7 @@ import aiderSvg from "./svg/aider.svg?raw";
 import cursorSvg from "./svg/cursor.svg?raw";
 import vscodeSvg from "./svg/vscode.svg?raw";
 import antigravitySvg from "./svg/antigravity.svg?raw";
-import { TOOL_REGISTRY } from "@mycelium/core";
+import { TOOL_REGISTRY } from "@mycelsh/core";
 
 interface IconProps {
   size?: number;

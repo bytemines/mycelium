@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { fetchDashboardState, sendToggle, fetchPlugins, togglePlugin as apiTogglePlugin, togglePluginSkill as apiTogglePluginSkill, removeSkill, removeMcp, removePlugin } from "@/lib/api";
-import type { PluginInfo } from "@mycelium/core";
+import type { PluginInfo } from "@mycelsh/core";
 import type { Status } from "@/types";
 type ApiStatus = "checking" | "connected" | "disconnected";
 

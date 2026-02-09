@@ -5,8 +5,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import type { McpServerConfig, ScannedHook } from "@mycelium/core";
-import { TOOL_REGISTRY, resolvePath, expandPath } from "@mycelium/core";
+import type { McpServerConfig, ScannedHook } from "@mycelsh/core";
+import { TOOL_REGISTRY, resolvePath, expandPath } from "@mycelsh/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 import { getAdapter } from "./tool-adapter.js";
 

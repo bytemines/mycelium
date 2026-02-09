@@ -10,7 +10,7 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { stringify as yamlStringify } from "yaml";
-import { ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelium/core";
+import { ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelsh/core";
 import { parseTeamConfig, generateTeamManifest } from "../core/agent-teams.js";
 
 /**

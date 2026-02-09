@@ -8,7 +8,7 @@ import {
 } from "../core/marketplace-registry.js";
 import { asyncHandler } from "./async-handler.js";
 
-import type { MarketplaceSource, MarketplaceEntry, MarketplaceConfig } from "@mycelium/core";
+import type { MarketplaceSource, MarketplaceEntry, MarketplaceConfig } from "@mycelsh/core";
 import type { Express } from "express";
 
 export function registerMarketplaceRoutes(app: Express): void {

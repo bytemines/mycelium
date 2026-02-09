@@ -37,3 +37,6 @@ coverage/
 
 # Playwright MCP screenshots
 .playwright-mcp/
+
+# Internal plans/design docs
+docs/plans/

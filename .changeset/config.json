@@ -3,9 +3,9 @@
   "changelog": ["@changesets/changelog-github", { "repo": "bytemines/mycelium" }],
   "commit": false,
   "fixed": [],
-  "linked": [["@mycelium/core", "@mycelium/cli"]],
+  "linked": [["@mycelsh/core", "@mycelsh/cli"]],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@mycelium/dashboard"]
+  "ignore": ["@mycelsh/dashboard"]
 }

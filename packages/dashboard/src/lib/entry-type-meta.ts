@@ -1,6 +1,6 @@
 /**
  * UI display metadata for marketplace entry types.
- * Moved from @mycelium/core since it contains Tailwind CSS classes (UI concern).
+ * Moved from @mycelsh/core since it contains Tailwind CSS classes (UI concern).
  */
 export const ENTRY_TYPE_META: Record<string, { label: string; color: string; bgColor: string; borderColor: string; fileExt: string }> = {
   skill:    { label: "Skill",    color: "text-purple-400", bgColor: "bg-purple-500/10", borderColor: "border-purple-500/30", fileExt: ".md" },

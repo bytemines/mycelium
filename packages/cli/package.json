@@ -1,5 +1,5 @@
 {
-  "name": "@mycelium/cli",
+  "name": "@mycelsh/cli",
   "version": "0.2.0",
   "description": "CLI for Mycelium - Universal AI Tool Orchestrator",
   "type": "module",
@@ -39,7 +39,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "@mycelium/core": "workspace:*",
+    "@mycelsh/core": "workspace:*",
     "commander": "^14.0.3",
     "express": "^5.2.1",
     "jsonc-parser": "^3.3.1",

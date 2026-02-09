@@ -7,7 +7,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 
-import type { McpServerConfig, MachineOverrideEntry, MachineOverridesFile } from "@mycelium/core";
+import type { McpServerConfig, MachineOverrideEntry, MachineOverridesFile } from "@mycelsh/core";
 import { readFileIfExists, mkdirp, MYCELIUM_HOME } from "./fs-helpers.js";
 
 // ============================================================================

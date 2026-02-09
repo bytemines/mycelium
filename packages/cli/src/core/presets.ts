@@ -8,7 +8,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { stringify, parse } from "yaml";
-import { expandPath } from "@mycelium/core";
+import { expandPath } from "@mycelsh/core";
 
 export interface Preset {
   name: string;

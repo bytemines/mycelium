@@ -5,8 +5,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { McpServerConfig } from "@mycelium/core";
-import { TOOL_REGISTRY, expandPath } from "@mycelium/core";
+import type { McpServerConfig } from "@mycelsh/core";
+import { TOOL_REGISTRY, expandPath } from "@mycelsh/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 import { GenericAdapter } from "./auto-adapter.js";
 
@@ -169,7 +169,7 @@ export function getAdapter(toolId: string): import("./adapter-base.js").ToolAdap
   return createAdapter(desc);
 }
 
-export function createAdapter(desc: import("@mycelium/core").ToolDescriptor): import("./adapter-base.js").ToolAdapter {
+export function createAdapter(desc: import("@mycelsh/core").ToolDescriptor): import("./adapter-base.js").ToolAdapter {
   if (desc.mcp.entryShape === "openclaw") return new OpenClawAdapter();
   if (desc.id === "aider") return new AiderAdapter();
   return new GenericAdapter(desc);
