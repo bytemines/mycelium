@@ -25,7 +25,7 @@ function ResourceNodeInner({ data }: { data: ResourceNodeData }) {
   return (
     <div
       className={cn(
-        "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-all hover:scale-105",
+        "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-colors hover:border-white/40",
         style.border,
         style.bg,
         !isEnabled && "opacity-50"

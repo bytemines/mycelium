@@ -17,9 +17,9 @@ function ToolNodeInner({ data }: { data: ToolNodeData }) {
   return (
     <div
       className={cn(
-        "px-4 py-3 rounded-lg border-2 bg-card shadow-lg min-w-[130px] transition-all",
+        "px-4 py-3 rounded-lg border-2 bg-card shadow-lg min-w-[130px] transition-colors",
         isInstalled
-          ? "border-primary/60 hover:border-primary hover:shadow-primary/20"
+          ? "border-primary/60 hover:border-primary"
           : "border-gray-600 opacity-50"
       )}
     >

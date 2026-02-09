@@ -185,13 +185,13 @@ export function buildDashboardGraph(
     ? tools
     : tools.filter((t) => t.installed !== false);
 
-  // Tool nodes
+  // Tool nodes — middle layer
   visibleTools.forEach((tool, index) => {
     nodes.push({
       id: `tool-${tool.id}`,
       type: "tool",
-      position: { x: index * 160, y: 0 },
-      data: { name: tool.name, status: tool.status, installed: tool.installed },
+      position: { x: index * 180, y: 200 },
+      data: { name: tool.name, status: tool.status, installed: tool.installed, __elkLayer: "NONE" },
     });
   });
 
@@ -201,14 +201,15 @@ export function buildDashboardGraph(
     plugin.skills.forEach((s) => pluginSkillSet.add(s));
   });
 
-  // Plugin nodes
+  // Plugin nodes — top layer (FIRST)
   data?.plugins?.forEach((plugin, index) => {
     const nodeId = `plugin-${plugin.name}`;
     nodes.push({
       id: nodeId,
       type: "plugin",
-      position: { x: index * 160, y: 75 },
+      position: { x: index * 180, y: 0 },
       data: {
+        __elkLayer: "FIRST",
         name: plugin.name,
         marketplace: plugin.marketplace,
         componentCount: plugin.componentCount,
@@ -229,20 +230,20 @@ export function buildDashboardGraph(
         source: nodeId,
         target: `tool-${tool.id}`,
         animated: plugin.enabled,
-        style: { stroke: "#14b8a6", strokeWidth: 2, ...(plugin.enabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+        style: { stroke: "#14b8a6", strokeWidth: 1.5, ...(plugin.enabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
       });
     });
   });
 
-  // Skill nodes
+  // Skill nodes — top layer (FIRST), edges flow down into tools
   data?.skills.forEach((skill, index) => {
     if (pluginSkillSet.has(skill.name)) return;
     const nodeId = `skill-${skill.name}`;
     nodes.push({
       id: nodeId,
       type: "resource",
-      position: { x: index * 140, y: 150 },
-      data: { name: skill.name, type: "skill", status: skill.status, enabled: skill.enabled, onToggle: handlers.handleToggle },
+      position: { x: index * 180, y: 0 },
+      data: { name: skill.name, type: "skill", status: skill.status, enabled: skill.enabled, onToggle: handlers.handleToggle, __elkLayer: "FIRST" },
     });
     const isEnabled = skill.enabled !== false;
     const targetTools = skill.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
@@ -253,44 +254,44 @@ export function buildDashboardGraph(
           source: nodeId,
           target: `tool-${toolId}`,
           animated: isEnabled && skill.status === "synced",
-          style: { stroke: "#3b82f6", strokeWidth: 2, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+          style: { stroke: "#3b82f6", strokeWidth: 1.5, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
         });
       }
     });
   });
 
-  // MCP nodes
+  // MCP nodes — bottom layer (LAST), edges from tool down to MCP
   data?.mcps.forEach((mcp, index) => {
     const nodeId = `mcp-${mcp.name}`;
     nodes.push({
       id: nodeId,
       type: "resource",
-      position: { x: index * 140, y: 300 },
-      data: { name: mcp.name, type: "mcp", status: mcp.status, enabled: mcp.enabled, onToggle: handlers.handleToggle },
+      position: { x: index * 180, y: 400 },
+      data: { name: mcp.name, type: "mcp", status: mcp.status, enabled: mcp.enabled, onToggle: handlers.handleToggle, __elkLayer: "LAST" },
     });
     const isMcpEnabled = mcp.enabled !== false;
     const targetTools = mcp.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
     targetTools.forEach((toolId) => {
       if (visibleTools.some(t => t.id === toolId)) {
         edges.push({
-          id: `${nodeId}-to-${toolId}`,
-          source: nodeId,
-          target: `tool-${toolId}`,
+          id: `tool-${toolId}-to-${nodeId}`,
+          source: `tool-${toolId}`,
+          target: nodeId,
           animated: isMcpEnabled && mcp.status === "synced",
-          style: { stroke: "#a855f7", strokeWidth: 2, ...(isMcpEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+          style: { stroke: "#a855f7", strokeWidth: 1.5, ...(isMcpEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
         });
       }
     });
   });
 
-  // Memory nodes
+  // Memory nodes — bottom layer (LAST), edges from tool down to memory
   data?.memory.forEach((mem, index) => {
     const nodeId = `memory-${mem.name}`;
     nodes.push({
       id: nodeId,
       type: "resource",
-      position: { x: index * 140, y: 450 },
-      data: { name: mem.name, type: "memory", status: mem.status, onToggle: handlers.handleToggle },
+      position: { x: index * 180, y: 400 },
+      data: { name: mem.name, type: "memory", status: mem.status, onToggle: handlers.handleToggle, __elkLayer: "LAST" },
     });
     let targetToolIds: string[];
     if (mem.scope === "personal") {
@@ -303,11 +304,11 @@ export function buildDashboardGraph(
     targetToolIds.forEach((toolId) => {
       if (visibleTools.some(t => t.id === toolId)) {
         edges.push({
-          id: `${nodeId}-to-${toolId}`,
-          source: nodeId,
-          target: `tool-${toolId}`,
+          id: `tool-${toolId}-to-${nodeId}`,
+          source: `tool-${toolId}`,
+          target: nodeId,
           animated: mem.status === "synced",
-          style: { stroke: "#f59e0b", strokeWidth: 2 },
+          style: { stroke: "#f59e0b", strokeWidth: 1.5 },
         });
       }
     });

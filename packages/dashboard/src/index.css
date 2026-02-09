@@ -62,13 +62,17 @@
 
 /* React Flow custom styles */
 .react-flow__node {
-  @apply transition-all duration-200;
-}
-
-.react-flow__node:hover {
-  @apply scale-105;
+  @apply transition-colors duration-150;
 }
 
 .react-flow__edge-path {
-  stroke-width: 2;
+  stroke-width: 1.5;
+}
+
+.react-flow__edge {
+  cursor: pointer;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 3;
 }

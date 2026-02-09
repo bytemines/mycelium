@@ -24,7 +24,7 @@ function PluginNodeInner({ data }: { data: PluginNodeData }) {
   return (
     <div
       className={cn(
-        "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-all hover:scale-105 cursor-pointer",
+        "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-colors hover:border-white/40 cursor-pointer",
         "border-teal-500/60",
         "bg-teal-500/10",
         !isEnabled && "opacity-50"
