@@ -25,152 +25,206 @@ import { ToolNode, ResourceNode, PluginNode, AddToolNode } from "./nodes";
 import type { ResourceNodeData, PluginNodeData } from "./nodes";
 import { buildDashboardGraph } from "@/lib/graph-builder";
 import type { DashboardGraphData } from "@/lib/graph-builder";
+import {
+  NODE_SIZES,
+  DEFAULT_SIZE,
+  EDGE_COLORS,
+  STATUS_COLORS,
+  EDGE_STYLE,
+  DISABLED_EDGE_STYLE,
+  BACKGROUND_GRID,
+  LOCALSTORAGE_KEYS,
+  DEFAULT_EDGE_TYPE,
+  DEFAULT_LAYOUT_DIRECTION,
+} from "@/lib/graph-config";
+import type { Direction, EdgeType } from "@/lib/graph-config";
 
 // Re-export node components for backwards compatibility
 export { ToolNode, ResourceNode, PluginNode, AddToolNode };
 
 import type { Status } from "@/types";
 
-// Node dimension estimates (match actual rendered sizes)
-const NODE_SIZES: Record<string, { width: number; height: number }> = {
-  tool: { width: 160, height: 60 },
-  addTool: { width: 160, height: 60 },
-  resource: { width: 170, height: 58 },
-  plugin: { width: 180, height: 68 },
-};
+// ── Category classifier ──
 
-const DEFAULT_SIZE = { width: 160, height: 55 };
+type Category = "plugin" | "skill" | "tool" | "mcp" | "memory" | "other";
 
-// ELK layout options — tight same-layer, generous between-layer
-const elkOptions = {
-  "elk.algorithm": "layered",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "70",
-  "elk.spacing.nodeNode": "20",
-  "elk.spacing.edgeNode": "10",
-  "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
-  "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
-  "elk.padding": "[top=15,left=15,bottom=15,right=15]",
-};
-
-// Post-layout collision resolver — nudges overlapping nodes apart
-function resolveCollisions(
-  nodes: Node[],
-  margin = 10,
-  maxIterations = 50
-): Node[] {
-  const result = nodes.map((n) => ({ ...n, position: { ...n.position } }));
-
-  for (let iter = 0; iter < maxIterations; iter++) {
-    let hadCollision = false;
-
-    for (let i = 0; i < result.length; i++) {
-      const a = result[i];
-      const aSize = NODE_SIZES[a.type || ""] || DEFAULT_SIZE;
-
-      for (let j = i + 1; j < result.length; j++) {
-        const b = result[j];
-        const bSize = NODE_SIZES[b.type || ""] || DEFAULT_SIZE;
-
-        // Bounding box overlap check with margin
-        const overlapX =
-          (aSize.width + bSize.width) / 2 +
-          margin -
-          Math.abs(
-            a.position.x + aSize.width / 2 - (b.position.x + bSize.width / 2)
-          );
-        const overlapY =
-          (aSize.height + bSize.height) / 2 +
-          margin -
-          Math.abs(
-            a.position.y +
-              aSize.height / 2 -
-              (b.position.y + bSize.height / 2)
-          );
-
-        if (overlapX > 0 && overlapY > 0) {
-          hadCollision = true;
-          // Push apart along axis of minimum overlap
-          if (overlapX < overlapY) {
-            const sign =
-              a.position.x + aSize.width / 2 <
-              b.position.x + bSize.width / 2
-                ? -1
-                : 1;
-            a.position.x += (sign * overlapX) / 2;
-            b.position.x -= (sign * overlapX) / 2;
-          } else {
-            const sign =
-              a.position.y + aSize.height / 2 <
-              b.position.y + bSize.height / 2
-                ? -1
-                : 1;
-            a.position.y += (sign * overlapY) / 2;
-            b.position.y -= (sign * overlapY) / 2;
-          }
-        }
-      }
-    }
-
-    if (!hadCollision) break;
-  }
-
-  return result;
+function getCategory(node: Node): Category {
+  if (node.type === "tool" || node.type === "addTool") return "tool";
+  if (node.type === "plugin") return "plugin";
+  if (node.data?.type === "skill") return "skill";
+  if (node.data?.type === "mcp") return "mcp";
+  if (node.data?.type === "memory") return "memory";
+  return "other";
 }
 
-// Lazy-load ELK and apply layout
+// Row order for layered layouts: top → bottom (DOWN) or left → right (RIGHT)
+const LAYER_ORDER: Category[] = ["plugin", "skill", "tool", "mcp", "memory"];
+
+function groupByCategory(nodes: Node[]): Map<Category, Node[]> {
+  const groups = new Map<Category, Node[]>();
+  for (const cat of LAYER_ORDER) groups.set(cat, []);
+  for (const node of nodes) {
+    const cat = getCategory(node);
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(node);
+  }
+  return groups;
+}
+
+// ── Manual layered layout — guaranteed 4-row grouping ──
+
+function getLayeredLayout(
+  nodes: Node[],
+  edges: Edge[],
+  direction: "DOWN" | "RIGHT",
+): { nodes: Node[]; edges: Edge[] } {
+  const isHorizontal = direction === "RIGHT";
+  const groups = groupByCategory(nodes);
+  const nodeSpacing = 30;
+  const layerSpacing = 120;
+  const result: Node[] = [];
+
+  // Merge plugins + skills into one row, keep tools, mcps, memory separate
+  const rows: Node[][] = [
+    [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
+    groups.get("tool") ?? [],
+    groups.get("mcp") ?? [],
+    groups.get("memory") ?? [],
+  ].filter((r) => r.length > 0);
+
+  // For each row, calculate its "spread" along the cross axis (the axis nodes are laid out on)
+  // DOWN mode: spread = total width of row | RIGHT mode: spread = total height of row
+  const rowSpreads = rows.map((row) =>
+    row.reduce((sum, n) => {
+      const size = NODE_SIZES[n.type || ""] || DEFAULT_SIZE;
+      return sum + (isHorizontal ? size.height : size.width) + nodeSpacing;
+    }, -nodeSpacing),
+  );
+  const maxSpread = Math.max(...rowSpreads);
+
+  let layerOffset = 0;
+
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const row = rows[rowIdx];
+    const rowSpread = rowSpreads[rowIdx];
+    // Center this row relative to the widest row
+    const startOffset = (maxSpread - rowSpread) / 2;
+
+    let maxLayerThickness = 0;
+    let crossOffset = startOffset;
+
+    for (const node of row) {
+      const size = NODE_SIZES[node.type || ""] || DEFAULT_SIZE;
+      const thickness = isHorizontal ? size.width : size.height;
+      const crossSize = isHorizontal ? size.height : size.width;
+      maxLayerThickness = Math.max(maxLayerThickness, thickness);
+
+      result.push({
+        ...node,
+        zIndex: 10, // nodes above edges
+        position: isHorizontal
+          ? { x: layerOffset, y: crossOffset }
+          : { x: crossOffset, y: layerOffset },
+        sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
+        targetPosition: isHorizontal ? Position.Left : Position.Top,
+      });
+
+      crossOffset += crossSize + nodeSpacing;
+    }
+
+    layerOffset += maxLayerThickness + layerSpacing;
+  }
+
+  return { nodes: result, edges };
+}
+
+// ── Radial layout — concentric circles, each ring = one category ──
+
+function getRadialLayout(
+  nodes: Node[],
+  edges: Edge[],
+): { nodes: Node[]; edges: Edge[] } {
+  const groups = groupByCategory(nodes);
+  const result: Node[] = [];
+
+  const ringDefs: Node[][] = [
+    groups.get("tool") ?? [],
+    [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
+    groups.get("mcp") ?? [],
+    groups.get("memory") ?? [],
+  ];
+
+  // Build radii incrementally — each ring must be far enough from previous to avoid overlap
+  const radii: number[] = [];
+  let prevRadius = 0;
+
+  for (let i = 0; i < ringDefs.length; i++) {
+    const ringNodes = ringDefs[i];
+    if (ringNodes.length === 0) {
+      radii.push(prevRadius); // placeholder
+      continue;
+    }
+
+    if (i === 0) {
+      // Tools: center ring
+      const r = ringNodes.length <= 1 ? 0 : Math.max(100, ringNodes.length * 45);
+      radii.push(r);
+      prevRadius = r;
+    } else {
+      // Outer ring: radius must provide enough circumference AND be far enough from previous ring
+      const maxNodeW = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.width ?? DEFAULT_SIZE.width));
+      const maxNodeH = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.height ?? DEFAULT_SIZE.height));
+      const nodeGap = 50;
+      const minCircumference = ringNodes.length * (maxNodeW + nodeGap);
+      const minRadiusForFit = minCircumference / (2 * Math.PI);
+      const minRadiusForGap = prevRadius + Math.max(maxNodeH, maxNodeW) + 80;
+      const r = Math.max(minRadiusForFit, minRadiusForGap);
+      radii.push(r);
+      prevRadius = r;
+    }
+  }
+
+  // Center point
+  const outerRadius = Math.max(...radii);
+  const cx = outerRadius + 200;
+  const cy = outerRadius + 200;
+
+  for (let i = 0; i < ringDefs.length; i++) {
+    const ringNodes = ringDefs[i];
+    if (ringNodes.length === 0) continue;
+    const radius = radii[i];
+
+    ringNodes.forEach((node, j) => {
+      const angle = (j / ringNodes.length) * 2 * Math.PI - Math.PI / 2;
+      const nw = NODE_SIZES[node.type || ""]?.width ?? DEFAULT_SIZE.width;
+      const nh = NODE_SIZES[node.type || ""]?.height ?? DEFAULT_SIZE.height;
+      result.push({
+        ...node,
+        zIndex: 10,
+        position: {
+          x: cx + radius * Math.cos(angle) - nw / 2,
+          y: cy + radius * Math.sin(angle) - nh / 2,
+        },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+      });
+    });
+  }
+
+  return { nodes: result, edges };
+}
+
+// ── Main layout dispatcher ──
+
 async function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
-  direction: "DOWN" | "RIGHT" = "DOWN"
+  direction: Direction = DEFAULT_LAYOUT_DIRECTION,
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
-  const isHorizontal = direction === "RIGHT";
-
-  const graph = {
-    id: "root",
-    layoutOptions: {
-      ...elkOptions,
-      "elk.direction": direction,
-    },
-    children: nodes.map((node) => {
-      const size = NODE_SIZES[node.type || ""] || DEFAULT_SIZE;
-      return {
-        ...node,
-        width: size.width,
-        height: size.height,
-        // Layer constraints: skills/plugins first, tools middle, MCPs/memory last
-        layoutOptions: node.data?.__elkLayer
-          ? { "elk.layered.layerConstraint": node.data.__elkLayer as string }
-          : undefined,
-      };
-    }),
-    edges: edges.map((edge) => ({
-      id: edge.id,
-      sources: [edge.source],
-      targets: [edge.target],
-    })),
-  };
-
-  try {
-    const ELK = (await import("elkjs/lib/elk.bundled.js")).default;
-    const elk = new ELK();
-    const layoutedGraph = await elk.layout(graph);
-
-    const layoutedNodes =
-      (layoutedGraph.children?.map((node: any) => ({
-        ...nodes.find((n) => n.id === node.id),
-        position: { x: node.x ?? 0, y: node.y ?? 0 },
-        targetPosition: isHorizontal ? Position.Left : Position.Top,
-        sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
-      })) as Node[]) ?? [];
-
-    // Post-layout collision resolution
-    const resolved = resolveCollisions(layoutedNodes);
-
-    return { nodes: resolved, edges };
-  } catch (error) {
-    console.error("ELK layout error:", error);
-    return { nodes, edges };
+  if (direction === "RADIAL") {
+    return getRadialLayout(nodes, edges);
   }
+  return getLayeredLayout(nodes, edges, direction);
 }
 
 // Node types registry
@@ -216,9 +270,23 @@ export function Graph({
 }: GraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [layoutDirection, setLayoutDirection] = useState<"DOWN" | "RIGHT">(
-    "DOWN"
-  );
+  const fitViewRef = useRef<(() => void) | null>(null);
+  const [layoutDirection, setLayoutDirectionState] = useState<Direction>(() => {
+    try { return (localStorage.getItem(LOCALSTORAGE_KEYS.layout) as Direction) || DEFAULT_LAYOUT_DIRECTION; } catch { return DEFAULT_LAYOUT_DIRECTION; }
+  });
+  const [edgeType, setEdgeTypeState] = useState<EdgeType>(() => {
+    try { return (localStorage.getItem(LOCALSTORAGE_KEYS.edgeType) as EdgeType) || DEFAULT_EDGE_TYPE; } catch { return DEFAULT_EDGE_TYPE; }
+  });
+
+  const setLayoutDirection = useCallback((dir: Direction) => {
+    setLayoutDirectionState(dir);
+    try { localStorage.setItem(LOCALSTORAGE_KEYS.layout, dir); } catch {}
+  }, []);
+
+  const setEdgeType = useCallback((type: EdgeType) => {
+    setEdgeTypeState(type);
+    try { localStorage.setItem(LOCALSTORAGE_KEYS.edgeType, type); } catch {}
+  }, []);
 
   // Track disabled edges locally if not controlled
   const [localDisabledEdges, setLocalDisabledEdges] = useState<Set<string>>(
@@ -267,20 +335,20 @@ export function Graph({
           animated: false,
           interactionWidth: 30,
           style: {
-            stroke: "#ef4444",
-            strokeWidth: 1.5,
-            strokeDasharray: "6,4",
-            opacity: 0.55,
+            stroke: EDGE_COLORS.disabled,
+            strokeWidth: EDGE_STYLE.strokeWidth,
+            strokeDasharray: DISABLED_EDGE_STYLE.strokeDasharray,
+            opacity: DISABLED_EDGE_STYLE.opacity,
           },
           label: "✕",
-          labelStyle: { fill: "#ef4444", fontSize: 13, fontWeight: 700, cursor: "pointer" },
-          labelBgStyle: { fill: "#1a1a1a", fillOpacity: 0.9, rx: 8, ry: 8 },
-          labelBgPadding: [5, 5] as [number, number],
+          labelStyle: { fill: EDGE_COLORS.disabled, fontSize: DISABLED_EDGE_STYLE.fontSize, fontWeight: 700, cursor: "pointer" },
+          labelBgStyle: { fill: "#1a1a1a", fillOpacity: DISABLED_EDGE_STYLE.labelBgOpacity, rx: DISABLED_EDGE_STYLE.labelBgRadius, ry: DISABLED_EDGE_STYLE.labelBgRadius },
+          labelBgPadding: DISABLED_EDGE_STYLE.labelPadding,
         };
       }
-      return { ...edge, interactionWidth: 30 };
+      return { ...edge, type: edgeType, interactionWidth: 30 };
     });
-  }, [edges, effectiveDisabled]);
+  }, [edges, effectiveDisabled, edgeType]);
 
   // Apply ELK layout when data changes
   useEffect(() => {
@@ -289,6 +357,7 @@ export function Graph({
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
           setNodes(layoutedNodes);
           setEdges(layoutedEdges);
+          setTimeout(() => fitViewRef.current?.(), 50);
         }
       );
     }
@@ -296,25 +365,20 @@ export function Graph({
 
   // Re-layout handler
   const onLayout = useCallback(
-    (direction: "DOWN" | "RIGHT") => {
+    (direction: Direction) => {
       setLayoutDirection(direction);
       getLayoutedElements(nodes, edges, direction).then(
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
           setNodes(layoutedNodes);
           setEdges(layoutedEdges);
+          setTimeout(() => fitViewRef.current?.(), 50);
         }
       );
     },
-    [nodes, edges, setNodes, setEdges]
+    [nodes, edges, setNodes, setEdges, setLayoutDirection]
   );
 
-  // Resolve collisions after drag
-  const onNodeDragStop = useCallback(
-    () => {
-      setNodes((nds) => resolveCollisions([...nds]));
-    },
-    [setNodes]
-  );
+  const onNodeDragStop = useCallback(() => {}, []);
 
   // Drag from handle to create new connections
   const onConnect = useCallback(
@@ -324,7 +388,7 @@ export function Graph({
           {
             ...connection,
             animated: true,
-            style: { stroke: "#6b7280", strokeWidth: 1.5 },
+            style: { stroke: EDGE_COLORS.custom, strokeWidth: EDGE_STYLE.strokeWidth },
           },
           eds
         )
@@ -382,6 +446,7 @@ export function Graph({
         onNodeDragStop={onNodeDragStop}
         onEdgeClick={handleEdgeClick}
         onConnect={onConnect}
+        onInit={(instance) => { fitViewRef.current = () => instance.fitView({ padding: 0.2, duration: 300 }); }}
         fitView
         minZoom={0.3}
         maxZoom={2}
@@ -410,22 +475,48 @@ export function Graph({
           >
             Horizontal
           </button>
+          <button
+            onClick={() => onLayout("RADIAL")}
+            className={cn(
+              "px-3 py-1.5 rounded text-xs font-medium transition-colors",
+              layoutDirection === "RADIAL"
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            )}
+          >
+            Radial
+          </button>
+          <span className="mx-1 text-muted-foreground/40">|</span>
+          {(["smoothstep", "default", "straight", "step"] as EdgeType[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setEdgeType(t)}
+              className={cn(
+                "px-2 py-1.5 rounded text-[10px] font-medium transition-colors capitalize",
+                edgeType === t
+                  ? "bg-purple-600 text-white"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              )}
+            >
+              {t === "default" ? "bezier" : t}
+            </button>
+          ))}
         </Panel>
-        <Background color="#333" gap={20} />
+        <Background color={BACKGROUND_GRID.color} gap={BACKGROUND_GRID.gap} />
         <Controls className="!bg-card !border-border [&>button]:!bg-card [&>button]:!border-border" />
         <MiniMap
           className="!bg-card/80 !border-border"
           maskColor="rgba(0,0,0,0.8)"
           nodeColor={(node) => {
             const nodeData = node.data as { status?: Status; type?: string };
-            if (nodeData?.status === "synced") return "#22c55e";
-            if (nodeData?.status === "pending") return "#eab308";
-            if (nodeData?.status === "error") return "#ef4444";
-            if (nodeData?.status === "not_installed") return "#374151";
-            if (nodeData?.type === "skill") return "#3b82f6";
-            if (nodeData?.type === "mcp") return "#a855f7";
-            if (nodeData?.type === "memory") return "#f59e0b";
-            return "#6b7280";
+            if (nodeData?.status === "synced") return STATUS_COLORS.synced;
+            if (nodeData?.status === "pending") return STATUS_COLORS.pending;
+            if (nodeData?.status === "error") return STATUS_COLORS.error;
+            if (nodeData?.status === "not_installed") return STATUS_COLORS.not_installed;
+            if (nodeData?.type === "skill") return EDGE_COLORS.skill;
+            if (nodeData?.type === "mcp") return EDGE_COLORS.mcp;
+            if (nodeData?.type === "memory") return EDGE_COLORS.memory;
+            return STATUS_COLORS.fallback;
           }}
         />
       </ReactFlow>

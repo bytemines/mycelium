@@ -11,9 +11,9 @@ const __dirname = path.dirname(__filename);
 export const serveCommand = new Command("serve")
   .description("Start the dashboard API server")
   .option("-p, --port <port>", "Port number", String(DEFAULT_PORT))
-  .option("--no-build", "Skip rebuilding before starting")
+  .option("--build", "Rebuild before starting (off by default)")
   .action((opts) => {
-    if (opts.build !== false) {
+    if (opts.build) {
       const root = path.resolve(__dirname, "..", "..", "..", "..");
       try {
         console.log("Building latest code...");

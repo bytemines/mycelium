@@ -84,8 +84,8 @@ export function registerStateRoutes(app: Express): void {
       const memEntries = await fs.readdir(path.join(MYCELIUM_HOME, "memory"));
       memory = memEntries
         .filter((f) => f.endsWith(".md"))
-        .map((name) => ({
-          name,
+        .map((f) => ({
+          name: f.replace(/\.md$/, "").replace(/^(?:claude-code|codex|gemini|opencode|openclaw|aider)-/, ""),
           scope: "global" as const,
           status: "synced" as const,
         }));

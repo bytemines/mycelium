@@ -2,6 +2,7 @@
  * Tool Scanners — scan installed AI tools for skills, MCPs, memory, hooks
  */
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
@@ -18,6 +19,63 @@ import { scanPluginCache } from "../plugin-scanner.js";
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Resolve an encoded path segment back to a real filesystem path by greedily
+ * matching directory names. Each `-` could be a path separator or a literal
+ * hyphen. We check the filesystem to decide.
+ * e.g. with base="/Users/foo", encoded="code-bytemines-io" →
+ *   checks /Users/foo/code → exists → recurse "bytemines-io"
+ *   checks /Users/foo/code/bytemines-io → exists → done: "code/bytemines-io"
+ *   (if not, tries /Users/foo/code/bytemines → exists → recurse "io" → "code/bytemines/io")
+ */
+function resolveEncodedPath(base: string, encoded: string): string {
+  if (!encoded) return base;
+  const parts = encoded.split("-");
+
+  // Try increasingly longer prefixes as a single directory name
+  for (let i = 1; i <= parts.length; i++) {
+    const candidate = parts.slice(0, i).join("-");
+    const fullPath = path.join(base, candidate);
+    try {
+      if (fsSync.statSync(fullPath).isDirectory()) {
+        if (i === parts.length) return fullPath;
+        // Recurse with remaining parts
+        const rest = parts.slice(i).join("-");
+        return resolveEncodedPath(fullPath, rest);
+      }
+    } catch {
+      // doesn't exist, try longer prefix
+    }
+  }
+  // Nothing matched on disk — just return base/encoded as-is
+  return path.join(base, encoded);
+}
+
+/**
+ * Decode a Claude Code encoded project slug back to a readable project name.
+ * Claude Code encodes paths by replacing `/` with `-`, so `/Users/foo/code/my-app`
+ * becomes `-Users-foo-code-my-app`. Since `-` is ambiguous (path sep vs literal hyphen),
+ * we strip the encoded home directory prefix and return whatever remains — preserving
+ * real hyphens in directory names.
+ * e.g. `-Users-foo-code-mycelium` → `code-mycelium` (or just `mycelium` if home is `/Users/foo`)
+ */
+export function decodeProjectName(encodedSlug: string): string {
+  // Build the encoded home prefix: /Users/foo → Users-foo-
+  const homePrefix = os.homedir().replace(/^\//, "").replaceAll("/", "-") + "-";
+  // Strip leading `-` from slug for comparison
+  const normalized = encodedSlug.replace(/^-/, "");
+
+  if (normalized.startsWith(homePrefix)) {
+    const rest = normalized.slice(homePrefix.length);
+    // Resolve the actual directory path by testing which segments are real dirs.
+    // "code-bytemines-io" could be code/bytemines-io or code/bytemines/io — check fs.
+    const resolved = resolveEncodedPath(os.homedir(), rest);
+    return path.basename(resolved);
+  }
+
+  return normalized;
+}
 
 async function globDir(dir: string, pattern: RegExp): Promise<string[]> {
   const results: string[] = [];
@@ -117,7 +175,7 @@ export async function scanClaudeCode(): Promise<ToolScanResult> {
     for (const memPath of memoryFiles) {
       const content = await readFileIfExists(memPath);
       result.memory.push({
-        name: path.basename(path.dirname(path.dirname(memPath))),
+        name: decodeProjectName(path.basename(path.dirname(path.dirname(memPath)))),
         path: memPath,
         source: "claude-code",
         scope: "shared",
@@ -375,6 +433,170 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
   return result;
 }
 
+export async function scanOpenCode(): Promise<ToolScanResult> {
+  const home = os.homedir();
+  const result: ToolScanResult = {
+    toolId: "opencode",
+    toolName: "OpenCode",
+    installed: true,
+    skills: [],
+    mcps: [],
+    memory: [],
+    hooks: [],
+    components: [],
+  };
+
+  try {
+    // Config: ~/.config/opencode/opencode.json or project-level opencode.json
+    const configPath = path.join(home, ".config", "opencode", "opencode.json");
+    let raw = await readFileIfExists(configPath);
+    if (raw) {
+      // Strip // comments for JSONC compat
+      raw = raw.replace(/^\s*\/\/.*$/gm, "");
+      const config = JSON.parse(raw);
+
+      // MCPs from mcp.{name} entries
+      if (config.mcp && typeof config.mcp === "object") {
+        for (const [name, server] of Object.entries(config.mcp)) {
+          const srv = server as {
+            type?: string;
+            command?: string[];
+            url?: string;
+            environment?: Record<string, string>;
+          };
+          if (srv.type === "remote" && srv.url) {
+            result.mcps.push({
+              name,
+              config: {
+                command: srv.url,
+                args: ["remote"],
+              },
+              source: "opencode",
+            });
+          } else if (srv.command) {
+            const [cmd, ...args] = srv.command;
+            result.mcps.push({
+              name,
+              config: {
+                command: cmd,
+                args,
+                env: srv.environment,
+              },
+              source: "opencode",
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Memory: AGENTS.md in home config dir
+    const agentsPath = path.join(home, ".config", "opencode", "AGENTS.md");
+    const content = await readFileIfExists(agentsPath);
+    if (content) {
+      result.memory.push({
+        name: "AGENTS",
+        path: agentsPath,
+        source: "opencode",
+        scope: "shared",
+        content,
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Commands: ~/.config/opencode/commands/*.md (similar to skills)
+    const commandsDir = path.join(home, ".config", "opencode", "commands");
+    const entries = await fs.readdir(commandsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(commandsDir, entry.name);
+      result.skills.push({
+        name: entry.name.replace(/\.[^.]+$/, ""),
+        path: fullPath,
+        source: "opencode",
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  return result;
+}
+
+export async function scanAider(): Promise<ToolScanResult> {
+  const home = os.homedir();
+  const result: ToolScanResult = {
+    toolId: "aider",
+    toolName: "Aider",
+    installed: true,
+    skills: [],
+    mcps: [],
+    memory: [],
+    hooks: [],
+    components: [],
+  };
+
+  try {
+    // Memory: CONVENTIONS.md in current working directory
+    const conventionsPath = path.join(process.cwd(), "CONVENTIONS.md");
+    const content = await readFileIfExists(conventionsPath);
+    if (content) {
+      result.memory.push({
+        name: "CONVENTIONS",
+        path: conventionsPath,
+        source: "aider",
+        scope: "shared",
+        content,
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Memory: .aider.chat.history.md in current working directory
+    const historyPath = path.join(process.cwd(), ".aider.chat.history.md");
+    const content = await readFileIfExists(historyPath);
+    if (content) {
+      result.memory.push({
+        name: "chat-history",
+        path: historyPath,
+        source: "aider",
+        scope: "shared",
+        content,
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Config: ~/.aider.conf.yml — model settings, read files, etc.
+    // Aider doesn't have MCPs but we can extract read-file references
+    const confPath = path.join(home, ".aider.conf.yml");
+    const content = await readFileIfExists(confPath);
+    if (content) {
+      result.memory.push({
+        name: "aider-config",
+        path: confPath,
+        source: "aider",
+        scope: "shared",
+        content,
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  return result;
+}
+
 export async function scanTool(toolId: ToolId): Promise<ToolScanResult> {
   switch (toolId) {
     case "claude-code":
@@ -386,7 +608,9 @@ export async function scanTool(toolId: ToolId): Promise<ToolScanResult> {
     case "openclaw":
       return scanOpenClaw();
     case "opencode":
+      return scanOpenCode();
     case "aider":
+      return scanAider();
     default:
       return {
         toolId,

@@ -8,7 +8,7 @@ describe("Dashboard", () => {
   it("renders the header with title", async () => {
     const { Dashboard } = await import("./Dashboard");
     render(<Dashboard />);
-    expect(screen.getByText("🍄 MYCELIUM")).toBeInTheDocument();
+    expect(screen.getByText("MYCELIUM")).toBeInTheDocument();
   });
 
   it("renders status indicators", async () => {

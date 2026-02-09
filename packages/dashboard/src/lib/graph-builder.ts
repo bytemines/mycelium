@@ -107,6 +107,7 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
 // ── Dashboard graph builder (extracted from Graph.tsx useMemo) ──
 
 import type { Node, Edge } from "@xyflow/react";
+import { EDGE_COLORS, EDGE_STYLE, INITIAL_LAYOUT } from "./graph-config";
 
 interface SkillData {
   name: string;
@@ -171,6 +172,14 @@ export interface DashboardGraphHandlers {
   onAddTool?: () => void;
 }
 
+function edgeStyle(color: string, enabled: boolean) {
+  return {
+    stroke: color,
+    strokeWidth: EDGE_STYLE.strokeWidth,
+    ...(enabled ? {} : { strokeDasharray: EDGE_STYLE.disabledDashArray, opacity: EDGE_STYLE.disabledOpacity }),
+  };
+}
+
 export function buildDashboardGraph(
   data: DashboardGraphData | undefined,
   mode: "dashboard" | "migrate",
@@ -190,7 +199,7 @@ export function buildDashboardGraph(
     nodes.push({
       id: `tool-${tool.id}`,
       type: "tool",
-      position: { x: index * 180, y: 200 },
+      position: { x: index * INITIAL_LAYOUT.horizontalSpacing, y: INITIAL_LAYOUT.layers.middle },
       data: { name: tool.name, status: tool.status, installed: tool.installed, __elkLayer: "NONE" },
     });
   });
@@ -207,7 +216,7 @@ export function buildDashboardGraph(
     nodes.push({
       id: nodeId,
       type: "plugin",
-      position: { x: index * 180, y: 0 },
+      position: { x: index * INITIAL_LAYOUT.horizontalSpacing, y: INITIAL_LAYOUT.layers.top },
       data: {
         __elkLayer: "FIRST",
         name: plugin.name,
@@ -230,7 +239,7 @@ export function buildDashboardGraph(
         source: nodeId,
         target: `tool-${tool.id}`,
         animated: plugin.enabled,
-        style: { stroke: "#14b8a6", strokeWidth: 1.5, ...(plugin.enabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+        style: edgeStyle(EDGE_COLORS.plugin, plugin.enabled),
       });
     });
   });
@@ -242,7 +251,7 @@ export function buildDashboardGraph(
     nodes.push({
       id: nodeId,
       type: "resource",
-      position: { x: index * 180, y: 0 },
+      position: { x: index * INITIAL_LAYOUT.horizontalSpacing, y: INITIAL_LAYOUT.layers.top },
       data: { name: skill.name, type: "skill", status: skill.status, enabled: skill.enabled, onToggle: handlers.handleToggle, __elkLayer: "FIRST" },
     });
     const isEnabled = skill.enabled !== false;
@@ -254,7 +263,7 @@ export function buildDashboardGraph(
           source: nodeId,
           target: `tool-${toolId}`,
           animated: isEnabled && skill.status === "synced",
-          style: { stroke: "#3b82f6", strokeWidth: 1.5, ...(isEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+          style: edgeStyle(EDGE_COLORS.skill, isEnabled),
         });
       }
     });
@@ -266,8 +275,8 @@ export function buildDashboardGraph(
     nodes.push({
       id: nodeId,
       type: "resource",
-      position: { x: index * 180, y: 400 },
-      data: { name: mcp.name, type: "mcp", status: mcp.status, enabled: mcp.enabled, onToggle: handlers.handleToggle, __elkLayer: "LAST" },
+      position: { x: index * INITIAL_LAYOUT.horizontalSpacing, y: INITIAL_LAYOUT.layers.bottom },
+      data: { name: mcp.name, type: "mcp", status: mcp.status, enabled: mcp.enabled, onToggle: handlers.handleToggle },
     });
     const isMcpEnabled = mcp.enabled !== false;
     const targetTools = mcp.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
@@ -278,7 +287,7 @@ export function buildDashboardGraph(
           source: `tool-${toolId}`,
           target: nodeId,
           animated: isMcpEnabled && mcp.status === "synced",
-          style: { stroke: "#a855f7", strokeWidth: 1.5, ...(isMcpEnabled ? {} : { strokeDasharray: "5,5", opacity: 0.4 }) },
+          style: edgeStyle(EDGE_COLORS.mcp, isMcpEnabled),
         });
       }
     });
@@ -290,7 +299,7 @@ export function buildDashboardGraph(
     nodes.push({
       id: nodeId,
       type: "resource",
-      position: { x: index * 180, y: 400 },
+      position: { x: index * INITIAL_LAYOUT.horizontalSpacing, y: INITIAL_LAYOUT.layers.bottom },
       data: { name: mem.name, type: "memory", status: mem.status, onToggle: handlers.handleToggle, __elkLayer: "LAST" },
     });
     let targetToolIds: string[];
@@ -308,7 +317,7 @@ export function buildDashboardGraph(
           source: `tool-${toolId}`,
           target: nodeId,
           animated: mem.status === "synced",
-          style: { stroke: "#f59e0b", strokeWidth: 1.5 },
+          style: edgeStyle(EDGE_COLORS.memory, true),
         });
       }
     });
@@ -319,7 +328,7 @@ export function buildDashboardGraph(
     nodes.push({
       id: "add-tool",
       type: "addTool",
-      position: { x: visibleTools.length * 160, y: 0 },
+      position: { x: visibleTools.length * INITIAL_LAYOUT.addToolSpacing, y: INITIAL_LAYOUT.layers.top },
       data: { onClick: handlers.onAddTool },
     });
   }

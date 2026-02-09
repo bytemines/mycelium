@@ -11,6 +11,7 @@ import { MigrateWizard } from "./MigrateWizard";
 import { MarketplaceBrowser } from "./MarketplaceBrowser";
 import { PluginDetailPanel } from "./PluginDetailPanel";
 import { useDashboardStore } from "@/stores/dashboard-store";
+import { getDebugMockData } from "@/lib/mock-graph-data";
 
 import type { Status } from "@/types";
 
@@ -83,7 +84,8 @@ function GraphContainer() {
     );
   }
 
-  const data = graphData ?? { tools: [], skills: [], mcps: [], memory: [], plugins: [] };
+  const debugData = getDebugMockData();
+  const data = debugData ?? graphData ?? { tools: [], skills: [], mcps: [], memory: [], plugins: [] };
 
   return (
     <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50">
@@ -120,7 +122,11 @@ useEffect(() => {
       <header className="relative flex items-center border-b px-4 py-2">
         {/* Left: branding */}
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold tracking-tight">🍄 MYCELIUM</h1>
+          <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight">
+            <span>🍄</span>
+            <span>MYCELIUM</span>
+            <span className="ml-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-purple-400 border border-purple-500/30">Beta</span>
+          </h1>
           <StatusIndicator status={apiStatus === "connected" ? "synced" : apiStatus === "checking" ? "pending" : "error"} />
         </div>
 
