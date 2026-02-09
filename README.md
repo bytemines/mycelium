@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white" alt="pnpm" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white" alt="Node >= 22" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
-  <img src="https://img.shields.io/badge/tools-6%20supported-blueviolet" alt="6 Tools" />
+  <img src="https://img.shields.io/badge/tools-9%20supported-blueviolet" alt="6 Tools" />
 </p>
 
 ---
@@ -142,6 +142,9 @@ Alias: `myc` (e.g., `myc sync`)
 | OpenCode | `~/.config/opencode/plugin` | JSON | `context.md` | JSON |
 | OpenClaw | `~/.openclaw/skills` | JSON | `MEMORY.md` | JSON |
 | Aider | `~/.aider/plugins` | YAML | `MEMORY.md` | YAML |
+| Cursor | — | JSON | `.cursorrules` | JSON |
+| VS Code | `.github/skills/` | JSONC | — | JSONC |
+| Antigravity | `~/.gemini/antigravity/skills/` | JSON | — | JSON |
 
 ## 🖥️ Dashboard
 
