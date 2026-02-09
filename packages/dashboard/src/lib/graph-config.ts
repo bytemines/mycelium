@@ -14,20 +14,6 @@ export const NODE_SIZES: Record<string, { width: number; height: number }> = {
 
 export const DEFAULT_SIZE = { width: 160, height: 55 };
 
-// ── ELK Layout ──
-
-export const ELK_OPTIONS = {
-  "elk.algorithm": "layered",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "80",
-  "elk.spacing.nodeNode": "25",
-  "elk.spacing.edgeNode": "15",
-  "elk.spacing.edgeEdge": "10",
-  "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
-  "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
-  "elk.edgeRouting": "ORTHOGONAL",
-  "elk.padding": "[top=15,left=15,bottom=15,right=15]",
-} as const;
-
 // ── Colors ──
 
 export const EDGE_COLORS = {
@@ -72,23 +58,6 @@ export const INITIAL_LAYOUT = {
   layers: { top: 0, middle: 200, bottom: 400 },
 } as const;
 
-// ── Radial Layout ──
-
-export const RADIAL_CONFIG = {
-  centerX: 700,
-  centerY: 600,
-  spacingFactor: 15,
-  toolRing: { minRadius: 60, radiusPerTool: 35 },
-  ringRadii: [0, 250, 450, 620],
-} as const;
-
-// ── Collision Resolution ──
-
-export const COLLISION_CONFIG = {
-  margin: 10,
-  maxIterations: 50,
-} as const;
-
 // ── Background Grid ──
 
 export const BACKGROUND_GRID = {
@@ -106,9 +75,13 @@ export const DEFAULT_LAYOUT_DIRECTION = "DOWN" as const;
 export const LOCALSTORAGE_KEYS = {
   layout: "mycelium:graph:layout",
   edgeType: "mycelium:graph:edgeType",
+  radialMode: "mycelium:graph:radialMode",
 } as const;
 
 // ── Types ──
 
 export type Direction = "DOWN" | "RIGHT" | "RADIAL";
+export type RadialMode = "hybrid" | "sectors" | "force";
 export type EdgeType = "smoothstep" | "default" | "straight" | "step";
+
+export const DEFAULT_RADIAL_MODE = "sectors" as const;

@@ -26,7 +26,7 @@ function PluginNodeInner({ data, sourcePosition, targetPosition }: { data: Plugi
       className={cn(
         "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-colors hover:border-white/40 cursor-pointer",
         "border-teal-500/60",
-        "bg-teal-500/10",
+        "bg-[#081a1a]",
         !isEnabled && "opacity-50"
       )}
       onClick={() => data.onClick?.(data.name)}

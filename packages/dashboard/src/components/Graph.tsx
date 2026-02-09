@@ -36,8 +36,9 @@ import {
   LOCALSTORAGE_KEYS,
   DEFAULT_EDGE_TYPE,
   DEFAULT_LAYOUT_DIRECTION,
+  DEFAULT_RADIAL_MODE,
 } from "@/lib/graph-config";
-import type { Direction, EdgeType } from "@/lib/graph-config";
+import type { Direction, EdgeType, RadialMode } from "@/lib/graph-config";
 
 // Re-export node components for backwards compatibility
 export { ToolNode, ResourceNode, PluginNode, AddToolNode };
@@ -138,80 +139,338 @@ function getLayeredLayout(
   return { nodes: result, edges };
 }
 
-// ── Radial layout — concentric circles, each ring = one category ──
+// ── Shared radial helpers ──
 
-function getRadialLayout(
-  nodes: Node[],
-  edges: Edge[],
-): { nodes: Node[]; edges: Edge[] } {
+function buildToolAngles(tools: Node[]): Map<string, number> {
+  const m = new Map<string, number>();
+  tools.forEach((t, i) => {
+    m.set(t.id, (i / tools.length) * 2 * Math.PI - Math.PI / 2);
+  });
+  return m;
+}
+
+function buildNodeToTools(edges: Edge[], toolAngles: Map<string, number>): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (toolAngles.has(edge.source)) {
+      const list = m.get(edge.target) ?? [];
+      list.push(edge.source);
+      m.set(edge.target, list);
+    }
+    if (toolAngles.has(edge.target)) {
+      const list = m.get(edge.source) ?? [];
+      list.push(edge.target);
+      m.set(edge.source, list);
+    }
+  }
+  return m;
+}
+
+function primaryToolAngle(node: Node, nodeToTools: Map<string, string[]>, toolAngles: Map<string, number>): number {
+  const connected = nodeToTools.get(node.id) ?? [];
+  if (connected.length === 0) return Math.PI;
+  const angles = connected.map((tid) => toolAngles.get(tid) ?? 0);
+  const sinSum = angles.reduce((s, a) => s + Math.sin(a), 0);
+  const cosSum = angles.reduce((s, a) => s + Math.cos(a), 0);
+  return Math.atan2(sinSum / angles.length, cosSum / angles.length);
+}
+
+function placeNode(node: Node, cx: number, cy: number, radius: number, angle: number): Node {
+  const nw = NODE_SIZES[node.type || ""]?.width ?? DEFAULT_SIZE.width;
+  const nh = NODE_SIZES[node.type || ""]?.height ?? DEFAULT_SIZE.height;
+  return {
+    ...node,
+    zIndex: 10,
+    position: {
+      x: cx + radius * Math.cos(angle) - nw / 2,
+      y: cy + radius * Math.sin(angle) - nh / 2,
+    },
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
+  };
+}
+
+// ── Radial Mode A: Hybrid — Category rings + tool-sector sorting ──
+
+// Compute adaptive radii for a set of rings
+function computeAdaptiveRadii(
+  rings: Node[][],
+  prevRadius: number,
+  ringGap = 40,
+  nodeGap = 30,
+  density = 50, // 0=ignore fit constraint, 100=full fit constraint
+): number[] {
+  const fitScale = density / 100; // 0→1
+  const radii: number[] = [];
+  let prev = prevRadius;
+  for (const ringNodes of rings) {
+    if (ringNodes.length === 0) { radii.push(prev); continue; }
+    const maxW = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.width ?? DEFAULT_SIZE.width));
+    const maxH = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.height ?? DEFAULT_SIZE.height));
+    const minForFit = (ringNodes.length * (maxW + nodeGap)) / (2 * Math.PI) * fitScale;
+    const minForGap = prev + Math.max(maxW, maxH) * fitScale + ringGap;
+    const r = Math.max(minForFit, minForGap);
+    radii.push(r);
+    prev = r;
+  }
+  return radii;
+}
+
+// ── Radial Mode: Hybrid — Category rings + tool-sector sorting ──
+
+function getRadialHybrid(nodes: Node[], edges: Edge[], spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
   const groups = groupByCategory(nodes);
-  const result: Node[] = [];
+  const tools = groups.get("tool") ?? [];
+  const toolRadius = tools.length <= 1 ? 0 : center;
+  const toolAngles = buildToolAngles(tools);
+  const nodeToTools = buildNodeToTools(edges, toolAngles);
 
-  const ringDefs: Node[][] = [
-    groups.get("tool") ?? [],
+  const outerRings = [
     [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
     groups.get("mcp") ?? [],
     groups.get("memory") ?? [],
   ];
 
-  // Build radii incrementally — each ring must be far enough from previous to avoid overlap
-  const radii: number[] = [];
-  let prevRadius = 0;
+  const ringRadii = computeAdaptiveRadii(outerRings, toolRadius, spacing, spacing / 2, density);
+  const outerR = Math.max(toolRadius, ...ringRadii);
+  const cx = outerR + 200, cy = outerR + 200;
+  const result: Node[] = [];
 
-  for (let i = 0; i < ringDefs.length; i++) {
-    const ringNodes = ringDefs[i];
-    if (ringNodes.length === 0) {
-      radii.push(prevRadius); // placeholder
-      continue;
-    }
+  // Place tools
+  for (const tool of tools) result.push(placeNode(tool, cx, cy, toolRadius, toolAngles.get(tool.id)!));
 
-    if (i === 0) {
-      // Tools: center ring
-      const r = ringNodes.length <= 1 ? 0 : Math.max(100, ringNodes.length * 45);
-      radii.push(r);
-      prevRadius = r;
-    } else {
-      // Outer ring: radius must provide enough circumference AND be far enough from previous ring
-      const maxNodeW = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.width ?? DEFAULT_SIZE.width));
-      const maxNodeH = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.height ?? DEFAULT_SIZE.height));
-      const nodeGap = 50;
-      const minCircumference = ringNodes.length * (maxNodeW + nodeGap);
-      const minRadiusForFit = minCircumference / (2 * Math.PI);
-      const minRadiusForGap = prevRadius + Math.max(maxNodeH, maxNodeW) + 80;
-      const r = Math.max(minRadiusForFit, minRadiusForGap);
-      radii.push(r);
-      prevRadius = r;
-    }
+  // Place outer rings sorted by primary tool angle
+  for (let ri = 0; ri < outerRings.length; ri++) {
+    if (outerRings[ri].length === 0) continue;
+    const sorted = [...outerRings[ri]].sort(
+      (a, b) => primaryToolAngle(a, nodeToTools, toolAngles) - primaryToolAngle(b, nodeToTools, toolAngles),
+    );
+    sorted.forEach((node, j) => {
+      result.push(placeNode(node, cx, cy, ringRadii[ri], (j / sorted.length) * 2 * Math.PI - Math.PI / 2));
+    });
+  }
+  return { nodes: result, edges };
+}
+
+// ── Radial Mode: Sectors — each CATEGORY gets a quadrant of the circle ──
+// Plugins top-left, Skills bottom-left, MCPs top-right, Memory bottom-right.
+// Tools in center. Within each quadrant, nodes fan out in arcs sorted by
+// their primary tool connection so related nodes cluster.
+
+function getRadialSectors(nodes: Node[], edges: Edge[], spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
+  const groups = groupByCategory(nodes);
+  const tools = groups.get("tool") ?? [];
+  const toolAngles = buildToolAngles(tools);
+  const nodeToTools = buildNodeToTools(edges, toolAngles);
+  const toolRadius = tools.length <= 1 ? 0 : center;
+
+  // Each category gets a fixed quadrant (center angle + sweep)
+  const quadrants: { cat: Category[]; centerAngle: number; label: string }[] = [
+    { cat: ["plugin"],  centerAngle: -Math.PI * 3 / 4, label: "Plugins (top-left)" },     // top-left
+    { cat: ["memory"],  centerAngle: -Math.PI / 4,     label: "Memory (top-right)" },      // top-right
+    { cat: ["skill"],   centerAngle: Math.PI * 3 / 4,  label: "Skills (bottom-left)" },    // bottom-left
+    { cat: ["mcp"],     centerAngle: Math.PI / 4,       label: "MCPs (bottom-right)" },     // bottom-right
+  ];
+
+  const quadrantSweep = Math.PI / 2; // 90° per quadrant
+  const halfSweep = quadrantSweep * 0.42; // use 84%, leave gaps between quadrants
+
+  // Collect nodes per quadrant
+  const quadrantNodes: Node[][] = [];
+  for (const q of quadrants) {
+    const qNodes: Node[] = [];
+    for (const cat of q.cat) qNodes.push(...(groups.get(cat) ?? []));
+    quadrantNodes.push(qNodes);
   }
 
-  // Center point
-  const outerRadius = Math.max(...radii);
-  const cx = outerRadius + 200;
-  const cy = outerRadius + 200;
+  // Use ONE consistent radius for all quadrants — the largest needed
+  const maxPerArc = 6;
+  const nodeGap = 40;
+  const maxW = DEFAULT_SIZE.width;
+  const maxNodesInQuadrant = Math.max(...quadrantNodes.map((q) => q.length), 1);
+  const nodesOnFirstArc = Math.min(maxPerArc, maxNodesInQuadrant);
+  const fitScale = density / 100;
+  const minRadiusForFit = (nodesOnFirstArc * (maxW + nodeGap)) / quadrantSweep * fitScale;
+  const baseRadius = Math.max(toolRadius + spacing, minRadiusForFit);
+  const ringSpacing = spacing + 40;
 
-  for (let i = 0; i < ringDefs.length; i++) {
-    const ringNodes = ringDefs[i];
-    if (ringNodes.length === 0) continue;
-    const radius = radii[i];
+  // Max arcs needed
+  const maxArcs = Math.max(...quadrantNodes.map((q) => Math.ceil(q.length / maxPerArc)), 1);
+  const outerR = baseRadius + maxArcs * ringSpacing + 100;
+  const cx = outerR + 200, cy = outerR + 200;
+  const result: Node[] = [];
 
-    ringNodes.forEach((node, j) => {
-      const angle = (j / ringNodes.length) * 2 * Math.PI - Math.PI / 2;
-      const nw = NODE_SIZES[node.type || ""]?.width ?? DEFAULT_SIZE.width;
-      const nh = NODE_SIZES[node.type || ""]?.height ?? DEFAULT_SIZE.height;
-      result.push({
-        ...node,
-        zIndex: 10,
-        position: {
-          x: cx + radius * Math.cos(angle) - nw / 2,
-          y: cy + radius * Math.sin(angle) - nh / 2,
-        },
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
+  // Place tools in center
+  for (const tool of tools) {
+    result.push(placeNode(tool, cx, cy, toolRadius, toolAngles.get(tool.id)!));
+  }
+
+  // Place each quadrant at the SAME base radius
+  for (let qi = 0; qi < quadrants.length; qi++) {
+    const q = quadrants[qi];
+    const qNodes = quadrantNodes[qi];
+    if (qNodes.length === 0) continue;
+
+    // Sort by primary tool angle for clustering
+    const sorted = [...qNodes].sort(
+      (a, b) => primaryToolAngle(a, nodeToTools, toolAngles) - primaryToolAngle(b, nodeToTools, toolAngles),
+    );
+
+    // Split into arcs of maxPerArc
+    const arcCount = Math.ceil(sorted.length / maxPerArc);
+    for (let arc = 0; arc < arcCount; arc++) {
+      const arcNodes = sorted.slice(arc * maxPerArc, (arc + 1) * maxPerArc);
+      const radius = baseRadius + arc * ringSpacing;
+
+      arcNodes.forEach((node, j) => {
+        const angleOffset = arcNodes.length <= 1
+          ? 0
+          : (j / (arcNodes.length - 1) - 0.5) * 2 * halfSweep;
+        result.push(placeNode(node, cx, cy, radius, q.centerAngle + angleOffset));
       });
-    });
+    }
   }
 
   return { nodes: result, edges };
+}
+
+// ── Radial Mode: Force — edge-attracted force simulation with radial band constraints ──
+// Produces an organic layout: connected nodes pull toward each other,
+// nodes repel to avoid overlap, and a radial band constraint keeps category grouping.
+
+function getRadialForce(nodes: Node[], edges: Edge[], spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
+  const groups = groupByCategory(nodes);
+  const tools = groups.get("tool") ?? [];
+  const toolRadius = tools.length <= 1 ? 0 : center;
+
+  // Category → target radius band (density scales the gap)
+  const gap = spacing * (1 + density / 50);
+  const catRadii: Record<string, number> = {
+    tool: toolRadius,
+    plugin: toolRadius + gap,
+    skill: toolRadius + gap,
+    mcp: toolRadius + gap * 2,
+    memory: toolRadius + gap * 3,
+  };
+
+  const outerR = toolRadius + gap * 3 + 200;
+  const cx = outerR + 200, cy = outerR + 200;
+
+  // Initialize particles with positions spread by category ring + jittered angle
+  type Particle = { node: Node; x: number; y: number; vx: number; vy: number; targetR: number; fixed: boolean };
+  const allNodes = [...nodes];
+  const idToIdx = new Map<string, number>();
+  const particles: Particle[] = [];
+
+  // Counters per ring for initial angular spread
+  const ringCounts = new Map<number, number>();
+  const ringIdx = new Map<number, number>();
+
+  for (const node of allNodes) {
+    const cat = getCategory(node);
+    const tr = catRadii[cat] ?? toolRadius + 300;
+    const rc = ringCounts.get(tr) ?? 0;
+    ringCounts.set(tr, rc + 1);
+  }
+  for (const [r] of ringCounts) ringIdx.set(r, 0);
+
+  for (const node of allNodes) {
+    const cat = getCategory(node);
+    const tr = catRadii[cat] ?? toolRadius + 300;
+    const count = ringCounts.get(tr) ?? 1;
+    const idx = ringIdx.get(tr) ?? 0;
+    ringIdx.set(tr, idx + 1);
+    const angle = (idx / count) * 2 * Math.PI - Math.PI / 2;
+    idToIdx.set(node.id, particles.length);
+    particles.push({
+      node,
+      x: cx + tr * Math.cos(angle),
+      y: cy + tr * Math.sin(angle),
+      vx: 0, vy: 0,
+      targetR: tr,
+      fixed: cat === "tool", // tools stay fixed on center ring
+    });
+  }
+
+  // Run simulation: 80 iterations
+  const iterations = 80;
+  const alpha = 0.3; // global cooling factor
+
+  for (let iter = 0; iter < iterations; iter++) {
+    const t = 1 - iter / iterations; // temperature: 1→0
+
+    // 1. Edge attraction — pull connected nodes toward each other
+    for (const edge of edges) {
+      const si = idToIdx.get(edge.source);
+      const ti = idToIdx.get(edge.target);
+      if (si === undefined || ti === undefined) continue;
+      const a = particles[si], b = particles[ti];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const idealDist = Math.abs(a.targetR - b.targetR) * 0.8 + 100;
+      const force = (dist - idealDist) / dist * 0.02 * t;
+      if (!a.fixed) { a.vx += dx * force; a.vy += dy * force; }
+      if (!b.fixed) { b.vx -= dx * force; b.vy -= dy * force; }
+    }
+
+    // 2. Node-node repulsion
+    for (let i = 0; i < particles.length; i++) {
+      if (particles[i].fixed) continue;
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[j].x - particles[i].x;
+        const dy = particles[j].y - particles[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const minDist = 200;
+        if (dist < minDist) {
+          const force = (minDist - dist) / dist * 0.25 * t;
+          if (!particles[i].fixed) { particles[i].vx -= dx * force; particles[i].vy -= dy * force; }
+          if (!particles[j].fixed) { particles[j].vx += dx * force; particles[j].vy += dy * force; }
+        }
+      }
+    }
+
+    // 3. Apply velocity and radial band constraint
+    for (const p of particles) {
+      if (p.fixed) continue;
+      p.x += p.vx * alpha;
+      p.y += p.vy * alpha;
+      p.vx *= 0.7; // damping
+      p.vy *= 0.7;
+
+      // Pull toward target ring (soft constraint)
+      const dx = p.x - cx, dy = p.y - cy;
+      const currentR = Math.sqrt(dx * dx + dy * dy) || 1;
+      const angle = Math.atan2(dy, dx);
+      const newR = currentR + (p.targetR - currentR) * 0.3;
+      p.x = cx + newR * Math.cos(angle);
+      p.y = cy + newR * Math.sin(angle);
+    }
+  }
+
+  const result = particles.map((p) => {
+    const nw = NODE_SIZES[p.node.type || ""]?.width ?? DEFAULT_SIZE.width;
+    const nh = NODE_SIZES[p.node.type || ""]?.height ?? DEFAULT_SIZE.height;
+    return {
+      ...p.node,
+      zIndex: 10,
+      position: { x: p.x - nw / 2, y: p.y - nh / 2 },
+      sourcePosition: Position.Bottom as Position,
+      targetPosition: Position.Top as Position,
+    };
+  });
+
+  return { nodes: result, edges };
+}
+
+// ── Radial dispatcher ──
+
+function getRadialLayout(nodes: Node[], edges: Edge[], mode: RadialMode = "hybrid", spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
+  switch (mode) {
+    case "sectors": return getRadialSectors(nodes, edges, spacing, center, density);
+    case "force": return getRadialForce(nodes, edges, spacing, center, density);
+    case "hybrid":
+    default: return getRadialHybrid(nodes, edges, spacing, center, density);
+  }
 }
 
 // ── Main layout dispatcher ──
@@ -220,9 +479,13 @@ async function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
   direction: Direction = DEFAULT_LAYOUT_DIRECTION,
+  radialMode: RadialMode = DEFAULT_RADIAL_MODE,
+  radialSpacing = 60,
+  radialCenter = 150,
+  radialDensity = 50,
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
   if (direction === "RADIAL") {
-    return getRadialLayout(nodes, edges);
+    return getRadialLayout(nodes, edges, radialMode, radialSpacing, radialCenter, radialDensity);
   }
   return getLayeredLayout(nodes, edges, direction);
 }
@@ -277,6 +540,16 @@ export function Graph({
   const [edgeType, setEdgeTypeState] = useState<EdgeType>(() => {
     try { return (localStorage.getItem(LOCALSTORAGE_KEYS.edgeType) as EdgeType) || DEFAULT_EDGE_TYPE; } catch { return DEFAULT_EDGE_TYPE; }
   });
+  const [radialMode, setRadialModeState] = useState<RadialMode>(() => {
+    try { return (localStorage.getItem(LOCALSTORAGE_KEYS.radialMode) as RadialMode) || DEFAULT_RADIAL_MODE; } catch { return DEFAULT_RADIAL_MODE; }
+  });
+  const [radialSpacing, setRadialSpacing] = useState(60);
+  const [radialCenter, setRadialCenter] = useState(150);
+  const [radialDensity, setRadialDensity] = useState(50); // 0=max tight, 100=no overlap
+
+  const isDebugMode = useMemo(() => {
+    try { return new URLSearchParams(window.location.search).has("debug"); } catch { return false; }
+  }, []);
 
   const setLayoutDirection = useCallback((dir: Direction) => {
     setLayoutDirectionState(dir);
@@ -286,6 +559,11 @@ export function Graph({
   const setEdgeType = useCallback((type: EdgeType) => {
     setEdgeTypeState(type);
     try { localStorage.setItem(LOCALSTORAGE_KEYS.edgeType, type); } catch {}
+  }, []);
+
+  const setRadialMode = useCallback((mode: RadialMode) => {
+    setRadialModeState(mode);
+    try { localStorage.setItem(LOCALSTORAGE_KEYS.radialMode, mode); } catch {}
   }, []);
 
   // Track disabled edges locally if not controlled
@@ -350,10 +628,10 @@ export function Graph({
     });
   }, [edges, effectiveDisabled, edgeType]);
 
-  // Apply ELK layout when data changes
+  // Apply layout when data or mode changes
   useEffect(() => {
     if (initialNodes.length > 0) {
-      getLayoutedElements(initialNodes, initialEdges, layoutDirection).then(
+      getLayoutedElements(initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
           setNodes(layoutedNodes);
           setEdges(layoutedEdges);
@@ -361,13 +639,13 @@ export function Graph({
         }
       );
     }
-  }, [initialNodes, initialEdges, layoutDirection, setNodes, setEdges]);
+  }, [initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity, setNodes, setEdges]);
 
   // Re-layout handler
   const onLayout = useCallback(
     (direction: Direction) => {
       setLayoutDirection(direction);
-      getLayoutedElements(nodes, edges, direction).then(
+      getLayoutedElements(nodes, edges, direction, radialMode, radialSpacing, radialCenter, radialDensity).then(
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
           setNodes(layoutedNodes);
           setEdges(layoutedEdges);
@@ -375,7 +653,22 @@ export function Graph({
         }
       );
     },
-    [nodes, edges, setNodes, setEdges, setLayoutDirection]
+    [nodes, edges, radialMode, radialSpacing, radialCenter, radialDensity, setNodes, setEdges, setLayoutDirection]
+  );
+
+  // Radial mode switch handler
+  const onRadialModeChange = useCallback(
+    (mode: RadialMode) => {
+      setRadialMode(mode);
+      getLayoutedElements(nodes, edges, "RADIAL", mode, radialSpacing, radialCenter, radialDensity).then(
+        ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
+          setNodes(layoutedNodes);
+          setEdges(layoutedEdges);
+          setTimeout(() => fitViewRef.current?.(), 50);
+        }
+      );
+    },
+    [nodes, edges, radialSpacing, radialCenter, radialDensity, setNodes, setEdges, setRadialMode]
   );
 
   const onNodeDragStop = useCallback(() => {}, []);
@@ -486,6 +779,47 @@ export function Graph({
           >
             Radial
           </button>
+          {layoutDirection === "RADIAL" && isDebugMode && (
+            <>
+              <span className="mx-1 text-muted-foreground/40">|</span>
+              {(["hybrid", "sectors", "force"] as RadialMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => onRadialModeChange(m)}
+                  className={cn(
+                    "px-2 py-1.5 rounded text-[10px] font-medium transition-colors capitalize",
+                    radialMode === m
+                      ? "bg-emerald-600 text-white"
+                      : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
+              <span className="mx-1 text-muted-foreground/40">|</span>
+              <label className="flex items-center gap-1 text-[10px] text-muted-foreground" title="Density: 0=tight, 100=spacious">
+                Density
+                <input type="range" min={0} max={100} step={5} value={radialDensity}
+                  onChange={(e) => setRadialDensity(Number(e.target.value))}
+                  className="w-20 h-1 accent-orange-500" />
+                <span className="w-6 text-right font-mono">{radialDensity}</span>
+              </label>
+              <label className="flex items-center gap-1 text-[10px] text-muted-foreground" title="Center ring size">
+                Center
+                <input type="range" min={0} max={500} step={5} value={radialCenter}
+                  onChange={(e) => setRadialCenter(Number(e.target.value))}
+                  className="w-20 h-1 accent-cyan-500" />
+                <span className="w-6 text-right font-mono">{radialCenter}</span>
+              </label>
+              <label className="flex items-center gap-1 text-[10px] text-muted-foreground" title="Gap between rings">
+                Gap
+                <input type="range" min={0} max={500} step={5} value={radialSpacing}
+                  onChange={(e) => setRadialSpacing(Number(e.target.value))}
+                  className="w-20 h-1 accent-emerald-500" />
+                <span className="w-6 text-right font-mono">{radialSpacing}</span>
+              </label>
+            </>
+          )}
           <span className="mx-1 text-muted-foreground/40">|</span>
           {(["smoothstep", "default", "straight", "step"] as EdgeType[]).map((t) => (
             <button

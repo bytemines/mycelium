@@ -15,9 +15,9 @@ export interface ResourceNodeData {
 function ResourceNodeInner({ data, sourcePosition, targetPosition }: { data: ResourceNodeData; sourcePosition?: Position; targetPosition?: Position }) {
   const isEnabled = data.enabled !== false;
   const typeStyles: Record<string, { border: string; bg: string }> = {
-    skill: { border: "border-blue-500/60", bg: "bg-blue-500/10" },
-    mcp: { border: "border-purple-500/60", bg: "bg-purple-500/10" },
-    memory: { border: "border-amber-500/60", bg: "bg-amber-500/10" },
+    skill: { border: "border-blue-500/60", bg: "bg-[#0c1529]" },
+    mcp: { border: "border-purple-500/60", bg: "bg-[#150c29]" },
+    memory: { border: "border-amber-500/60", bg: "bg-[#1a1408]" },
   };
 
   const style = typeStyles[data.type] || typeStyles.skill;
