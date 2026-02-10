@@ -340,6 +340,72 @@ describe("status command", () => {
       expect(output).toContain("\u001b[90m");
     });
 
+    it("shows [disabled] marker for disabled items", async () => {
+      const { formatStatusOutput } = await import("./status.js");
+
+      const statuses = [
+        {
+          tool: "claude-code" as const,
+          status: "synced" as const,
+          skillsCount: 5,
+          mcpsCount: 3,
+          memoryFiles: ["m1.md"],
+          itemState: "disabled" as const,
+        },
+      ];
+
+      const output = formatStatusOutput(statuses);
+
+      expect(output).toContain("[disabled]");
+    });
+
+    it("hides deleted items by default", async () => {
+      const { formatStatusOutput } = await import("./status.js");
+
+      const statuses = [
+        {
+          tool: "claude-code" as const,
+          status: "synced" as const,
+          skillsCount: 5,
+          mcpsCount: 3,
+          memoryFiles: ["m1.md"],
+          itemState: "deleted" as const,
+        },
+        {
+          tool: "codex" as const,
+          status: "synced" as const,
+          skillsCount: 2,
+          mcpsCount: 1,
+          memoryFiles: [],
+        },
+      ];
+
+      const output = formatStatusOutput(statuses);
+
+      expect(output).not.toContain("Claude Code");
+      expect(output).toContain("Codex");
+    });
+
+    it("shows deleted items with [deleted] marker when --all is passed", async () => {
+      const { formatStatusOutput } = await import("./status.js");
+
+      const statuses = [
+        {
+          tool: "claude-code" as const,
+          status: "synced" as const,
+          skillsCount: 5,
+          mcpsCount: 3,
+          memoryFiles: ["m1.md"],
+          itemState: "deleted" as const,
+        },
+      ];
+
+      const output = formatStatusOutput(statuses, { showAll: true });
+
+      expect(output).toContain("Claude Code");
+      expect(output).toContain("[deleted]");
+    });
+
     it("shows global and project config paths", async () => {
       const { formatStatusOutput } = await import("./status.js");
 
@@ -380,6 +446,15 @@ describe("status command", () => {
         (opt) => opt.short === "-j" || opt.long === "--json"
       );
       expect(jsonOption).toBeDefined();
+    });
+
+    it("has --all option", async () => {
+      const { statusCommand } = await import("./status.js");
+
+      const allOption = statusCommand.options.find(
+        (opt) => opt.short === "-a" || opt.long === "--all"
+      );
+      expect(allOption).toBeDefined();
     });
 
     it("has verbose output option", async () => {
