@@ -20,7 +20,7 @@ describe("Enable Command", () => {
   let tempDir: string;
   let globalMyceliumPath: string;
 
-  // Sample manifest configuration
+  // Sample manifest configuration using state instead of enabled
   const sampleManifest = {
     version: "1.0",
     tools: {
@@ -33,25 +33,34 @@ describe("Enable Command", () => {
     },
     skills: {
       superpowers: {
-        enabled: true,
+        state: "enabled",
       },
       "disabled-skill": {
-        enabled: false,
+        state: "disabled",
+      },
+      "deleted-skill": {
+        state: "deleted",
       },
     },
     mcps: {
       "whark-trading": {
-        enabled: true,
+        state: "enabled",
       },
       "disabled-mcp": {
-        enabled: false,
+        state: "disabled",
+      },
+      "deleted-mcp": {
+        state: "deleted",
+      },
+    },
+    hooks: {
+      "pre-commit": {
+        state: "disabled",
       },
     },
     memory: {
-      scopes: {
-        shared: { sync_to: ["claude-code"], path: "global/memory/shared/", files: [] },
-        coding: { sync_to: ["claude-code"], path: "global/memory/coding/", files: [] },
-        personal: { sync_to: ["openclaw"], path: "global/memory/personal/", files: [] },
+      coding: {
+        state: "disabled",
       },
     },
   };
@@ -134,7 +143,7 @@ describe("Enable Command", () => {
           "utf-8"
         );
         const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.skills["disabled-skill"].enabled).toBe(true);
+        expect(updatedManifest.skills["disabled-skill"].state).toBe("enabled");
       });
 
       it("enables MCP globally", async () => {
@@ -155,7 +164,7 @@ describe("Enable Command", () => {
           "utf-8"
         );
         const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.mcps["disabled-mcp"].enabled).toBe(true);
+        expect(updatedManifest.mcps["disabled-mcp"].state).toBe("enabled");
       });
     });
 
@@ -233,7 +242,7 @@ describe("Enable Command", () => {
         );
         const updatedManifest = yamlParse(manifestContent);
 
-        expect(updatedManifest.skills["disabled-skill"].enabled).toBe(true);
+        expect(updatedManifest.skills["disabled-skill"].state).toBe("enabled");
       });
 
       it("preserves other manifest settings when updating", async () => {
@@ -254,8 +263,8 @@ describe("Enable Command", () => {
         // Other settings should be preserved
         expect(updatedManifest.version).toBe("1.0");
         expect(updatedManifest.tools["claude-code"].enabled).toBe(true);
-        expect(updatedManifest.skills["superpowers"].enabled).toBe(true);
-        expect(updatedManifest.mcps["whark-trading"].enabled).toBe(true);
+        expect(updatedManifest.skills["superpowers"].state).toBe("enabled");
+        expect(updatedManifest.mcps["whark-trading"].state).toBe("enabled");
       });
     });
 
@@ -331,6 +340,119 @@ describe("Enable Command", () => {
         expect(result.alreadyEnabled).toBe(true);
         expect(result.message).toContain("already enabled");
       });
+
+      it("treats items with no state as already enabled (default)", async () => {
+        // Write a manifest with a skill that has no state field
+        const noStateManifest = {
+          version: "1.0",
+          skills: {
+            "no-state-skill": {},
+          },
+          mcps: {},
+        };
+        const noStatePath = path.join(tempDir, "no-state");
+        await fs.mkdir(noStatePath, { recursive: true });
+        await fs.writeFile(
+          path.join(noStatePath, "manifest.yaml"),
+          yamlStringify(noStateManifest),
+          "utf-8"
+        );
+
+        const result = await enableSkillOrMcp({
+          name: "no-state-skill",
+          global: true,
+          globalPath: noStatePath,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.alreadyEnabled).toBe(true);
+      });
+    });
+
+    describe("deleted item restoration", () => {
+      it("enabling a deleted skill restores it to enabled", async () => {
+        const options: EnableOptions = {
+          name: "deleted-skill",
+          global: true,
+          globalPath: globalMyceliumPath,
+        };
+
+        const result = await enableSkillOrMcp(options);
+
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("skill");
+        expect(result.alreadyEnabled).toBeUndefined();
+
+        // Verify manifest was updated
+        const manifestContent = await fs.readFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          "utf-8"
+        );
+        const updatedManifest = yamlParse(manifestContent);
+        expect(updatedManifest.skills["deleted-skill"].state).toBe("enabled");
+      });
+
+      it("enabling a deleted MCP restores it to enabled", async () => {
+        const options: EnableOptions = {
+          name: "deleted-mcp",
+          global: true,
+          globalPath: globalMyceliumPath,
+        };
+
+        const result = await enableSkillOrMcp(options);
+
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("mcp");
+
+        const manifestContent = await fs.readFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          "utf-8"
+        );
+        const updatedManifest = yamlParse(manifestContent);
+        expect(updatedManifest.mcps["deleted-mcp"].state).toBe("enabled");
+      });
+    });
+
+    describe("hook and memory enabling", () => {
+      it("enables a hook", async () => {
+        const options: EnableOptions = {
+          name: "pre-commit",
+          global: true,
+          globalPath: globalMyceliumPath,
+        };
+
+        const result = await enableSkillOrMcp(options);
+
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("hook");
+
+        const manifestContent = await fs.readFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          "utf-8"
+        );
+        const updatedManifest = yamlParse(manifestContent);
+        expect(updatedManifest.hooks["pre-commit"].state).toBe("enabled");
+      });
+
+      it("enables a memory scope", async () => {
+        const options: EnableOptions = {
+          name: "coding",
+          global: true,
+          globalPath: globalMyceliumPath,
+        };
+
+        const result = await enableSkillOrMcp(options);
+
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("memory");
+
+        const manifestContent = await fs.readFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          "utf-8"
+        );
+        const updatedManifest = yamlParse(manifestContent);
+        expect(updatedManifest.memory["coding"].state).toBe("enabled");
+      });
     });
 
     describe("project-level enabling", () => {
@@ -343,7 +465,7 @@ describe("Enable Command", () => {
         const projectManifest = {
           version: "1.0",
           skills: {
-            "project-skill": { enabled: false },
+            "project-skill": { state: "disabled" },
           },
           mcps: {},
         };
@@ -370,7 +492,7 @@ describe("Enable Command", () => {
           "utf-8"
         );
         const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.skills["project-skill"].enabled).toBe(true);
+        expect(updatedManifest.skills["project-skill"].state).toBe("enabled");
       });
     });
 

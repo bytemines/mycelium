@@ -1,10 +1,10 @@
 /**
  * Enable Command Module
  *
- * Enable a skill or MCP globally or for a specific tool:
- * - mycelium enable <name>              # Enable skill/MCP at project level
- * - mycelium enable <name> --global     # Enable skill/MCP globally
- * - mycelium enable <name> --tool <id>  # Enable skill/MCP for specific tool only
+ * Enable a skill, MCP, hook, or memory scope globally or for a specific tool:
+ * - mycelium enable <name>              # Enable item at project level
+ * - mycelium enable <name> --global     # Enable item globally
+ * - mycelium enable <name> --tool <id>  # Enable item for specific tool only
  */
 
 import { Command } from "commander";
@@ -17,6 +17,8 @@ import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelish/
 // Types
 // ============================================================================
 
+type ItemState = "enabled" | "disabled" | "deleted";
+
 export interface EnableOptions {
   name: string;
   tool?: ToolId;
@@ -28,7 +30,7 @@ export interface EnableOptions {
 export interface EnableResult {
   success: boolean;
   name: string;
-  type?: "skill" | "mcp";
+  type?: "skill" | "mcp" | "hook" | "memory";
   level?: "global" | "project";
   tool?: ToolId;
   alreadyEnabled?: boolean;
@@ -36,26 +38,47 @@ export interface EnableResult {
   error?: string;
 }
 
-interface ManifestConfig {
-  version: string;
-  tools?: Record<string, { enabled: boolean }>;
-  skills?: Record<string, SkillConfig>;
-  mcps?: Record<string, McpConfig>;
-  memory?: unknown;
-}
-
 interface SkillConfig {
-  enabled?: boolean;
+  state?: ItemState;
+  source?: string;
   tools?: ToolId[];
   excludeTools?: ToolId[];
   enabledTools?: ToolId[];
 }
 
 interface McpConfig {
-  enabled?: boolean;
+  state?: ItemState;
+  source?: string;
   tools?: ToolId[];
   excludeTools?: ToolId[];
   enabledTools?: ToolId[];
+}
+
+interface HookConfig {
+  state?: ItemState;
+  source?: string;
+  tools?: ToolId[];
+  excludeTools?: ToolId[];
+  enabledTools?: ToolId[];
+}
+
+interface MemoryConfig {
+  state?: ItemState;
+  source?: string;
+  tools?: ToolId[];
+  excludeTools?: ToolId[];
+  enabledTools?: ToolId[];
+}
+
+type ItemConfig = SkillConfig | McpConfig | HookConfig | MemoryConfig;
+
+interface ManifestConfig {
+  version: string;
+  tools?: Record<string, { enabled: boolean }>;
+  skills?: Record<string, SkillConfig>;
+  mcps?: Record<string, McpConfig>;
+  hooks?: Record<string, HookConfig>;
+  memory?: Record<string, MemoryConfig> | unknown;
 }
 
 // ============================================================================
@@ -92,17 +115,33 @@ function isValidToolId(toolId: string): toolId is ToolId {
 }
 
 /**
- * Find what type an item is (skill or MCP)
+ * Check if a value is a record of ItemConfig entries (not legacy memory with scopes)
+ */
+function isItemConfigRecord(val: unknown): val is Record<string, ItemConfig> {
+  if (!val || typeof val !== "object" || Array.isArray(val)) return false;
+  // Legacy memory has a "scopes" key — skip it
+  if ("scopes" in (val as Record<string, unknown>)) return false;
+  return true;
+}
+
+/**
+ * Find what type an item is (skill, MCP, hook, or memory)
  */
 function findItemType(
   manifest: ManifestConfig,
   name: string
-): { type: "skill" | "mcp"; config: SkillConfig | McpConfig } | null {
+): { type: "skill" | "mcp" | "hook" | "memory"; config: ItemConfig } | null {
   if (manifest.skills && name in manifest.skills) {
     return { type: "skill", config: manifest.skills[name] };
   }
   if (manifest.mcps && name in manifest.mcps) {
     return { type: "mcp", config: manifest.mcps[name] };
+  }
+  if (manifest.hooks && name in manifest.hooks) {
+    return { type: "hook", config: manifest.hooks[name] };
+  }
+  if (isItemConfigRecord(manifest.memory) && name in manifest.memory) {
+    return { type: "memory", config: manifest.memory[name] };
   }
   return null;
 }
@@ -111,7 +150,7 @@ function findItemType(
  * Check if item is already enabled (globally or for a specific tool)
  */
 function isAlreadyEnabled(
-  config: SkillConfig | McpConfig,
+  config: ItemConfig,
   tool?: ToolId
 ): boolean {
   if (tool) {
@@ -121,8 +160,8 @@ function isAlreadyEnabled(
     }
     return false;
   }
-  // Check global enablement
-  return config.enabled === true;
+  // Check global enablement — undefined (no state) means enabled by default
+  return config.state === "enabled" || config.state === undefined;
 }
 
 // ============================================================================
@@ -130,7 +169,7 @@ function isAlreadyEnabled(
 // ============================================================================
 
 /**
- * Enable a skill or MCP
+ * Enable a skill, MCP, hook, or memory scope
  */
 export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableResult> {
   const { name, tool, global: isGlobal } = options;
@@ -159,13 +198,13 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     };
   }
 
-  // Find the item (skill or MCP)
+  // Find the item
   const item = findItemType(manifest, name);
   if (!item) {
     return {
       success: false,
       name,
-      error: `'${name}' not found in manifest (checked skills and mcps)`,
+      error: `'${name}' not found in manifest (checked skills, mcps, hooks, and memory)`,
     };
   }
 
@@ -207,17 +246,23 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
       config.excludeTools = config.excludeTools.filter((t) => t !== tool);
     }
   } else {
-    // Enable globally
-    config.enabled = true;
+    // Enable globally — restores both disabled and deleted items
+    config.state = "enabled";
   }
 
   // Update manifest
   if (type === "skill") {
     if (!manifest.skills) manifest.skills = {};
     manifest.skills[name] = config as SkillConfig;
-  } else {
+  } else if (type === "mcp") {
     if (!manifest.mcps) manifest.mcps = {};
     manifest.mcps[name] = config as McpConfig;
+  } else if (type === "hook") {
+    if (!manifest.hooks) manifest.hooks = {};
+    manifest.hooks[name] = config as HookConfig;
+  } else if (type === "memory") {
+    if (!isItemConfigRecord(manifest.memory)) manifest.memory = {};
+    (manifest.memory as Record<string, MemoryConfig>)[name] = config as MemoryConfig;
   }
 
   // Save manifest
