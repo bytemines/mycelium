@@ -130,6 +130,7 @@ Alias: `myc` (e.g., `myc sync`)
 | `mycelium push / pull` | Git-based multi-PC sync |
 | `mycelium env list / setup` | Manage environment variables |
 | `mycelium add / remove / enable / disable` | Unified item management (skills, MCPs, plugins) |
+| `mycelium report [--tool] [--scope] [--item]` | Query traces, generate bug reports |
 | `mycelium serve` | Start dashboard API server (port 3378) |
 
 ## 🔧 Supported Tools
@@ -168,6 +169,8 @@ Launch with `mycelium serve`, then open `http://localhost:3378`:
 | Migration conflicts | Use `mycelium migrate --strategy interactive` |
 | Push/pull fails | Ensure Git remote is configured in `~/.mycelium` |
 | Missing env vars after pull | Run `mycelium env setup` and edit `.env.local` |
+| Diagnosing any issue | Run `mycelium report --level error --since 1h --format table` |
+| Detailed bug report | See [Reporting Issues](docs/reporting-issues.md) |
 
 ## 📚 Documentation
 
@@ -177,6 +180,7 @@ Launch with `mycelium serve`, then open `http://localhost:3378`:
 | [Overlay Sync](docs/OVERLAY-SYNC.md) | How skills, MCPs, and memory are synced to each tool |
 | [Multi-PC Sync](docs/MULTI-PC.md) | Git-based sync, machine overrides, env templates |
 | [Migration Guide](docs/MIGRATION.md) | Detailed migration workflow, strategies, and cleanup |
+| [Reporting Issues](docs/reporting-issues.md) | How to use traces, AI debug skill, and file bug reports |
 | [Contributing](CLAUDE.md) | Developer guide: structure, conventions, testing |
 
 ## 📄 License

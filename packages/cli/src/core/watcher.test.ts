@@ -26,4 +26,15 @@ describe("watcher", () => {
     expect(shouldTriggerSync("README.md")).toBe(false);
     expect(shouldTriggerSync("package.json")).toBe(false);
   });
+
+  it("shouldTriggerSync returns true for .md files in memory scope dirs", () => {
+    expect(shouldTriggerSync("global/memory/shared/notes.md")).toBe(true);
+    expect(shouldTriggerSync("global/memory/coding/style.md")).toBe(true);
+    expect(shouldTriggerSync("global/memory/personal/diary.md")).toBe(true);
+  });
+
+  it("shouldTriggerSync returns false for .md files outside memory dirs", () => {
+    expect(shouldTriggerSync("README.md")).toBe(false);
+    expect(shouldTriggerSync("docs/plan.md")).toBe(false);
+  });
 });

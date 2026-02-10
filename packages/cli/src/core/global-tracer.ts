@@ -26,3 +26,11 @@ export function closeTracer(): void {
     _tracer = null;
   }
 }
+
+// Auto-vacuum on process exit
+process.on("exit", () => {
+  if (_tracer) {
+    try { _tracer.vacuum(); _tracer.close(); } catch { /* ignore */ }
+    _tracer = null;
+  }
+});

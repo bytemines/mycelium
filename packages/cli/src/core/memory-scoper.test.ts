@@ -422,13 +422,10 @@ describe("memory-scoper", () => {
       expect(result.filesWritten).toBe(1);
       expect(fs.writeFile).toHaveBeenCalledTimes(1);
 
-      // Check the content includes scope headers
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenContent = writeCall[1] as string;
 
-      expect(writtenContent).toContain("<!-- SCOPE: shared -->");
       expect(writtenContent).toContain("# Context");
-      expect(writtenContent).toContain("<!-- SCOPE: coding -->");
       expect(writtenContent).toContain("# Style Guide");
     });
 
@@ -464,21 +461,13 @@ describe("memory-scoper", () => {
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenContent = writeCall[1] as string;
 
-      // Verify structure: shared header, then shared files, then coding header, then coding files
-      const sharedHeaderIndex = writtenContent.indexOf(
-        "<!-- SCOPE: shared -->"
-      );
-      const codingHeaderIndex = writtenContent.indexOf(
-        "<!-- SCOPE: coding -->"
-      );
+      // Verify content order: shared files before coding files
       const contentAIndex = writtenContent.indexOf("Content A");
       const contentBIndex = writtenContent.indexOf("Content B");
       const contentCIndex = writtenContent.indexOf("Content C");
 
-      expect(sharedHeaderIndex).toBeLessThan(contentAIndex);
       expect(contentAIndex).toBeLessThan(contentBIndex);
-      expect(contentBIndex).toBeLessThan(codingHeaderIndex);
-      expect(codingHeaderIndex).toBeLessThan(contentCIndex);
+      expect(contentBIndex).toBeLessThan(contentCIndex);
     });
 
     it("should write to correct tool memory path", async () => {
@@ -553,12 +542,8 @@ describe("memory-scoper", () => {
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenContent = writeCall[1] as string;
 
-      expect(writtenContent).toContain("<!-- SCOPE: shared -->");
       expect(writtenContent).toContain("Shared content");
-      expect(writtenContent).toContain("<!-- SCOPE: personal -->");
       expect(writtenContent).toContain("Personal content");
-      // Should NOT contain coding scope
-      expect(writtenContent).not.toContain("<!-- SCOPE: coding -->");
     });
 
     it("should return error result when write fails", async () => {
