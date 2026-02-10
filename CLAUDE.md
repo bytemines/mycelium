@@ -72,6 +72,12 @@ and imports skills/MCPs/memory into mycelium. Manifest tracked at `~/.mycelium/m
 Registry-driven (YAML config at `~/.mycelium/marketplace-registry.yaml`).
 Sources are pluggable — add/remove via CLI. `marketplace-registry.ts` manages discovery and state.
 
+### Memory Sync
+`memory-scoper.ts` routes memory files from `~/.mycelium/global/memory/{shared,coding,personal}/`
+to each tool's global memory path. `smart-memory.ts` handles compression and deduplication.
+Watcher triggers re-sync on `.md` file changes in memory scope directories.
+See `docs/memory-architecture.md` for full details.
+
 ### Observability
 `trace-store.ts` stores structured events in SQLite (`~/.mycelium/traces/trace.db`).
 `tracer.ts` provides `createTrace()` API — returns a `TraceLogger` with info/warn/error methods.

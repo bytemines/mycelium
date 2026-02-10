@@ -24,7 +24,7 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
   const now = new Date().toISOString();
 
   const skillsDir = path.join(MYCELIUM_DIR, "global", "skills");
-  const memoryDir = path.join(MYCELIUM_DIR, "memory");
+  const memoryDir = path.join(MYCELIUM_DIR, "global", "memory", "shared");
   await mkdirp(skillsDir);
   await mkdirp(memoryDir);
 
@@ -214,7 +214,7 @@ export async function clearMigration(
       path.join(MYCELIUM_DIR, "global", "commands"),
       path.join(MYCELIUM_DIR, "global", "hooks"),
       path.join(MYCELIUM_DIR, "global", "libs"),
-      path.join(MYCELIUM_DIR, "memory"),
+      path.join(MYCELIUM_DIR, "global", "memory"),
     ];
     for (const dir of dirs) {
       try {

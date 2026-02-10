@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compressMemory, mergeMemoryFiles, extractKeyInsights } from "./smart-memory.js";
+import { compressMemory, mergeMemoryFiles } from "./smart-memory.js";
 
 describe("smart-memory", () => {
   describe("compressMemory", () => {
@@ -53,35 +53,6 @@ describe("smart-memory", () => {
     });
   });
 
-  describe("extractKeyInsights", () => {
-    it("extracts key insights from session content", () => {
-      const content = `
-# Session Notes
-- Bug: The API returns 404 when path has trailing slash
-- Fix: Strip trailing slashes in router middleware
-- Pattern: Always normalize paths before routing
-- TODO: Add regression test
-    `.trim();
-      const insights = extractKeyInsights(content);
-      expect(insights).toContain("Strip trailing slashes");
-      expect(insights).toContain("Bug: The API returns 404");
-      expect(insights).toContain("Pattern: Always normalize");
-    });
-
-    it("returns empty string when no insights found", () => {
-      const content = "# Just a header\nSome regular text";
-      const insights = extractKeyInsights(content);
-      expect(insights).toBe("");
-    });
-
-    it("matches case-insensitive keywords", () => {
-      const content = "- bug: lowercase bug\n- IMPORTANT: uppercase";
-      const insights = extractKeyInsights(content);
-      expect(insights).toContain("lowercase bug");
-      expect(insights).toContain("uppercase");
-    });
-  });
-
   describe("mergeMemoryFiles", () => {
     it("merges multiple memory files with deduplication", () => {
       const files = [
@@ -112,14 +83,13 @@ describe("smart-memory", () => {
       expect(merged).toContain("- Item");
     });
 
-    it("adds scope comments to merged output", () => {
+    it("merges files without scope comments", () => {
       const files = [
         { scope: "shared", content: "# A\n- Item" },
         { scope: "coding", content: "# B\n- Other" },
       ];
       const merged = mergeMemoryFiles(files);
-      expect(merged).toContain("<!-- SCOPE: shared -->");
-      expect(merged).toContain("<!-- SCOPE: coding -->");
+      expect(merged).not.toContain("<!-- SCOPE");
     });
   });
 });

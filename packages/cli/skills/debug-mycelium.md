@@ -1,12 +1,22 @@
 ---
 name: debug-mycelium
-description: Diagnose Mycelium issues using structured traces, doctor checks, and manifest state. Use when a user reports any Mycelium problem — sync failures, items not appearing, enable/disable not working, config conflicts.
-tools: [Bash, Read, Glob, Grep]
+description: Use when mycelium sync fails, items not appearing in tools, enable/disable not working, MCP not connecting, config conflicts between levels, EACCES permission errors, or any unexpected mycelium CLI behavior.
 ---
 
 # Debug Mycelium
 
-Systematic diagnostic workflow for Mycelium issues. Always follow this order.
+Systematic diagnostic workflow using Mycelium's built-in SQLite trace database. Traces capture 16 dimensions per operation — filter to the exact slice that matters, never read the full DB.
+
+## When to Use
+
+- `mycelium sync` fails or skips items
+- Item shows as enabled but doesn't appear in tool config
+- Enable/disable has no effect
+- MCP server not connecting after sync
+- Config conflicts between global/machine/project levels
+- Permission errors (EACCES, EPERM)
+- Migration imports wrong or missing items
+- "It worked before but stopped" scenarios
 
 ## Step 1: Gather Context
 
@@ -109,6 +119,11 @@ Read the JSONL output from Step 2. Look for these patterns:
 - Check trace for `configLevel` — which level caused the conflict?
 - Check `phase: "merge"` entries for warnings
 - Read all 3 config levels: global, machine, project
+
+**Item not found (typo)**:
+- Check `item` dimension — does the name have a typo? (e.g., `postgress-mcp` vs `postgres-mcp`)
+- Query with LIKE: `mycelium report --item postgres` to find all variants
+- Compare against manifest to find the correct name
 
 ## Step 7: Generate Report
 

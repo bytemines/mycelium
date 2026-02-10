@@ -3,7 +3,10 @@
  * Compresses, deduplicates, and intelligently syncs memory across tools
  */
 
-import type { CompressOptions } from "@mycelish/core";
+interface CompressOptions {
+  maxLines: number;
+  preserveHeaders?: boolean;
+}
 
 const KEY_INSIGHT_PATTERN = /^[-*]\s*(Bug|Fix|Pattern|Important|Note|Key|Critical|Rule|Lesson|Remember):/i;
 
@@ -44,18 +47,6 @@ export function compressMemory(content: string, options: CompressOptions): strin
 }
 
 /**
- * Extract key insights from session content
- */
-export function extractKeyInsights(content: string): string {
-  const lines = content.split("\n");
-  const insights = lines.filter(line =>
-    KEY_INSIGHT_PATTERN.test(line) ||
-    line.match(/^[-*]\s*.*(always|never|important|critical|remember|note:)/i)
-  );
-  return insights.join("\n");
-}
-
-/**
  * Merge multiple memory files with deduplication
  */
 export function mergeMemoryFiles(
@@ -80,7 +71,7 @@ export function mergeMemoryFiles(
       }
     }
 
-    sections.push(`<!-- SCOPE: ${file.scope} -->\n${uniqueLines.join("\n")}`);
+    sections.push(uniqueLines.join("\n"));
   }
 
   return sections.join("\n\n");

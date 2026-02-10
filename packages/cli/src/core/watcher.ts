@@ -13,9 +13,10 @@ const CONFIG_FILE_PATTERNS = [
   "manifest.yaml",
   "mcps.yaml",
   "skills.yaml",
-  "memory.yaml",
   ".env.local",
 ];
+
+const MEMORY_DIR_SEGMENTS = ["global/memory/shared/", "global/memory/coding/", "global/memory/personal/"];
 
 /**
  * Get paths that should be watched for config changes.
@@ -31,7 +32,15 @@ export function getWatchPaths(projectRoot: string): string[] {
  */
 export function shouldTriggerSync(filename: string): boolean {
   const base = path.basename(filename);
-  return CONFIG_FILE_PATTERNS.some((pattern) => base === pattern);
+  if (CONFIG_FILE_PATTERNS.some((pattern) => base === pattern)) return true;
+
+  // Memory scope .md files trigger sync
+  const normalized = filename.replace(/\\/g, "/");
+  if (base.endsWith(".md") && MEMORY_DIR_SEGMENTS.some((seg) => normalized.includes(seg))) {
+    return true;
+  }
+
+  return false;
 }
 
 /**

@@ -124,8 +124,14 @@ export class TraceStore {
 
     const addFilter = (col: string, val: string | undefined) => {
       if (val !== undefined) {
-        conditions.push(`${col} = ?`);
-        params.push(val);
+        if (val.includes(",")) {
+          const values = val.split(",").map((v) => v.trim());
+          conditions.push(`${col} IN (${values.map(() => "?").join(", ")})`);
+          params.push(...values);
+        } else {
+          conditions.push(`${col} = ?`);
+          params.push(val);
+        }
       }
     };
 
