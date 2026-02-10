@@ -2,16 +2,16 @@
  * Config Merger Module
  *
  * Merges configurations from three levels:
- * - Global (~/.mycelium/) - base configuration
+ * - Global (~/.mycelium/global/) - base configuration
  * - Machine (~/.mycelium/machines/{hostname}/) - hardware-specific overrides
  * - Project (.mycelium/ in project root) - project-specific overrides
  *
  * Priority: Project > Machine > Global
  */
 
-import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { parse as yamlParse } from "yaml";
 import type {
   McpServerConfig,
   MergedConfig,
@@ -19,6 +19,7 @@ import type {
   MemoryConfig,
   Skill,
 } from "@mycelish/core";
+import { MYCELIUM_HOME, readFileIfExists } from "./fs-helpers.js";
 
 /**
  * Default empty memory config
@@ -26,21 +27,9 @@ import type {
 function getDefaultMemoryConfig(): MemoryConfig {
   return {
     scopes: {
-      shared: {
-        syncTo: [],
-        path: "",
-        files: [],
-      },
-      coding: {
-        syncTo: [],
-        path: "",
-        files: [],
-      },
-      personal: {
-        syncTo: [],
-        path: "",
-        files: [],
-      },
+      shared: { syncTo: [], path: "", files: [] },
+      coding: { syncTo: [], path: "", files: [] },
+      personal: { syncTo: [], path: "", files: [] },
     },
   };
 }
@@ -67,71 +56,34 @@ export function mergeConfigs(
   projectConfig: Partial<MergedConfig> | undefined
 ): MergedConfig {
   const result = createEmptyMergedConfig();
+  const levels: { config: Partial<MergedConfig> | undefined; source: ConfigLevel }[] = [
+    { config: globalConfig, source: "global" },
+    { config: machineConfig, source: "machine" },
+    { config: projectConfig, source: "project" },
+  ];
 
-  // Start with global MCPs
-  if (globalConfig?.mcps) {
-    for (const [name, config] of Object.entries(globalConfig.mcps)) {
-      result.mcps[name] = { ...config };
-      result.sources[name] = "global";
-    }
-  }
+  for (const { config, source } of levels) {
+    if (!config) continue;
 
-  // Apply machine overrides (higher priority than global)
-  if (machineConfig?.mcps) {
-    for (const [name, config] of Object.entries(machineConfig.mcps)) {
-      if (result.mcps[name]) {
-        // Merge with existing config - machine takes priority
-        result.mcps[name] = mergeMcpServerConfig(result.mcps[name], config);
-        result.sources[name] = "machine";
-      } else {
-        // Add new MCP from machine config
-        result.mcps[name] = { ...config };
-        result.sources[name] = "machine";
+    // Merge MCPs — higher priority level overwrites lower
+    if (config.mcps) {
+      for (const [name, mcp] of Object.entries(config.mcps)) {
+        result.mcps[name] = result.mcps[name]
+          ? mergeMcpServerConfig(result.mcps[name], mcp)
+          : { ...mcp };
+        result.sources[name] = source;
       }
     }
-  }
 
-  // Apply project overrides (highest priority)
-  if (projectConfig?.mcps) {
-    for (const [name, config] of Object.entries(projectConfig.mcps)) {
-      if (result.mcps[name]) {
-        // Merge with existing config - project takes priority
-        result.mcps[name] = mergeMcpServerConfig(result.mcps[name], config);
-        result.sources[name] = "project";
-      } else {
-        // Add new MCP from project config
-        result.mcps[name] = { ...config };
-        result.sources[name] = "project";
-      }
+    // Merge skills — simple overwrite by priority
+    if (config.skills) {
+      Object.assign(result.skills, config.skills);
     }
-  }
 
-  // Merge skills (similar priority logic)
-  if (globalConfig?.skills) {
-    for (const [name, skill] of Object.entries(globalConfig.skills)) {
-      result.skills[name] = { ...skill };
+    // Merge memory — scope-level overwrite
+    if (config.memory) {
+      result.memory = mergeMemoryConfig(result.memory, config.memory);
     }
-  }
-  if (machineConfig?.skills) {
-    for (const [name, skill] of Object.entries(machineConfig.skills)) {
-      result.skills[name] = { ...skill };
-    }
-  }
-  if (projectConfig?.skills) {
-    for (const [name, skill] of Object.entries(projectConfig.skills)) {
-      result.skills[name] = { ...skill };
-    }
-  }
-
-  // Merge memory config
-  if (globalConfig?.memory) {
-    result.memory = { ...globalConfig.memory };
-  }
-  if (machineConfig?.memory) {
-    result.memory = mergeMemoryConfig(result.memory, machineConfig.memory);
-  }
-  if (projectConfig?.memory) {
-    result.memory = mergeMemoryConfig(result.memory, projectConfig.memory);
   }
 
   return result;
@@ -156,124 +108,112 @@ function mergeMcpServerConfig(
 }
 
 /**
- * Merge memory configs
+ * Merge memory configs — scopes from source overwrite target at scope level
  */
 function mergeMemoryConfig(
   target: MemoryConfig,
   source: Partial<MemoryConfig>
 ): MemoryConfig {
-  const result = { ...target };
-
-  if (source.scopes) {
-    result.scopes = {
-      ...target.scopes,
-      ...source.scopes,
-    };
-  }
-
-  return result;
+  if (!source.scopes) return target;
+  return { ...target, scopes: { ...target.scopes, ...source.scopes } };
 }
 
-/**
- * Check if a file exists
- */
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
+// ============================================================================
+// Config File Loading
+// ============================================================================
 
 /**
- * Load and parse a JSON config file
+ * Parse a config string as YAML or JSON.
+ * Returns null on parse error (logs a warning for malformed files).
  */
-async function loadJsonConfig<T>(filePath: string): Promise<T | null> {
+function parseConfig<T>(content: string, filePath: string): T | null {
   try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(content) as T;
-  } catch {
+    // YAML.parse handles both YAML and JSON transparently
+    return yamlParse(content) as T;
+  } catch (err) {
+    console.warn(`Mycelium: failed to parse ${filePath}: ${(err as Error).message}`);
     return null;
   }
 }
 
 /**
- * Load global config from ~/.mycelium/
+ * Load MCPs from a directory — tries mcps.yaml first, falls back to mcps.json.
+ *
+ * Format differences:
+ * - YAML: flat structure  { "mcp-name": { command, args } }
+ * - JSON: nested structure { mcps: { "mcp-name": { command, args } } }
  */
-export async function loadGlobalConfig(): Promise<Partial<MergedConfig>> {
-  const home = os.homedir();
-  const globalPath = path.join(home, ".mycelium");
-  const mcpsPath = path.join(globalPath, "mcps.json");
-
-  const result: Partial<MergedConfig> = {
-    mcps: {},
-    skills: {},
-  };
-
-  if (await fileExists(mcpsPath)) {
-    const mcpsConfig = await loadJsonConfig<{ mcps: Record<string, McpServerConfig> }>(mcpsPath);
-    if (mcpsConfig?.mcps) {
-      result.mcps = mcpsConfig.mcps;
-    }
+async function loadMcpsFromDir(dir: string): Promise<Record<string, McpServerConfig>> {
+  // Try YAML first (preferred format)
+  const yamlContent = await readFileIfExists(path.join(dir, "mcps.yaml"));
+  if (yamlContent) {
+    return parseConfig<Record<string, McpServerConfig>>(yamlContent, path.join(dir, "mcps.yaml")) ?? {};
   }
 
-  return result;
+  // Fallback to JSON
+  const jsonContent = await readFileIfExists(path.join(dir, "mcps.json"));
+  if (jsonContent) {
+    const data = parseConfig<{ mcps: Record<string, McpServerConfig> }>(jsonContent, path.join(dir, "mcps.json"));
+    return data?.mcps ?? {};
+  }
+
+  return {};
+}
+
+/**
+ * Load global config from ~/.mycelium/global/
+ */
+export async function loadGlobalConfig(): Promise<Partial<MergedConfig>> {
+  return {
+    mcps: await loadMcpsFromDir(path.join(MYCELIUM_HOME, "global")),
+    skills: {},
+  };
 }
 
 /**
  * Load project config from .mycelium/ in project root
  */
 export async function loadProjectConfig(
-  projectRoot: string
+  projectRoot?: string
 ): Promise<Partial<MergedConfig>> {
-  const projectPath = path.join(projectRoot, ".mycelium");
-  const mcpsPath = path.join(projectPath, "mcps.json");
-
-  const result: Partial<MergedConfig> = {
-    mcps: {},
+  const root = projectRoot ?? process.cwd();
+  return {
+    mcps: await loadMcpsFromDir(path.join(root, ".mycelium")),
     skills: {},
   };
-
-  if (await fileExists(mcpsPath)) {
-    const mcpsConfig = await loadJsonConfig<{ mcps: Record<string, McpServerConfig> }>(mcpsPath);
-    if (mcpsConfig?.mcps) {
-      result.mcps = mcpsConfig.mcps;
-    }
-  }
-
-  return result;
 }
 
 /**
- * Load machine-specific config from ~/.mycelium/machines/{hostname}/
+ * Load machine-specific config from ~/.mycelium/machines/{hostname}.*
+ * Tries: hostname.yaml → hostname.json → hostname/ directory
  */
 export async function loadMachineConfig(): Promise<Partial<MergedConfig>> {
-  const home = os.homedir();
   const hostname = os.hostname();
-  const machinePath = path.join(home, ".mycelium", "machines", hostname);
-  const mcpsPath = path.join(machinePath, "mcps.json");
+  const machinesDir = path.join(MYCELIUM_HOME, "machines");
 
-  const result: Partial<MergedConfig> = {
-    mcps: {},
-    skills: {},
-  };
-
-  if (await fileExists(mcpsPath)) {
-    const mcpsConfig = await loadJsonConfig<{ mcps: Record<string, McpServerConfig> }>(mcpsPath);
-    if (mcpsConfig?.mcps) {
-      result.mcps = mcpsConfig.mcps;
-    }
+  // Try hostname.yaml (flat MCP entries)
+  const yamlContent = await readFileIfExists(path.join(machinesDir, `${hostname}.yaml`));
+  if (yamlContent) {
+    const mcps = parseConfig<Record<string, McpServerConfig>>(yamlContent, `machines/${hostname}.yaml`) ?? {};
+    return { mcps, skills: {} };
   }
 
-  return result;
+  // Try hostname.json (nested { mcps: {} })
+  const jsonContent = await readFileIfExists(path.join(machinesDir, `${hostname}.json`));
+  if (jsonContent) {
+    const data = parseConfig<{ mcps: Record<string, McpServerConfig> }>(jsonContent, `machines/${hostname}.json`);
+    return { mcps: data?.mcps ?? {}, skills: {} };
+  }
+
+  // Try hostname/ directory
+  return { mcps: await loadMcpsFromDir(path.join(machinesDir, hostname)), skills: {} };
 }
 
 /**
  * Load and merge all config levels for a project
  */
 export async function loadAndMergeAllConfigs(
-  projectRoot: string
+  projectRoot?: string
 ): Promise<MergedConfig> {
   const [globalConfig, machineConfig, projectConfig] = await Promise.all([
     loadGlobalConfig(),

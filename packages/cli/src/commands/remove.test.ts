@@ -6,6 +6,7 @@ vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
   writeFile: vi.fn(),
   access: vi.fn(),
+  mkdir: vi.fn(),
 }));
 
 vi.mock("@mycelish/core", async (importOriginal) => {
