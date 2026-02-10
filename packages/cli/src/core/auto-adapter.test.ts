@@ -227,3 +227,92 @@ describe("auto-adapter", () => {
     });
   });
 });
+
+describe("OpenClawAdapter writeToFile — preserves existing entry properties", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriteFile.mockResolvedValue(undefined);
+    mockMkdirp.mockResolvedValue(undefined);
+  });
+
+  it("preserves extra properties on existing mcp-adapter entries", async () => {
+    mockReadFileIfExists.mockResolvedValue(JSON.stringify({
+      plugins: {
+        entries: [
+          { type: "other-plugin", name: "keep-me" },
+          { type: "mcp-adapter", name: "my-server", command: "npx", args: ["-y", "my-server"], disabled: true, customProp: "preserve" },
+        ],
+      },
+    }));
+    const adapter = new OpenClawAdapter();
+    const mcps = { "my-server": { command: "npx", args: ["-y", "my-server-v2"] } };
+    await adapter.writeToFile(mcps);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+    const entries = written.plugins.entries;
+    expect(entries[0]).toEqual({ type: "other-plugin", name: "keep-me" });
+    const mcpEntry = entries[1];
+    expect(mcpEntry.type).toBe("mcp-adapter");
+    expect(mcpEntry.name).toBe("my-server");
+    expect(mcpEntry.args).toEqual(["-y", "my-server-v2"]);
+    expect(mcpEntry.disabled).toBe(true);
+    expect(mcpEntry.customProp).toBe("preserve");
+  });
+
+  it("adds new MCP entries without extra props", async () => {
+    mockReadFileIfExists.mockResolvedValue(JSON.stringify({ plugins: { entries: [] } }));
+    const adapter = new OpenClawAdapter();
+    const mcps = { "brand-new": { command: "npx", args: ["-y", "brand-new"] } };
+    await adapter.writeToFile(mcps);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+    const entry = written.plugins.entries[0];
+    expect(entry.type).toBe("mcp-adapter");
+    expect(entry.name).toBe("brand-new");
+    expect(entry.disabled).toBeUndefined();
+  });
+});
+
+describe("AiderAdapter writeToFile — preserves existing entry properties", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadFileIfExists.mockResolvedValue(null);
+  });
+
+  it("preserves extra properties on existing MCP entries", async () => {
+    mockReadFileIfExists.mockImplementation(async (p: string) => {
+      if (p.includes("mcp-servers.json")) {
+        return JSON.stringify({
+          mcpServers: {
+            "my-server": { type: "stdio", command: "npx", args: ["-y", "my-server"], disabled: true, customProp: "keep" },
+          },
+        });
+      }
+      if (p.includes(".aider.conf.yml")) {
+        return "mcp-servers-file: /mock/home/.aider/mcp-servers.json\n";
+      }
+      return null;
+    });
+    const adapter = new AiderAdapter();
+    const mcps = { "my-server": { command: "npx", args: ["-y", "my-server-v2"] } };
+    await adapter.writeToFile(mcps);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+    const entry = written.mcpServers["my-server"];
+    expect(entry.command).toBe("npx");
+    expect(entry.args).toEqual(["-y", "my-server-v2"]);
+    expect(entry.disabled).toBe(true);
+    expect(entry.customProp).toBe("keep");
+    expect(entry.type).toBe("stdio");
+  });
+
+  it("does not add extra properties to new entries", async () => {
+    mockReadFileIfExists.mockResolvedValue(null);
+    const adapter = new AiderAdapter();
+    const mcps = { "brand-new": { command: "npx", args: ["-y", "brand-new"] } };
+    await adapter.writeToFile(mcps);
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+    const entry = written.mcpServers["brand-new"];
+    expect(entry.type).toBe("stdio");
+    expect(entry.command).toBe("npx");
+    expect(entry.args).toEqual(["-y", "brand-new"]);
+    expect(entry.disabled).toBeUndefined();
+  });
+});
