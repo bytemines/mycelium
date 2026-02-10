@@ -77,7 +77,16 @@ async function loadManifest(manifestDir: string): Promise<ManifestConfig | null>
     const content = await fs.readFile(manifestPath, "utf-8");
     return yamlParse(content) as ManifestConfig;
   } catch {
-    return null;
+    // Auto-create empty manifest if the mycelium directory exists
+    try {
+      await fs.access(manifestDir);
+      const empty: ManifestConfig = { version: "1.0.0", skills: {}, mcps: {}, hooks: {}, memory: {} };
+      const content = yamlStringify(empty);
+      await fs.writeFile(manifestPath, content, "utf-8");
+      return empty;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -174,12 +183,13 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
     return { success: false, name, error };
   }
 
-  // Find the item
-  const item = findItemType(manifest, name);
+  // Find the item, or auto-register as a skill if not found
+  let item = findItemType(manifest, name);
   if (!item) {
-    const error = `'${name}' not found in manifest (checked skills, mcps, hooks, and memory)`;
-    log.error({ scope: "manifest", op: "disable", msg: error, item: name, error });
-    return { success: false, name, error };
+    if (!manifest.skills) manifest.skills = {};
+    manifest.skills[name] = { state: "enabled", source: "auto" };
+    log.info({ scope: "manifest", op: "disable", msg: `Auto-registered '${name}' as skill in manifest`, item: name });
+    item = { type: "skill", config: manifest.skills[name] };
   }
 
   const { type, config } = item;

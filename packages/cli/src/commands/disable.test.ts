@@ -423,7 +423,7 @@ describe("Disable Command", () => {
         expect(result.error).toContain("manifest");
       });
 
-      it("validates name exists in manifest", async () => {
+      it("auto-registers unknown item as skill and disables it", async () => {
         const options: DisableOptions = {
           name: "non-existent-skill",
           global: true,
@@ -432,8 +432,8 @@ describe("Disable Command", () => {
 
         const result = await disableSkillOrMcp(options);
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain("not found");
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("skill");
       });
 
       it("returns error for invalid tool name", async () => {
