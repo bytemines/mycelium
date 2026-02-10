@@ -132,16 +132,19 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   togglePluginItem: async (pluginName, itemName, enabled) => {
-    // Optimistic update
-    set((s) => {
-      if (!s.selectedPlugin) return s;
-      return s;
-    });
     try {
-      await apiTogglePluginItem(pluginName, itemName, enabled);
-      set({ hasPendingChanges: true });
+      const result = await apiTogglePluginItem(pluginName, itemName, enabled);
+      if (result.success) {
+        set({ hasPendingChanges: true });
+        get().fetchState();
+      } else {
+        set({ syncBanner: { type: "error", message: `Failed to ${enabled ? "enable" : "disable"} ${itemName}: ${result.error}` } });
+        setTimeout(() => set({ syncBanner: null }), 5000);
+      }
     } catch (err) {
       console.error("togglePluginItem failed:", err);
+      set({ syncBanner: { type: "error", message: `Network error toggling ${itemName}` } });
+      setTimeout(() => set({ syncBanner: null }), 5000);
     }
   },
 
