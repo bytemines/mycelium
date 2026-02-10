@@ -47,7 +47,7 @@ export interface Skill {
   path: string;
   manifest: {
     name: string;
-    enabled?: boolean;
+    state?: "enabled" | "disabled";
   };
 }
 
@@ -251,7 +251,7 @@ export async function syncSkillsToTool(
   // Process each skill
   for (const skill of skills) {
     const symlinkPath = path.join(toolSkillsDir, skill.name);
-    const isEnabled = skill.manifest.enabled !== false;
+    const isEnabled = !skill.manifest.state || skill.manifest.state === "enabled";
 
     if (isEnabled) {
       // Create or update symlink
