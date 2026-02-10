@@ -16,7 +16,7 @@ describe("mcp-registry", () => {
     const config = parseRegistryEntry(entry);
     expect(config.command).toBe("npx");
     expect(config.args).toEqual(["-y", "@anthropics/git-mcp"]);
-    expect(config.enabled).toBe(true);
+    expect(config.state).toBe("enabled");
   });
 
   it("parses a registry entry with env vars", () => {

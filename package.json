@@ -22,7 +22,7 @@
     "publish-packages": "pnpm build && changeset publish"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": ["esbuild", "better-sqlite3"]
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",

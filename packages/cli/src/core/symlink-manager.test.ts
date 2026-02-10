@@ -353,8 +353,8 @@ describe("symlink-manager", () => {
       await fs.mkdir(skill2Path, { recursive: true });
 
       const skills = [
-        { name: "skill1", path: skill1Path, manifest: { name: "skill1", state: "enabled" } },
-        { name: "skill2", path: skill2Path, manifest: { name: "skill2", state: "enabled" } },
+        { name: "skill1", path: skill1Path, manifest: { name: "skill1", state: "enabled" as const } },
+        { name: "skill2", path: skill2Path, manifest: { name: "skill2", state: "enabled" as const } },
       ];
 
       const result = await syncSkillsToTool(skills, toolSkillsDir);
@@ -389,7 +389,7 @@ describe("symlink-manager", () => {
 
       // Sync with disabled skill
       const skills = [
-        { name: "my-skill", path: skillPath, manifest: { name: "my-skill", state: "disabled" } },
+        { name: "my-skill", path: skillPath, manifest: { name: "my-skill", state: "disabled" as const } },
       ];
 
       const result = await syncSkillsToTool(skills, toolSkillsDir);
@@ -418,7 +418,7 @@ describe("symlink-manager", () => {
 
       // Sync with new location
       const skills = [
-        { name: "my-skill", path: newSkillPath, manifest: { name: "my-skill", state: "enabled" } },
+        { name: "my-skill", path: newSkillPath, manifest: { name: "my-skill", state: "enabled" as const } },
       ];
 
       const result = await syncSkillsToTool(skills, toolSkillsDir);

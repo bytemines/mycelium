@@ -9,7 +9,7 @@ packages/
   dashboard/ — React + React Flow visualization (@mycelish/dashboard)
 ```
 
-- `packages/core/src/types.ts` — shared interfaces (McpServerConfig, Skill, MemoryScope, etc.)
+- `packages/core/src/types.ts` — shared interfaces (McpServerConfig, Skill, MemoryScope, ItemState, etc.)
 - `packages/core/src/tools/` — **Tool Registry**: one ToolDescriptor per tool, auto-derived everything
 - `packages/core/src/schema.ts` — Zod validation schemas (toolIdSchema derived from registry)
 - `packages/cli/src/commands/` — one file per CLI command (init, sync, status, doctor, etc.)
@@ -45,13 +45,13 @@ cd packages/dashboard && pnpm test    # 17 tests
 
 Binary: `mycelium` (alias `myc`). Key commands:
 `init`, `sync`, `status`, `doctor`, `add`, `remove`, `enable`, `disable`,
-`teams`, `preset`, `migrate`, `marketplace`, `serve`, `push`, `pull`, `env`
+`teams`, `preset`, `migrate`, `marketplace`, `serve`, `push`, `pull`, `env`, `report`
 
 ## Code Patterns
 
 ### Config Merge (3-tier)
 Priority: **Project > Machine > Global**. See `config-merger.ts`.
-Project configs can disable items with `enabled: false`.
+All manifest items (skills, MCPs, plugins) have unified `state: ItemState` ("enabled"|"disabled"|"deleted") and `source: string` fields. State is merged using priority rules, with higher-priority configs overriding lower ones.
 
 ### Symlink Strategy
 Skills are symlinked from `~/.mycelium/skills/` into each tool's skill directory.
@@ -59,7 +59,7 @@ Skills are symlinked from `~/.mycelium/skills/` into each tool's skill directory
 
 ### Overlay Sync
 `sync-writer.ts` writes MCPs into tool-native config files (claude.json, settings.json, etc.)
-using section-only replacement — it only modifies the mycelium-managed section, preserving user config.
+using read-preserve-write strategy — adapters read existing tool configs before writing, preserving user-set properties that Mycelium doesn't manage. Section-only replacement ensures only the mycelium-managed section is modified.
 
 ### Machine Overrides
 Per-hostname MCP path resolution via `which`. Stored in `~/.mycelium/machines/<hostname>.json`.
@@ -71,6 +71,15 @@ and imports skills/MCPs/memory into mycelium. Manifest tracked at `~/.mycelium/m
 ### Marketplace
 Registry-driven (YAML config at `~/.mycelium/marketplace-registry.yaml`).
 Sources are pluggable — add/remove via CLI. `marketplace-registry.ts` manages discovery and state.
+
+### Observability
+`trace-store.ts` stores structured events in SQLite (`~/.mycelium/traces/trace.db`).
+`tracer.ts` provides `createTrace()` API — returns a `TraceLogger` with info/warn/error methods.
+`global-tracer.ts` manages the singleton instance. Auto-snapshots on ERROR to `~/.mycelium/traces/snapshots/`.
+`report.ts` command queries the DB and exports filtered JSONL for LLM consumption.
+`debug-mycelium.md` skill teaches AI tools the diagnostic workflow.
+
+Each log entry has 16 dimensions: ts, traceId, level, cmd, scope, op, tool, item, itemType, state, source, configLevel, phase, method, format, project — plus msg, error, dur, path, entryShape, progress, data.
 
 ## Tool Registry (packages/core/src/tools/)
 
@@ -87,7 +96,9 @@ The auto-adapter (`packages/cli/src/core/auto-adapter.ts`) generates adapters fr
 ## Key Types (packages/core/src/types.ts)
 
 - `ToolId` — `string` (derived from registry at runtime)
-- `McpServerConfig` — command, args, env, tool targeting
+- `ItemState` — `"enabled" | "disabled" | "deleted"` (unified state for all items)
+- `McpServerConfig` — command, args, env, tool targeting, state, source
+- `SkillManifest` — name, description, tools, state, source
 - `MergedConfig` — result of 3-tier config merge with source tracking
 - `MigrationPlan` / `MigrationResult` — migration workflow types
 - `MarketplaceEntry` / `PluginInfo` — marketplace and plugin types
