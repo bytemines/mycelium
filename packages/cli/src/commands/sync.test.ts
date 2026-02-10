@@ -69,25 +69,25 @@ describe("Sync Command", () => {
         command: "uvx",
         args: ["whark-mcp"],
         env: { WHARK_API_KEY: "${WHARK_API_KEY}" },
-        enabled: true,
+        state: "enabled",
       },
       playwright: {
         command: "npx",
         args: ["@anthropic/mcp-playwright"],
-        enabled: true,
+        state: "enabled",
       },
       "claude-only": {
         command: "node",
         args: ["claude.js"],
         tools: ["claude-code"],
-        enabled: true,
+        state: "enabled",
       },
     },
     skills: {
       "superpowers": {
         name: "superpowers",
         path: "/Users/test/.mycelium/skills/superpowers",
-        manifest: { name: "superpowers", enabled: true },
+        manifest: { name: "superpowers", state: "enabled" },
       },
     },
     memory: {
@@ -323,8 +323,8 @@ describe("Sync Command", () => {
       });
 
       (filterMcpsForTool as MockedFunction<typeof filterMcpsForTool>).mockReturnValue({
-        mcp1: { command: "test1", enabled: true },
-        mcp2: { command: "test2", enabled: true },
+        mcp1: { command: "test1", state: "enabled" as const },
+        mcp2: { command: "test2", state: "enabled" as const },
       });
 
       (getMemoryFilesForTool as MockedFunction<typeof getMemoryFilesForTool>).mockResolvedValue([
@@ -400,7 +400,7 @@ describe("Sync Command", () => {
             Record<string, unknown>
           >;
           for (const [name, mcp] of Object.entries(mcps)) {
-            if (mcp.enabled === false) continue;
+            if (mcp.state === "disabled" || mcp.state === "deleted") continue;
             const prev = existingEntries[name];
             const shaped: Record<string, unknown> = {
               command: mcp.command,
@@ -428,12 +428,12 @@ describe("Sync Command", () => {
           "whark-trading": {
             command: "uvx",
             args: ["whark-mcp"],
-            enabled: true,
+            state: "enabled",
           },
           playwright: {
             command: "npx",
             args: ["-y", "@anthropic/mcp-playwright"],
-            enabled: true,
+            state: "enabled",
           },
         },
       };
