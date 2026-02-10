@@ -132,10 +132,25 @@ export class GenericAdapter extends BaseToolAdapter {
         ? (format === "jsonc" ? jsonc.parse(existing) : JSON.parse(existing))
         : {};
 
+      // Read existing entries to preserve extra properties
+      const existingEntries = (this.getNestedKey(config, this.desc.mcp.key) ?? {}) as Record<string, Record<string, unknown>>;
+
       const entries: Record<string, unknown> = {};
       for (const [name, mcp] of Object.entries(mcps)) {
         if (mcp.enabled === false) continue;
-        entries[name] = this.shapeEntry(mcp);
+        const shaped = this.shapeEntry(mcp);
+        const prev = existingEntries[name];
+        if (prev) {
+          const merged = { ...prev, ...shaped };
+          // Special case: if existing entry had enabled:false, preserve it
+          // (shapeEntry for opencode always sets enabled:true, which would overwrite)
+          if (prev.enabled === false && shaped.enabled === true) {
+            merged.enabled = false;
+          }
+          entries[name] = merged;
+        } else {
+          entries[name] = shaped;
+        }
       }
 
       this.setNestedKey(config, this.desc.mcp.key, entries);

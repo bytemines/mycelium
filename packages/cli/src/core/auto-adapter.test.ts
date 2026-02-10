@@ -121,6 +121,70 @@ describe("auto-adapter", () => {
     });
   });
 
+  describe("writeToFile — preserves existing entry properties", () => {
+    it("preserves disabled property on existing MCP entries", async () => {
+      const desc = TOOL_REGISTRY["claude-code"];
+      const adapter = new GenericAdapter(desc);
+      mockReadFileIfExists.mockResolvedValue(JSON.stringify({
+        mcpServers: {
+          "my-server": { command: "npx", args: ["-y", "my-server"], disabled: true },
+          "other-server": { command: "npx", args: ["-y", "other-server"] },
+        },
+      }));
+      const mcps = {
+        "my-server": { command: "npx", args: ["-y", "my-server"] },
+        "other-server": { command: "npx", args: ["-y", "other-server"] },
+      };
+      await adapter.writeToFile(mcps);
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      expect(written.mcpServers["my-server"].disabled).toBe(true);
+      expect(written.mcpServers["other-server"].disabled).toBeUndefined();
+    });
+
+    it("preserves arbitrary extra properties on existing entries", async () => {
+      const desc = TOOL_REGISTRY["claude-code"];
+      const adapter = new GenericAdapter(desc);
+      mockReadFileIfExists.mockResolvedValue(JSON.stringify({
+        mcpServers: {
+          "my-server": { command: "old-command", args: ["-y", "old-server"], disabled: true, customProp: "keep-me", type: "stdio" },
+        },
+      }));
+      const mcps = { "my-server": { command: "npx", args: ["-y", "new-server"] } };
+      await adapter.writeToFile(mcps);
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      const entry = written.mcpServers["my-server"];
+      expect(entry.command).toBe("npx");
+      expect(entry.args).toEqual(["-y", "new-server"]);
+      expect(entry.disabled).toBe(true);
+      expect(entry.customProp).toBe("keep-me");
+      expect(entry.type).toBe("stdio");
+    });
+
+    it("does not add extra properties to new entries", async () => {
+      const desc = TOOL_REGISTRY["claude-code"];
+      const adapter = new GenericAdapter(desc);
+      mockReadFileIfExists.mockResolvedValue(JSON.stringify({ mcpServers: {} }));
+      const mcps = { "brand-new": { command: "npx", args: ["-y", "brand-new"] } };
+      await adapter.writeToFile(mcps);
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      expect(written.mcpServers["brand-new"]).toEqual({ command: "npx", args: ["-y", "brand-new"] });
+    });
+
+    it("preserves enabled:false for opencode entryShape (does not overwrite with enabled:true)", async () => {
+      const desc = TOOL_REGISTRY["opencode"];
+      const adapter = new GenericAdapter(desc);
+      mockReadFileIfExists.mockResolvedValue(JSON.stringify({
+        mcp: {
+          "my-server": { type: "local", command: ["npx", "-y", "my-server"], enabled: false },
+        },
+      }));
+      const mcps = { "my-server": { command: "npx", args: ["-y", "my-server"] } };
+      await adapter.writeToFile(mcps);
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      expect(written.mcp["my-server"].enabled).toBe(false);
+    });
+  });
+
   describe("createAdapter returns correct types", () => {
     it("returns GenericAdapter for standard tools", () => {
       expect(createAdapter(TOOL_REGISTRY["claude-code"])).toBeInstanceOf(GenericAdapter);
