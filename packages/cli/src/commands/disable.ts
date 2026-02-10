@@ -87,6 +87,13 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
     if (match) { typeHint = match.type as ItemType; break; }
   }
 
+  // Detect MCP type from config files (mcps.yaml)
+  if (!typeHint) {
+    const { loadGlobalConfig } = await import("../core/config-merger.js");
+    const globalConfig = await loadGlobalConfig();
+    if (globalConfig.mcps?.[name]) typeHint = "mcp";
+  }
+
   // Find or auto-register item
   const { type, config, autoRegistered } = ensureItem(manifest, name, "enabled", typeHint);
   if (autoRegistered) {
@@ -117,6 +124,15 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
 
   setItemInManifest(manifest, name, type, config);
   await saveStateManifest(manifestDir, manifest);
+
+  // Remove MCP from tool configs immediately
+  if (type === "mcp") {
+    const { getAdapter } = await import("../core/tool-adapter.js");
+    const toolIds = tool ? [tool] : ALL_TOOL_IDS;
+    for (const tid of toolIds) {
+      try { await getAdapter(tid).remove(name); } catch { /* tool may not be installed */ }
+    }
+  }
 
   // Plugin takeover: if disabling any component that belongs to a Claude Code plugin,
   // take over ALL enabled plugins containing it so Mycelium manages their skills.

@@ -120,6 +120,13 @@ Read the JSONL output from Step 2. Look for these patterns:
 - Check `phase: "merge"` entries for warnings
 - Read all 3 config levels: global, machine, project
 
+**MCP still in tool config after disable**:
+- `mycelium disable <mcp>` updates manifest but MCP remains in `~/.claude.json` (or other tool configs)
+- Root cause: item was registered in wrong manifest section (e.g. `skills.massive` instead of `mcps.massive`)
+- Check manifest: `cat ~/.mycelium/manifest.yaml` — verify item is in `mcps:` section, not `skills:`
+- Fix: move the entry to the correct section, then run `mycelium disable <name>` again
+- After fix, disable now calls `adapter.remove()` on tool configs and enable calls `adapter.add()`
+
 **Item not found (typo)**:
 - Check `item` dimension — does the name have a typo? (e.g., `postgress-mcp` vs `postgres-mcp`)
 - Query with LIKE: `mycelium report --item postgres` to find all variants
