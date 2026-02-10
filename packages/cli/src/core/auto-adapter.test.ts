@@ -211,4 +211,19 @@ describe("auto-adapter", () => {
       }
     });
   });
+
+  describe("writeToml — preserves existing non-MCP TOML sections", () => {
+    it("preserves non-MCP TOML sections when writing", async () => {
+      const desc = TOOL_REGISTRY["codex"];
+      const adapter = new GenericAdapter(desc);
+      mockReadFileIfExists.mockResolvedValue(
+        `[user]\nmodel = "gpt-4"\n\n[mcp.servers."my-server"]\ncommand = "npx"\nargs = ["-y", "my-server"]\n`
+      );
+      const mcps = { "my-server": { command: "npx", args: ["-y", "my-server-v2"] } };
+      await adapter.writeToFile(mcps);
+      const written = mockWriteFile.mock.calls[0][1] as string;
+      expect(written).toContain("[user]");
+      expect(written).toContain("my-server-v2");
+    });
+  });
 });
