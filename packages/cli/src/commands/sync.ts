@@ -42,6 +42,8 @@ import {
   applyMachineOverrides,
   rescanOverrides,
 } from "../core/machine-overrides.js";
+import { readFileIfExists } from "../core/fs-helpers.js";
+import { parse as yamlParse } from "yaml";
 
 // ============================================================================
 // Types
@@ -224,7 +226,43 @@ export async function syncAll(
     result.warnings.push(conflict.message);
   }
 
-  // Log skipped MCPs (manifest v2 state filtering)
+  // Apply manifest state filtering — remove disabled/deleted items from sync
+  const globalManifestContent = await readFileIfExists(path.join(expandPath("~/.mycelium"), "manifest.yaml"));
+  const projectManifestContent = await readFileIfExists(path.join(projectRoot, ".mycelium", "manifest.yaml"));
+  const globalManifest = globalManifestContent ? yamlParse(globalManifestContent) : null;
+  const projectManifest = projectManifestContent ? yamlParse(projectManifestContent) : null;
+
+  // Build a set of disabled item names from both manifests (project overrides global)
+  const disabledItems = new Set<string>();
+  for (const manifest of [globalManifest, projectManifest]) {
+    if (!manifest) continue;
+    for (const section of ["skills", "mcps", "hooks", "memory"]) {
+      const items = manifest[section];
+      if (!items || typeof items !== "object") continue;
+      for (const [name, config] of Object.entries(items)) {
+        const state = (config as any)?.state;
+        if (state === "disabled" || state === "deleted") {
+          disabledItems.add(name);
+        } else if (state === "enabled") {
+          disabledItems.delete(name); // project can re-enable a globally disabled item
+        }
+      }
+    }
+  }
+
+  // Filter disabled skills and MCPs from merged config
+  for (const name of disabledItems) {
+    if (mergedConfig.skills[name]) {
+      log.info({ scope: "skill", op: "filter", msg: `Skipped disabled skill: ${name}`, item: name, state: "disabled" });
+      delete mergedConfig.skills[name];
+    }
+    if (mergedConfig.mcps[name]) {
+      log.info({ scope: "mcp", op: "filter", msg: `Skipped disabled MCP: ${name}`, item: name, state: "disabled" });
+      delete mergedConfig.mcps[name];
+    }
+  }
+
+  // Log skipped MCPs (legacy state filtering)
   for (const [name, mcp] of Object.entries(mergedConfig.mcps)) {
     if (mcp.state && mcp.state !== "enabled") {
       log.debug({ scope: "mcp", op: "filter", msg: `Skipped: state=${mcp.state}`, item: name, state: mcp.state, source: mcp.source ?? undefined });
