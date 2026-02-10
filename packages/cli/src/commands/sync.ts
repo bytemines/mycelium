@@ -42,8 +42,7 @@ import {
   applyMachineOverrides,
   rescanOverrides,
 } from "../core/machine-overrides.js";
-import { readFileIfExists } from "../core/fs-helpers.js";
-import { parse as yamlParse } from "yaml";
+import { getDisabledItems } from "../core/manifest-state.js";
 
 // ============================================================================
 // Types
@@ -227,28 +226,7 @@ export async function syncAll(
   }
 
   // Apply manifest state filtering — remove disabled/deleted items from sync
-  const globalManifestContent = await readFileIfExists(path.join(expandPath("~/.mycelium"), "manifest.yaml"));
-  const projectManifestContent = await readFileIfExists(path.join(projectRoot, ".mycelium", "manifest.yaml"));
-  const globalManifest = globalManifestContent ? yamlParse(globalManifestContent) : null;
-  const projectManifest = projectManifestContent ? yamlParse(projectManifestContent) : null;
-
-  // Build a set of disabled item names from both manifests (project overrides global)
-  const disabledItems = new Set<string>();
-  for (const manifest of [globalManifest, projectManifest]) {
-    if (!manifest) continue;
-    for (const section of ["skills", "mcps", "hooks", "memory"]) {
-      const items = manifest[section];
-      if (!items || typeof items !== "object") continue;
-      for (const [name, config] of Object.entries(items)) {
-        const state = (config as any)?.state;
-        if (state === "disabled" || state === "deleted") {
-          disabledItems.add(name);
-        } else if (state === "enabled") {
-          disabledItems.delete(name); // project can re-enable a globally disabled item
-        }
-      }
-    }
-  }
+  const disabledItems = await getDisabledItems(projectRoot);
 
   // Filter disabled skills and MCPs from merged config
   for (const name of disabledItems) {

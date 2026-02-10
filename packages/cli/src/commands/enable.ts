@@ -8,17 +8,21 @@
  */
 
 import { Command } from "commander";
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelish/core";
 import { getTracer } from "../core/global-tracer.js";
+import {
+  loadStateManifest,
+  saveStateManifest,
+  findItemType,
+  sectionForType,
+  type ItemConfig,
+  type ManifestConfig,
+} from "../core/manifest-state.js";
 
 // ============================================================================
 // Types
 // ============================================================================
-
-type ItemState = "enabled" | "disabled" | "deleted";
 
 export interface EnableOptions {
   name: string;
@@ -31,7 +35,7 @@ export interface EnableOptions {
 export interface EnableResult {
   success: boolean;
   name: string;
-  type?: "skill" | "mcp" | "hook" | "memory";
+  type?: "skill" | "mcp" | "hook" | "memory" | "agent" | "command";
   level?: "global" | "project";
   tool?: ToolId;
   alreadyEnabled?: boolean;
@@ -39,121 +43,12 @@ export interface EnableResult {
   error?: string;
 }
 
-interface SkillConfig {
-  state?: ItemState;
-  source?: string;
-  tools?: ToolId[];
-  excludeTools?: ToolId[];
-  enabledTools?: ToolId[];
-}
-
-interface McpConfig {
-  state?: ItemState;
-  source?: string;
-  tools?: ToolId[];
-  excludeTools?: ToolId[];
-  enabledTools?: ToolId[];
-}
-
-interface HookConfig {
-  state?: ItemState;
-  source?: string;
-  tools?: ToolId[];
-  excludeTools?: ToolId[];
-  enabledTools?: ToolId[];
-}
-
-interface MemoryConfig {
-  state?: ItemState;
-  source?: string;
-  tools?: ToolId[];
-  excludeTools?: ToolId[];
-  enabledTools?: ToolId[];
-}
-
-type ItemConfig = SkillConfig | McpConfig | HookConfig | MemoryConfig;
-
-interface ManifestConfig {
-  version: string;
-  tools?: Record<string, { enabled: boolean }>;
-  skills?: Record<string, SkillConfig>;
-  mcps?: Record<string, McpConfig>;
-  hooks?: Record<string, HookConfig>;
-  memory?: Record<string, MemoryConfig> | unknown;
-}
-
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-/**
- * Load manifest from a path
- */
-async function loadManifest(manifestDir: string): Promise<ManifestConfig | null> {
-  const manifestPath = path.join(manifestDir, "manifest.yaml");
-  try {
-    const content = await fs.readFile(manifestPath, "utf-8");
-    return yamlParse(content) as ManifestConfig;
-  } catch {
-    // Auto-create empty manifest if the mycelium directory exists
-    try {
-      await fs.access(manifestDir);
-      const empty: ManifestConfig = { version: "1.0.0", skills: {}, mcps: {}, hooks: {}, memory: {} };
-      const content = yamlStringify(empty);
-      await fs.writeFile(manifestPath, content, "utf-8");
-      return empty;
-    } catch {
-      return null;
-    }
-  }
-}
-
-/**
- * Save manifest to a path
- */
-async function saveManifest(manifestDir: string, manifest: ManifestConfig): Promise<void> {
-  const manifestPath = path.join(manifestDir, "manifest.yaml");
-  const content = yamlStringify(manifest);
-  await fs.writeFile(manifestPath, content, "utf-8");
-}
-
-/**
- * Check if a tool ID is valid
- */
 function isValidToolId(toolId: string): toolId is ToolId {
   return toolId in TOOL_REGISTRY;
-}
-
-/**
- * Check if a value is a record of ItemConfig entries (not legacy memory with scopes)
- */
-function isItemConfigRecord(val: unknown): val is Record<string, ItemConfig> {
-  if (!val || typeof val !== "object" || Array.isArray(val)) return false;
-  // Legacy memory has a "scopes" key — skip it
-  if ("scopes" in (val as Record<string, unknown>)) return false;
-  return true;
-}
-
-/**
- * Find what type an item is (skill, MCP, hook, or memory)
- */
-function findItemType(
-  manifest: ManifestConfig,
-  name: string
-): { type: "skill" | "mcp" | "hook" | "memory"; config: ItemConfig } | null {
-  if (manifest.skills && name in manifest.skills) {
-    return { type: "skill", config: manifest.skills[name] };
-  }
-  if (manifest.mcps && name in manifest.mcps) {
-    return { type: "mcp", config: manifest.mcps[name] };
-  }
-  if (manifest.hooks && name in manifest.hooks) {
-    return { type: "hook", config: manifest.hooks[name] };
-  }
-  if (isItemConfigRecord(manifest.memory) && name in manifest.memory) {
-    return { type: "memory", config: manifest.memory[name] };
-  }
-  return null;
 }
 
 /**
@@ -200,7 +95,7 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     : options.projectPath || path.join(process.cwd(), ".mycelium");
 
   // Load manifest
-  const manifest = await loadManifest(manifestDir);
+  const manifest = await loadStateManifest(manifestDir);
   if (!manifest) {
     const error = `Could not load manifest from ${manifestDir}`;
     log.error({ scope: "manifest", op: "enable", msg: error, item: name, error });
@@ -258,23 +153,13 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     config.state = "enabled";
   }
 
-  // Update manifest
-  if (type === "skill") {
-    if (!manifest.skills) manifest.skills = {};
-    manifest.skills[name] = config as SkillConfig;
-  } else if (type === "mcp") {
-    if (!manifest.mcps) manifest.mcps = {};
-    manifest.mcps[name] = config as McpConfig;
-  } else if (type === "hook") {
-    if (!manifest.hooks) manifest.hooks = {};
-    manifest.hooks[name] = config as HookConfig;
-  } else if (type === "memory") {
-    if (!isItemConfigRecord(manifest.memory)) manifest.memory = {};
-    (manifest.memory as Record<string, MemoryConfig>)[name] = config as MemoryConfig;
-  }
+  // Update manifest — write config back to appropriate section
+  const sectionKey = sectionForType(type)!;
+  if (!manifest[sectionKey]) (manifest as unknown as Record<string, unknown>)[sectionKey] = {};
+  (manifest[sectionKey] as Record<string, ItemConfig>)[name] = config;
 
   // Save manifest
-  await saveManifest(manifestDir, manifest);
+  await saveStateManifest(manifestDir, manifest);
 
   // Build success message
   const toolMsg = tool ? ` for ${tool}` : "";

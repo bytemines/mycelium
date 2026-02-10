@@ -7,9 +7,13 @@ vi.mock("node:fs/promises", () => ({
   readdir: vi.fn(),
 }));
 
-vi.mock("@mycelish/core", () => ({
-  expandPath: (p: string) => p.replace("~", "/mock/home"),
-}));
+vi.mock("@mycelish/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mycelish/core")>();
+  return {
+    ...actual,
+    expandPath: (p: string) => p.replace("~", "/mock/home"),
+  };
+});
 
 describe("createPreset", () => {
   it("creates a preset from config", async () => {
