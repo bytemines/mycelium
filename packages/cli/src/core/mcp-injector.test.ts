@@ -26,29 +26,29 @@ describe("MCP Injector", () => {
       env: {
         WHARK_API_KEY: "${WHARK_API_KEY}",
       },
-      enabled: true,
+      state: "enabled",
     },
     playwright: {
       command: "npx",
       args: ["@anthropic/mcp-playwright"],
-      enabled: true,
+      state: "enabled",
     },
     "claude-only-mcp": {
       command: "node",
       args: ["claude-mcp.js"],
       tools: ["claude-code"],
-      enabled: true,
+      state: "enabled",
     },
     "exclude-codex-mcp": {
       command: "python",
       args: ["-m", "some_mcp"],
       excludeTools: ["codex"],
-      enabled: true,
+      state: "enabled",
     },
     "disabled-mcp": {
       command: "node",
       args: ["disabled.js"],
-      enabled: false,
+      state: "disabled",
     },
   };
 
@@ -59,7 +59,7 @@ describe("MCP Injector", () => {
           command: "uvx",
           args: ["whark-mcp"],
           env: { API_KEY: "secret" },
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -78,8 +78,8 @@ describe("MCP Injector", () => {
 
     it("excludes disabled MCPs", () => {
       const mcps: Record<string, McpServerConfig> = {
-        enabled: { command: "node", args: ["a.js"], enabled: true },
-        disabled: { command: "node", args: ["b.js"], enabled: false },
+        enabled: { command: "node", args: ["a.js"], state: "enabled" },
+        disabled: { command: "node", args: ["b.js"], state: "disabled" },
       };
 
       const result = generateClaudeConfig(mcps);
@@ -112,7 +112,7 @@ describe("MCP Injector", () => {
           command: "uvx",
           args: ["whark-mcp"],
           env: { API_KEY: "secret" },
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -128,8 +128,8 @@ describe("MCP Injector", () => {
 
     it("excludes disabled MCPs", () => {
       const mcps: Record<string, McpServerConfig> = {
-        enabled: { command: "node", args: ["a.js"], enabled: true },
-        disabled: { command: "node", args: ["b.js"], enabled: false },
+        enabled: { command: "node", args: ["a.js"], state: "enabled" },
+        disabled: { command: "node", args: ["b.js"], state: "disabled" },
       };
 
       const result = generateCodexConfig(mcps);
@@ -140,7 +140,7 @@ describe("MCP Injector", () => {
 
     it("handles MCPs without env", () => {
       const mcps: Record<string, McpServerConfig> = {
-        simple: { command: "npx", args: ["mcp-server"], enabled: true },
+        simple: { command: "npx", args: ["mcp-server"], state: "enabled" },
       };
 
       const result = generateCodexConfig(mcps);
@@ -157,7 +157,7 @@ describe("MCP Injector", () => {
         playwright: {
           command: "npx",
           args: ["@anthropic/mcp-playwright"],
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -182,7 +182,7 @@ describe("MCP Injector", () => {
           command: "uvx",
           args: ["whark-mcp"],
           env: { API_KEY: "secret" },
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -205,7 +205,7 @@ describe("MCP Injector", () => {
         "whark-trading": {
           command: "uvx",
           args: ["whark-mcp"],
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -222,7 +222,7 @@ describe("MCP Injector", () => {
   describe("filterMcpsForTool", () => {
     it("includes MCPs with no tool restrictions", () => {
       const mcps: Record<string, McpServerConfig> = {
-        universal: { command: "node", args: ["universal.js"], enabled: true },
+        universal: { command: "node", args: ["universal.js"], state: "enabled" },
       };
 
       const result = filterMcpsForTool(mcps, "claude-code");
@@ -236,7 +236,7 @@ describe("MCP Injector", () => {
           command: "node",
           args: ["claude.js"],
           tools: ["claude-code"],
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -251,7 +251,7 @@ describe("MCP Injector", () => {
           command: "node",
           args: ["claude.js"],
           tools: ["claude-code"],
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -266,7 +266,7 @@ describe("MCP Injector", () => {
           command: "node",
           args: ["no-codex.js"],
           excludeTools: ["codex"],
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -281,7 +281,7 @@ describe("MCP Injector", () => {
           command: "node",
           args: ["no-codex.js"],
           excludeTools: ["codex"],
-          enabled: true,
+          state: "enabled",
         },
       };
 
@@ -292,12 +292,22 @@ describe("MCP Injector", () => {
 
     it("excludes disabled MCPs", () => {
       const mcps: Record<string, McpServerConfig> = {
-        disabled: { command: "node", args: ["disabled.js"], enabled: false },
+        disabled: { command: "node", args: ["disabled.js"], state: "disabled" },
       };
 
       const result = filterMcpsForTool(mcps, "claude-code");
 
       expect(result).not.toHaveProperty("disabled");
+    });
+
+    it("excludes deleted MCPs", () => {
+      const mcps: Record<string, McpServerConfig> = {
+        deleted: { command: "node", args: ["deleted.js"], state: "deleted" },
+      };
+
+      const result = filterMcpsForTool(mcps, "claude-code");
+
+      expect(result).not.toHaveProperty("deleted");
     });
   });
 
@@ -310,7 +320,7 @@ describe("MCP Injector", () => {
             API_KEY: "${MY_API_KEY}",
             OTHER: "static",
           },
-          enabled: true,
+          state: "enabled",
         },
       };
       const envVars = { MY_API_KEY: "secret123" };
@@ -328,7 +338,7 @@ describe("MCP Injector", () => {
           env: {
             URL: "${PROTOCOL}://${HOST}",
           },
-          enabled: true,
+          state: "enabled",
         },
       };
       const envVars = { PROTOCOL: "https", HOST: "example.com" };
@@ -343,7 +353,7 @@ describe("MCP Injector", () => {
         test: {
           command: "node",
           env: { MISSING: "${NONEXISTENT}" },
-          enabled: true,
+          state: "enabled",
         },
       };
       const envVars = {};
@@ -358,7 +368,7 @@ describe("MCP Injector", () => {
         test: {
           command: "node",
           env: { API_KEY: "${KEY}" },
-          enabled: true,
+          state: "enabled",
         },
       };
       const envVars = { KEY: "resolved" };
@@ -373,7 +383,7 @@ describe("MCP Injector", () => {
         test: {
           command: "node",
           args: ["--config", "${CONFIG_PATH}"],
-          enabled: true,
+          state: "enabled",
         },
       };
       const envVars = { CONFIG_PATH: "/home/user/config.json" };

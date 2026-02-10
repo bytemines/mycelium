@@ -4,7 +4,7 @@
  * Config merge priority: Project > Machine > Global
  * - Global provides base set of skills/mcps/memory
  * - Machine can add/override for hardware-specific needs
- * - Project can add/override/DISABLE specific items (enabled: false)
+ * - Project can add/override/DISABLE specific items (state: "disabled")
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -27,12 +27,12 @@ describe("mergeConfigs", () => {
         "context7": {
           command: "npx",
           args: ["-y", "@context7/mcp"],
-          enabled: true,
+          state: "enabled",
         },
         "filesystem": {
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-filesystem"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -42,7 +42,7 @@ describe("mergeConfigs", () => {
         "project-specific": {
           command: "node",
           args: ["./local-mcp.js"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -71,7 +71,7 @@ describe("mergeConfigs", () => {
           command: "npx",
           args: ["-y", "@context7/mcp"],
           env: { DEFAULT_ENV: "value" },
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -81,7 +81,7 @@ describe("mergeConfigs", () => {
         "context7": {
           command: "npx",
           args: ["-y", "@context7/mcp", "--custom-flag"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -94,7 +94,7 @@ describe("mergeConfigs", () => {
     expect(result.mcps["context7"].command).toBe("npx");
   });
 
-  it("project can disable global MCPs with enabled: false", async () => {
+  it("project can disable global MCPs with state: disabled", async () => {
     const { mergeConfigs } = await import("./config-merger.js");
 
     const globalConfig: Partial<MergedConfig> = {
@@ -102,12 +102,12 @@ describe("mergeConfigs", () => {
         "context7": {
           command: "npx",
           args: ["-y", "@context7/mcp"],
-          enabled: true,
+          state: "enabled",
         },
         "filesystem": {
           command: "npx",
           args: ["-y", "@modelcontextprotocol/server-filesystem"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -117,7 +117,7 @@ describe("mergeConfigs", () => {
         "context7": {
           command: "npx",
           args: ["-y", "@context7/mcp"],
-          enabled: false, // Disable this MCP for the project
+          state: "disabled", // Disable this MCP for the project
         },
       },
     };
@@ -125,9 +125,9 @@ describe("mergeConfigs", () => {
     const result = mergeConfigs(globalConfig, undefined, projectConfig);
 
     // context7 should be disabled
-    expect(result.mcps["context7"].enabled).toBe(false);
+    expect(result.mcps["context7"].state).toBe("disabled");
     // filesystem should remain enabled
-    expect(result.mcps["filesystem"].enabled).toBe(true);
+    expect(result.mcps["filesystem"].state).toBe("enabled");
   });
 
   it("project can add new MCPs not in global", async () => {
@@ -138,7 +138,7 @@ describe("mergeConfigs", () => {
         "context7": {
           command: "npx",
           args: ["-y", "@context7/mcp"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -149,7 +149,7 @@ describe("mergeConfigs", () => {
           command: "node",
           args: ["./db-mcp.js"],
           env: { DB_URL: "postgres://localhost" },
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -173,7 +173,7 @@ describe("mergeConfigs", () => {
         "context7": {
           command: "npx",
           args: ["-y", "@context7/mcp"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -184,12 +184,12 @@ describe("mergeConfigs", () => {
           command: "npx",
           args: ["-y", "@context7/mcp"],
           env: { MACHINE_SPECIFIC: "gpu-optimized" },
-          enabled: true,
+          state: "enabled",
         },
         "machine-gpu": {
           command: "cuda-mcp",
           args: ["--gpu=0"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -199,7 +199,7 @@ describe("mergeConfigs", () => {
         "project-specific": {
           command: "node",
           args: ["./local.js"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -223,7 +223,7 @@ describe("mergeConfigs", () => {
         "global-mcp": {
           command: "npx",
           args: ["global"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -233,7 +233,7 @@ describe("mergeConfigs", () => {
         "machine-mcp": {
           command: "machine",
           args: ["machine"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -243,7 +243,7 @@ describe("mergeConfigs", () => {
         "project-mcp": {
           command: "project",
           args: ["project"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -264,7 +264,7 @@ describe("mergeConfigs", () => {
         "shared-mcp": {
           command: "global-cmd",
           args: ["global"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -274,7 +274,7 @@ describe("mergeConfigs", () => {
         "shared-mcp": {
           command: "machine-cmd",
           args: ["machine"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -284,7 +284,7 @@ describe("mergeConfigs", () => {
         "shared-mcp": {
           command: "project-cmd",
           args: ["project"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -305,7 +305,7 @@ describe("mergeConfigs", () => {
         "only-global": {
           command: "npx",
           args: ["test"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -331,7 +331,7 @@ describe("loadGlobalConfig", () => {
         "test-mcp": {
           command: "npx",
           args: ["-y", "test-mcp"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -375,7 +375,7 @@ describe("loadProjectConfig", () => {
         "project-mcp": {
           command: "node",
           args: ["./mcp.js"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -418,7 +418,7 @@ describe("loadMachineConfig", () => {
         "machine-mcp": {
           command: "cuda-mcp",
           args: ["--gpu"],
-          enabled: true,
+          state: "enabled",
         },
       },
     };
@@ -460,17 +460,17 @@ describe("loadAndMergeAllConfigs", () => {
 
     const globalMcps = {
       mcps: {
-        "global-mcp": { command: "global", args: [], enabled: true },
+        "global-mcp": { command: "global", args: [], state: "enabled" },
       },
     };
     const machineMcps = {
       mcps: {
-        "machine-mcp": { command: "machine", args: [], enabled: true },
+        "machine-mcp": { command: "machine", args: [], state: "enabled" },
       },
     };
     const projectMcps = {
       mcps: {
-        "project-mcp": { command: "project", args: [], enabled: true },
+        "project-mcp": { command: "project", args: [], state: "enabled" },
       },
     };
 
