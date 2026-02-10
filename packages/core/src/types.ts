@@ -9,6 +9,12 @@
 export type ToolId = string;
 
 // ============================================================================
+// Item State
+// ============================================================================
+
+export type ItemState = "enabled" | "disabled" | "deleted";
+
+// ============================================================================
 // MCP Types
 // ============================================================================
 
@@ -16,7 +22,8 @@ export interface McpServerConfig {
   command: string;
   args?: string[];
   env?: Record<string, string>;
-  enabled?: boolean;
+  state?: ItemState;
+  source?: string;
   tools?: ToolId[];
   excludeTools?: ToolId[];
 }
@@ -36,7 +43,8 @@ export interface SkillManifest {
   author?: string;
   tools?: ToolId[];
   excludeTools?: ToolId[];
-  enabled?: boolean;
+  state?: ItemState;
+  source?: string;
 }
 
 export interface Skill {
