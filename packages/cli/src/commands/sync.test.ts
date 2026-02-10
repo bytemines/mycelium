@@ -59,6 +59,7 @@ import {
   resolveEnvVarsInMcps,
 } from "../core/mcp-injector.js";
 import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
+import { getAdapter } from "../core/tool-adapter.js";
 
 describe("Sync Command", () => {
   // Sample merged config for testing
@@ -362,6 +363,102 @@ describe("Sync Command", () => {
 
       expect(result.status).toBe("error");
       expect(result.error).toBe("MCP injection failed");
+    });
+
+    it("preserves disabled state on MCP entries through the sync pipeline", async () => {
+      const toolId: ToolId = "claude-code";
+
+      // Simulate a tool config file that already has an MCP with disabled: true.
+      // The adapter reads the existing file, merges with incoming MCPs, and writes.
+      // We override getAdapter to use a custom adapter that tracks the written output.
+      const existingToolConfig: Record<string, unknown> = {
+        mcpServers: {
+          playwright: {
+            command: "npx",
+            args: ["-y", "@anthropic/mcp-playwright"],
+            disabled: true,
+          },
+          "whark-trading": {
+            command: "uvx",
+            args: ["whark-mcp"],
+          },
+        },
+      };
+
+      let writtenConfig: Record<string, unknown> | undefined;
+
+      // Override getAdapter for this test to simulate read-preserve-write
+      const { getAdapter } = await import("../core/tool-adapter.js");
+      (getAdapter as MockedFunction<typeof getAdapter>).mockReturnValueOnce({
+        toolId: "claude-code",
+        syncAll: async (mcps: Record<string, McpServerConfig>) => {
+          // Simulate what GenericAdapter.writeToFile does:
+          // read existing config, merge entries preserving extra props, write
+          const merged: Record<string, unknown> = {};
+          const existingEntries = existingToolConfig.mcpServers as Record<
+            string,
+            Record<string, unknown>
+          >;
+          for (const [name, mcp] of Object.entries(mcps)) {
+            if (mcp.enabled === false) continue;
+            const prev = existingEntries[name];
+            const shaped: Record<string, unknown> = {
+              command: mcp.command,
+              args: mcp.args || [],
+              ...(mcp.env && Object.keys(mcp.env).length > 0
+                ? { env: mcp.env }
+                : {}),
+            };
+            merged[name] = prev ? { ...prev, ...shaped } : shaped;
+          }
+          writtenConfig = { mcpServers: merged };
+          return { success: true, method: "file" as const };
+        },
+        syncOne: vi.fn(),
+        addViaCli: vi.fn(),
+        removeViaCli: vi.fn(),
+        writeToFile: vi.fn(),
+        hasCli: vi.fn(),
+      } as any);
+
+      // MergedConfig has both MCPs enabled in the manifest
+      const configWithMcps: MergedConfig = {
+        ...sampleMergedConfig,
+        mcps: {
+          "whark-trading": {
+            command: "uvx",
+            args: ["whark-mcp"],
+            enabled: true,
+          },
+          playwright: {
+            command: "npx",
+            args: ["-y", "@anthropic/mcp-playwright"],
+            enabled: true,
+          },
+        },
+      };
+
+      const result = await syncTool(toolId, configWithMcps);
+
+      expect(result.status).toBe("synced");
+      expect(writtenConfig).toBeDefined();
+
+      // The key assertion: disabled: true from the existing tool config
+      // must be preserved after the sync pipeline writes the file
+      const mcpServers = writtenConfig!.mcpServers as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(mcpServers["playwright"].disabled).toBe(true);
+      expect(mcpServers["playwright"].command).toBe("npx");
+      expect(mcpServers["playwright"].args).toEqual([
+        "-y",
+        "@anthropic/mcp-playwright",
+      ]);
+
+      // The other entry should NOT have disabled
+      expect(mcpServers["whark-trading"].disabled).toBeUndefined();
+      expect(mcpServers["whark-trading"].command).toBe("uvx");
     });
 
     it("returns error status when memory sync fails", async () => {
