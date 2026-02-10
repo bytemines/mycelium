@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { fetchDashboardState, sendToggle, fetchPlugins, togglePlugin as apiTogglePlugin, removeSkill, removeMcp, removePlugin } from "@/lib/api";
+import { fetchDashboardState, sendToggle, fetchPlugins, togglePlugin as apiTogglePlugin, togglePluginItem as apiTogglePluginItem, removeSkill, removeMcp, removePlugin } from "@/lib/api";
 import type { PluginInfo } from "@mycelish/core";
 import type { Status } from "@/types";
 type ApiStatus = "checking" | "connected" | "disconnected";
@@ -28,6 +28,7 @@ interface DashboardStore {
   toggleResource: (toggle: { type: string; name: string; enabled: boolean }) => Promise<void>;
   togglePlugin: (name: string, enabled: boolean) => Promise<void>;
   removeItem: (type: "skill" | "mcp" | "plugin", name: string) => Promise<void>;
+  togglePluginItem: (pluginName: string, itemName: string, enabled: boolean) => Promise<void>;
   triggerSync: () => Promise<void>;
   setActiveTab: (tab: "graph" | "migrate" | "marketplace") => void;
   setSelectedPlugin: (plugin: PluginInfo | null) => void;
@@ -128,6 +129,20 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       selectedPlugin: s.selectedPlugin ? { ...s.selectedPlugin, enabled } : null,
       hasPendingChanges: true,
     }));
+  },
+
+  togglePluginItem: async (pluginName, itemName, enabled) => {
+    // Optimistic update
+    set((s) => {
+      if (!s.selectedPlugin) return s;
+      return s;
+    });
+    try {
+      await apiTogglePluginItem(pluginName, itemName, enabled);
+      set({ hasPendingChanges: true });
+    } catch (err) {
+      console.error("togglePluginItem failed:", err);
+    }
   },
 
   removeItem: async (type, name) => {

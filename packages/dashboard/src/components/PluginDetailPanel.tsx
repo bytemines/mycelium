@@ -19,6 +19,7 @@ interface PluginDetailPanelProps {
   } | null;
   onClose: () => void;
   onTogglePlugin: (name: string, enabled: boolean) => void;
+  onToggleItem?: (pluginName: string, itemName: string, enabled: boolean) => void;
   onRemoveItem?: (type: "skill" | "mcp" | "plugin", name: string) => void;
 }
 
@@ -31,7 +32,7 @@ const SECTION_META: Record<string, { label: string; color: string; icon: React.R
   lib:     { label: "Libraries", color: "text-pink-400", icon: <Library size={14} className="text-pink-400" /> },
 };
 
-export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onRemoveItem }: PluginDetailPanelProps) {
+export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleItem, onRemoveItem }: PluginDetailPanelProps) {
   const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
   const [confirmRemove, setConfirmRemove] = useState(false);
 
@@ -149,12 +150,27 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onRemoveIte
                   {items.map((item) => (
                     <div key={item} className="flex items-center justify-between rounded-md border px-3 py-2">
                       <span className="text-sm">{item}</span>
-                      <span className={cn(
-                        "text-xs font-medium",
-                        toggleStates[item] ? "text-green-400" : "text-muted-foreground"
-                      )}>
-                        {toggleStates[item] ? "Enabled" : "Disabled"}
-                      </span>
+                      <button
+                        onClick={() => {
+                          const next = !toggleStates[item];
+                          setToggleStates((prev) => ({ ...prev, [item]: next }));
+                          onToggleItem?.(plugin.name, item, next);
+                        }}
+                        className={cn(
+                          "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                          toggleStates[item] ? "bg-primary" : "bg-muted"
+                        )}
+                        role="switch"
+                        aria-checked={toggleStates[item]}
+                        aria-label={`Toggle ${item}`}
+                      >
+                        <span
+                          className={cn(
+                            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                            toggleStates[item] ? "translate-x-4" : "translate-x-0"
+                          )}
+                        />
+                      </button>
                     </div>
                   ))}
                 </div>
