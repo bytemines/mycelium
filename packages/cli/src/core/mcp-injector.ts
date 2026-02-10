@@ -12,12 +12,12 @@ import { resolveEnvVarsInObject } from "@mycelish/core";
 // ============================================================================
 
 interface ClaudeConfig {
-  mcpServers: Record<string, Omit<McpServerConfig, "enabled" | "tools" | "excludeTools">>;
+  mcpServers: Record<string, Omit<McpServerConfig, "state" | "source" | "tools" | "excludeTools">>;
   [key: string]: unknown;
 }
 
 interface GeminiConfig {
-  mcpServers: Record<string, Omit<McpServerConfig, "enabled" | "tools" | "excludeTools">>;
+  mcpServers: Record<string, Omit<McpServerConfig, "state" | "source" | "tools" | "excludeTools">>;
   [key: string]: unknown;
 }
 
@@ -36,7 +36,7 @@ export function filterMcpsForTool(
 
   for (const [name, config] of Object.entries(mcps)) {
     // Skip disabled MCPs
-    if (config.enabled === false) {
+    if (config.state && config.state !== "enabled") {
       continue;
     }
 
@@ -80,8 +80,8 @@ export function resolveEnvVarsInMcps(
 
 function cleanMcpConfig(
   config: McpServerConfig
-): Omit<McpServerConfig, "enabled" | "tools" | "excludeTools"> {
-  const { enabled, tools, excludeTools, ...clean } = config;
+): Omit<McpServerConfig, "state" | "source" | "tools" | "excludeTools"> {
+  const { state, source, tools, excludeTools, ...clean } = config;
 
   // Remove undefined/empty fields
   const result: Record<string, unknown> = { command: clean.command };
@@ -94,7 +94,7 @@ function cleanMcpConfig(
     result.env = clean.env;
   }
 
-  return result as Omit<McpServerConfig, "enabled" | "tools" | "excludeTools">;
+  return result as Omit<McpServerConfig, "state" | "source" | "tools" | "excludeTools">;
 }
 
 // ============================================================================
@@ -111,7 +111,7 @@ export function generateClaudeConfig(
 
   for (const [name, config] of Object.entries(mcps)) {
     // Skip disabled MCPs
-    if (config.enabled === false) {
+    if (config.state && config.state !== "enabled") {
       continue;
     }
 
@@ -135,7 +135,7 @@ export function generateGeminiConfig(
 
   for (const [name, config] of Object.entries(mcps)) {
     // Skip disabled MCPs
-    if (config.enabled === false) {
+    if (config.state && config.state !== "enabled") {
       continue;
     }
 
@@ -159,7 +159,7 @@ export function generateCodexConfig(
 
   for (const [name, config] of Object.entries(mcps)) {
     // Skip disabled MCPs
-    if (config.enabled === false) {
+    if (config.state && config.state !== "enabled") {
       continue;
     }
 
@@ -198,7 +198,7 @@ export function generateOpenCodeConfig(
 
   for (const [name, config] of Object.entries(mcps)) {
     // Skip disabled MCPs
-    if (config.enabled === false) {
+    if (config.state && config.state !== "enabled") {
       continue;
     }
 

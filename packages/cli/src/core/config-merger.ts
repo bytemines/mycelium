@@ -148,7 +148,8 @@ function mergeMcpServerConfig(
     command: source.command ?? target.command,
     args: source.args ?? target.args,
     env: source.env !== undefined ? source.env : target.env,
-    enabled: source.enabled !== undefined ? source.enabled : target.enabled,
+    state: source.state ?? target.state,
+    source: source.source ?? target.source,
     tools: source.tools ?? target.tools,
     excludeTools: source.excludeTools ?? target.excludeTools,
   };
