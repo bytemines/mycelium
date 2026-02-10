@@ -8,9 +8,13 @@ vi.mock("node:fs/promises", () => ({
   access: vi.fn(),
 }));
 
-vi.mock("@mycelish/core", () => ({
-  expandPath: vi.fn((p: string) => p.replace("~", "/mock/home")),
-}));
+vi.mock("@mycelish/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mycelish/core")>();
+  return {
+    ...actual,
+    expandPath: vi.fn((p: string) => p.replace("~", "/mock/home")),
+  };
+});
 
 const MANIFEST_DIR = "/test/project/.mycelium";
 

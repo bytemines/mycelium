@@ -122,13 +122,6 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
     setSelectedPlugin(prev => prev ? { ...prev, enabled } : null);
   }, [scans, toggleState]);
 
-  const handleToggleSkill = useCallback((_pluginName: string, skillName: string, enabled: boolean) => {
-    setToggleState(prev => ({
-      ...prev,
-      skills: { ...prev.skills, [skillName]: enabled },
-    }));
-  }, []);
-
   const handleAddTool = useCallback(() => {
     // TODO: Show tool picker dialog
     console.log("Add tool destination");
@@ -269,7 +262,6 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
         plugin={selectedPlugin}
         onClose={() => setSelectedPlugin(null)}
         onTogglePlugin={handleTogglePlugin}
-        onToggleSkill={handleToggleSkill}
       />
     </div>
   );

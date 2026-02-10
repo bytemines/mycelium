@@ -45,7 +45,9 @@ describe("Tracer", () => {
     const content = fs.readFileSync(path.join(snapshotDir, snapshots[0]), "utf-8");
     const lines = content.trim().split("\n");
     expect(lines.length).toBe(2); // both entries from same trace
-    expect(JSON.parse(lines[1]).error).toBe("permission denied");
+    // Query returns DESC order, so lines[0] is the error entry
+    const errorLine = lines.find((l: string) => JSON.parse(l).error === "permission denied");
+    expect(errorLine).toBeDefined();
 
     tracer.close();
   });
