@@ -3,7 +3,6 @@ import { Router } from "express";
 import { loadManifest } from "../core/migrator/index.js";
 import {
   togglePlugin,
-  toggleSkillInPlugin,
 } from "../core/marketplace-registry.js";
 import { buildPluginMap } from "./plugin-map.js";
 import { asyncHandler } from "./async-handler.js";
@@ -43,16 +42,6 @@ export function registerPluginsRoutes(app: Express): void {
   router.post("/toggle", asyncHandler(async (req, res) => {
     const { name, enabled } = req.body as { name: string; enabled: boolean };
     await togglePlugin(name, enabled);
-    res.json({ success: true });
-  }));
-
-  router.post("/toggle-skill", asyncHandler(async (req, res) => {
-    const { pluginName, skillName, enabled } = req.body as {
-      pluginName: string;
-      skillName: string;
-      enabled: boolean;
-    };
-    await toggleSkillInPlugin(pluginName, skillName, enabled);
     res.json({ success: true });
   }));
 
