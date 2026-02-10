@@ -1,10 +1,10 @@
 /**
  * Disable Command Module
  *
- * Disable a skill or MCP globally or for a specific tool:
- * - mycelium disable <name>              # Disable skill/MCP at project level
- * - mycelium disable <name> --global     # Disable skill/MCP globally
- * - mycelium disable <name> --tool <id>  # Disable skill/MCP for specific tool only
+ * Disable a skill, MCP, hook, or memory item globally or for a specific tool:
+ * - mycelium disable <name>              # Disable item at project level
+ * - mycelium disable <name> --global     # Disable item globally
+ * - mycelium disable <name> --tool <id>  # Disable item for specific tool only
  */
 
 import { Command } from "commander";
@@ -28,7 +28,7 @@ export interface DisableOptions {
 export interface DisableResult {
   success: boolean;
   name: string;
-  type?: "skill" | "mcp";
+  type?: "skill" | "mcp" | "hook" | "memory";
   level?: "global" | "project";
   tool?: ToolId;
   alreadyDisabled?: boolean;
@@ -36,27 +36,32 @@ export interface DisableResult {
   error?: string;
 }
 
+interface ItemConfig {
+  state?: "enabled" | "disabled" | "deleted";
+  source?: string;
+  tools?: ToolId[];
+  excludeTools?: ToolId[];
+  enabledTools?: ToolId[];
+}
+
+interface SkillConfig extends ItemConfig {}
+
+interface McpConfig extends ItemConfig {}
+
+interface HookConfig extends ItemConfig {}
+
+interface MemoryConfig extends ItemConfig {}
+
 interface ManifestConfig {
   version: string;
   tools?: Record<string, { enabled: boolean }>;
   skills?: Record<string, SkillConfig>;
   mcps?: Record<string, McpConfig>;
-  memory?: unknown;
+  hooks?: Record<string, HookConfig>;
+  memory?: Record<string, MemoryConfig>;
 }
 
-interface SkillConfig {
-  enabled?: boolean;
-  tools?: ToolId[];
-  excludeTools?: ToolId[];
-  enabledTools?: ToolId[];
-}
-
-interface McpConfig {
-  enabled?: boolean;
-  tools?: ToolId[];
-  excludeTools?: ToolId[];
-  enabledTools?: ToolId[];
-}
+type ItemType = "skill" | "mcp" | "hook" | "memory";
 
 // ============================================================================
 // Helper Functions
@@ -92,17 +97,23 @@ function isValidToolId(toolId: string): toolId is ToolId {
 }
 
 /**
- * Find what type an item is (skill or MCP)
+ * Find what type an item is (skill, MCP, hook, or memory)
  */
 function findItemType(
   manifest: ManifestConfig,
   name: string
-): { type: "skill" | "mcp"; config: SkillConfig | McpConfig } | null {
+): { type: ItemType; config: ItemConfig } | null {
   if (manifest.skills && name in manifest.skills) {
     return { type: "skill", config: manifest.skills[name] };
   }
   if (manifest.mcps && name in manifest.mcps) {
     return { type: "mcp", config: manifest.mcps[name] };
+  }
+  if (manifest.hooks && name in manifest.hooks) {
+    return { type: "hook", config: manifest.hooks[name] };
+  }
+  if (manifest.memory && name in manifest.memory) {
+    return { type: "memory", config: manifest.memory[name] };
   }
   return null;
 }
@@ -111,7 +122,7 @@ function findItemType(
  * Check if item is already disabled (globally or for a specific tool)
  */
 function isAlreadyDisabled(
-  config: SkillConfig | McpConfig,
+  config: ItemConfig,
   tool?: ToolId
 ): boolean {
   if (tool) {
@@ -126,7 +137,7 @@ function isAlreadyDisabled(
     return false;
   }
   // Check global disablement
-  return config.enabled === false;
+  return config.state === "disabled";
 }
 
 // ============================================================================
@@ -134,7 +145,7 @@ function isAlreadyDisabled(
 // ============================================================================
 
 /**
- * Disable a skill or MCP
+ * Disable a skill, MCP, hook, or memory item
  */
 export async function disableSkillOrMcp(options: DisableOptions): Promise<DisableResult> {
   const { name, tool, global: isGlobal } = options;
@@ -163,13 +174,13 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
     };
   }
 
-  // Find the item (skill or MCP)
+  // Find the item
   const item = findItemType(manifest, name);
   if (!item) {
     return {
       success: false,
       name,
-      error: `'${name}' not found in manifest (checked skills and mcps)`,
+      error: `'${name}' not found in manifest (checked skills, mcps, hooks, and memory)`,
     };
   }
 
@@ -193,33 +204,36 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
   // Disable the item
   if (tool) {
     // Disable for specific tool
-    // Add to excludeTools
     if (!config.excludeTools) {
       config.excludeTools = [];
     }
     if (!config.excludeTools.includes(tool)) {
       config.excludeTools.push(tool);
     }
-    // Remove from tools array if present
     if (config.tools) {
       config.tools = config.tools.filter((t) => t !== tool);
     }
-    // Remove from enabledTools if present
     if (config.enabledTools) {
       config.enabledTools = config.enabledTools.filter((t) => t !== tool);
     }
   } else {
     // Disable globally
-    config.enabled = false;
+    config.state = "disabled";
   }
 
   // Update manifest
   if (type === "skill") {
     if (!manifest.skills) manifest.skills = {};
     manifest.skills[name] = config as SkillConfig;
-  } else {
+  } else if (type === "mcp") {
     if (!manifest.mcps) manifest.mcps = {};
     manifest.mcps[name] = config as McpConfig;
+  } else if (type === "hook") {
+    if (!manifest.hooks) manifest.hooks = {};
+    manifest.hooks[name] = config as HookConfig;
+  } else {
+    if (!manifest.memory) manifest.memory = {};
+    manifest.memory[name] = config as MemoryConfig;
   }
 
   // Save manifest
@@ -242,8 +256,8 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
 // ============================================================================
 
 export const disableCommand = new Command("disable")
-  .description("Disable a skill or MCP")
-  .argument("<name>", "Name of the skill or MCP to disable")
+  .description("Disable a skill, MCP, hook, or memory item")
+  .argument("<name>", "Name of the item to disable")
   .option("-t, --tool <tool>", "Disable only for a specific tool")
   .option("-g, --global", "Disable in global configuration (~/.mycelium/)")
   .action(async (name: string, options: { tool?: string; global?: boolean }) => {

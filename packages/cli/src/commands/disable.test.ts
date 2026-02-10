@@ -20,7 +20,7 @@ describe("Disable Command", () => {
   let tempDir: string;
   let globalMyceliumPath: string;
 
-  // Sample manifest configuration
+  // Sample manifest configuration using state instead of enabled
   const sampleManifest = {
     version: "1.0",
     tools: {
@@ -33,33 +33,42 @@ describe("Disable Command", () => {
     },
     skills: {
       superpowers: {
-        enabled: true,
+        state: "enabled",
       },
       "disabled-skill": {
-        enabled: false,
+        state: "disabled",
       },
       "tool-specific-skill": {
-        enabled: true,
+        state: "enabled",
         tools: ["claude-code", "codex"],
       },
     },
     mcps: {
       "whark-trading": {
-        enabled: true,
+        state: "enabled",
       },
       "disabled-mcp": {
-        enabled: false,
+        state: "disabled",
       },
       "tool-specific-mcp": {
-        enabled: true,
+        state: "enabled",
         tools: ["claude-code", "codex"],
       },
     },
+    hooks: {
+      "pre-commit": {
+        state: "enabled",
+        source: "project",
+      },
+      "disabled-hook": {
+        state: "disabled",
+        source: "global",
+      },
+    },
     memory: {
-      scopes: {
-        shared: { sync_to: ["claude-code"], path: "global/memory/shared/", files: [] },
-        coding: { sync_to: ["claude-code"], path: "global/memory/coding/", files: [] },
-        personal: { sync_to: ["openclaw"], path: "global/memory/personal/", files: [] },
+      "shared-context": {
+        state: "enabled",
+        source: "global",
       },
     },
   };
@@ -102,7 +111,7 @@ describe("Disable Command", () => {
           "utf-8"
         );
         const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.skills["superpowers"].enabled).toBe(false);
+        expect(updatedManifest.skills["superpowers"].state).toBe("disabled");
       });
 
       it("disables MCP globally", async () => {
@@ -123,7 +132,7 @@ describe("Disable Command", () => {
           "utf-8"
         );
         const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.mcps["whark-trading"].enabled).toBe(false);
+        expect(updatedManifest.mcps["whark-trading"].state).toBe("disabled");
       });
     });
 
@@ -201,7 +210,7 @@ describe("Disable Command", () => {
         );
         const updatedManifest = yamlParse(manifestContent);
 
-        expect(updatedManifest.skills["superpowers"].enabled).toBe(false);
+        expect(updatedManifest.skills["superpowers"].state).toBe("disabled");
       });
 
       it("preserves other manifest settings when updating", async () => {
@@ -222,8 +231,8 @@ describe("Disable Command", () => {
         // Other settings should be preserved
         expect(updatedManifest.version).toBe("1.0");
         expect(updatedManifest.tools["claude-code"].enabled).toBe(true);
-        expect(updatedManifest.skills["disabled-skill"].enabled).toBe(false);
-        expect(updatedManifest.mcps["whark-trading"].enabled).toBe(true);
+        expect(updatedManifest.skills["disabled-skill"].state).toBe("disabled");
+        expect(updatedManifest.mcps["whark-trading"].state).toBe("enabled");
       });
     });
 
@@ -311,7 +320,7 @@ describe("Disable Command", () => {
         const projectManifest = {
           version: "1.0",
           skills: {
-            "project-skill": { enabled: true },
+            "project-skill": { state: "enabled" },
           },
           mcps: {},
         };
@@ -338,7 +347,65 @@ describe("Disable Command", () => {
           "utf-8"
         );
         const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.skills["project-skill"].enabled).toBe(false);
+        expect(updatedManifest.skills["project-skill"].state).toBe("disabled");
+      });
+    });
+
+    describe("hook and memory disabling", () => {
+      it("disables a hook globally", async () => {
+        const options: DisableOptions = {
+          name: "pre-commit",
+          global: true,
+          globalPath: globalMyceliumPath,
+        };
+
+        const result = await disableSkillOrMcp(options);
+
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("hook");
+
+        // Verify manifest was updated
+        const manifestContent = await fs.readFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          "utf-8"
+        );
+        const updatedManifest = yamlParse(manifestContent);
+        expect(updatedManifest.hooks["pre-commit"].state).toBe("disabled");
+      });
+
+      it("handles already disabled hook case", async () => {
+        const options: DisableOptions = {
+          name: "disabled-hook",
+          global: true,
+          globalPath: globalMyceliumPath,
+        };
+
+        const result = await disableSkillOrMcp(options);
+
+        expect(result.success).toBe(true);
+        expect(result.alreadyDisabled).toBe(true);
+        expect(result.type).toBe("hook");
+      });
+
+      it("disables a memory item globally", async () => {
+        const options: DisableOptions = {
+          name: "shared-context",
+          global: true,
+          globalPath: globalMyceliumPath,
+        };
+
+        const result = await disableSkillOrMcp(options);
+
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("memory");
+
+        // Verify manifest was updated
+        const manifestContent = await fs.readFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          "utf-8"
+        );
+        const updatedManifest = yamlParse(manifestContent);
+        expect(updatedManifest.memory["shared-context"].state).toBe("disabled");
       });
     });
 
