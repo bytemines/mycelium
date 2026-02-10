@@ -23,6 +23,7 @@ import {
   pathExists,
   formatStatus,
 } from "@mycelish/core";
+import { loadStateManifest } from "../core/manifest-state.js";
 
 // ============================================================================
 // Types
@@ -84,6 +85,18 @@ async function countSkills(skillsPath: string): Promise<number> {
 }
 
 /**
+ * Count files (symlinks, regular files, directories) in a directory, excluding hidden files
+ */
+async function countFilesInDir(dirPath: string): Promise<number> {
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    return entries.filter(e => !e.name.startsWith(".")).length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Count the number of MCPs in a tool's MCP config file
  */
 async function countMcps(mcpPath: string): Promise<number> {
@@ -129,17 +142,22 @@ function determineSyncStatus(
   isDisabled: boolean,
   skillsCount: number,
   mcpsCount: number,
-  toolPathExists: boolean
+  toolPathExists: boolean,
+  agentsCount = 0,
+  rulesCount = 0,
+  commandsCount = 0,
 ): SyncStatus {
   if (isDisabled) {
     return "disabled";
   }
 
-  if (!toolPathExists && skillsCount === 0 && mcpsCount === 0) {
+  const totalItems = skillsCount + mcpsCount + agentsCount + rulesCount + commandsCount;
+
+  if (!toolPathExists && totalItems === 0) {
     return "pending";
   }
 
-  if (skillsCount > 0 || mcpsCount > 0) {
+  if (totalItems > 0) {
     return "synced";
   }
 
@@ -154,12 +172,24 @@ export async function getToolStatusFromPath(
   options: ToolPathOptions
 ): Promise<ToolSyncStatusWithState> {
   const { myceliumPath, toolSkillsPath, toolMcpPath, isDisabled = false, itemState } = options;
+  const desc = TOOL_REGISTRY[toolId];
 
   // Count skills synced to tool
   const skillsCount = await countSkills(toolSkillsPath);
 
   // Count MCPs in tool config
   const mcpsCount = await countMcps(toolMcpPath);
+
+  // Count agents/rules/commands from their directories
+  const agentsCount = desc.capabilities.includes("agents")
+    ? await countFilesInDir(resolvePath(desc.paths.agents) ?? "")
+    : 0;
+  const rulesCount = desc.capabilities.includes("rules")
+    ? await countFilesInDir(resolvePath(desc.paths.rules) ?? "")
+    : 0;
+  const commandsCount = desc.capabilities.includes("commands")
+    ? await countFilesInDir(resolvePath(desc.paths.commands) ?? "")
+    : 0;
 
   // Get memory files for tool
   const memoryFiles = await getMemoryFilesForTool(myceliumPath, toolId);
@@ -168,13 +198,16 @@ export async function getToolStatusFromPath(
   const toolPathExists = await pathExists(toolSkillsPath);
 
   // Determine status
-  const status = determineSyncStatus(isDisabled, skillsCount, mcpsCount, toolPathExists);
+  const status = determineSyncStatus(isDisabled, skillsCount, mcpsCount, toolPathExists, agentsCount, rulesCount, commandsCount);
 
   return {
     tool: toolId,
     status,
     skillsCount,
     mcpsCount,
+    agentsCount,
+    rulesCount,
+    commandsCount,
     memoryFiles,
     itemState,
   };
@@ -309,8 +342,26 @@ export function formatStatusOutput(
     } else {
       const skills = `Skills: ${status.skillsCount}`.padEnd(12);
       const mcps = `MCPs: ${status.mcpsCount}`.padEnd(10);
+      const agents = status.agentsCount > 0 ? `Agents: ${status.agentsCount}`.padEnd(12) : "";
+      const rules = status.rulesCount > 0 ? `Rules: ${status.rulesCount}`.padEnd(11) : "";
+      const commands = status.commandsCount > 0 ? `Cmds: ${status.commandsCount}`.padEnd(10) : "";
       const memory = `Memory: ${status.memoryFiles.length} files`;
-      lines.push(`  ${toolName}${statusStr}    ${skills}${mcps}${memory}${stateMarker}`);
+      lines.push(`  ${toolName}${statusStr}    ${skills}${mcps}${agents}${rules}${commands}${memory}${stateMarker}`);
+    }
+  }
+
+  // Plugin Takeover section (sync — loaded externally for testability)
+  if ((options as any)._takenOverPlugins) {
+    const plugins = (options as any)._takenOverPlugins as Record<string, { allSkills: string[] }>;
+    if (Object.keys(plugins).length > 0) {
+      lines.push("");
+      lines.push("Plugin Takeover [Experimental]:");
+      for (const [pluginId, info] of Object.entries(plugins)) {
+        // Count how many skills are active (not in disabled statuses)
+        const totalSkills = info.allSkills.length;
+        // We show total for now; disabled count requires manifest cross-ref
+        lines.push(`  ${pluginId}: ${totalSkills} skills managed`);
+      }
     }
   }
 
@@ -366,11 +417,15 @@ export const statusCommand = new Command("status")
       const projectPath = ".mycelium/";
       const projectExists = await pathExists(path.join(process.cwd(), projectPath));
 
-      const outputOptions: StatusOutputOptions = {
+      // Load manifest for plugin takeover info
+      const manifest = await loadStateManifest(myceliumPath);
+
+      const outputOptions: StatusOutputOptions & { _takenOverPlugins?: Record<string, { allSkills: string[] }> } = {
         globalConfigPath: "~/.mycelium/",
         projectConfigPath: projectPath,
         projectConfigExists: projectExists,
         showAll: options.all,
+        _takenOverPlugins: manifest?.takenOverPlugins,
       };
 
       if (options.json) {

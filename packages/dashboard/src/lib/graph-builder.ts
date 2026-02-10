@@ -167,6 +167,7 @@ export const ALL_TOOLS: ToolDataDash[] = Object.values(TOOL_REGISTRY).map(desc =
 export interface DashboardGraphHandlers {
   handleToggle: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
   onToggle?: (toggle: { type: "skill" | "mcp" | "memory"; name: string; enabled: boolean }) => void;
+  onPluginToggle?: (name: string, enabled: boolean) => void;
   onPluginClick?: (pluginName: string) => void;
   onAddTool?: () => void;
 }
@@ -227,7 +228,7 @@ export function buildDashboardGraph(
         hookCount: plugin.hooks?.length ?? 0,
         libCount: plugin.libs?.length ?? 0,
         enabled: plugin.enabled,
-        onToggle: (name: string, enabled: boolean) => handlers.onToggle?.({ type: "skill", name, enabled }),
+        onToggle: (name: string, enabled: boolean) => handlers.onPluginToggle?.(name, enabled),
         onClick: (name: string) => handlers.onPluginClick?.(name),
       },
     });

@@ -9,12 +9,12 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
-// Import the module under test (doesn't exist yet - tests will fail)
 import {
   disableSkillOrMcp,
   type DisableOptions,
   type DisableResult,
 } from "./disable.js";
+import * as pluginTakeover from "../core/plugin-takeover.js";
 
 describe("Disable Command", () => {
   let tempDir: string;
@@ -448,6 +448,59 @@ describe("Disable Command", () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Invalid tool");
+      });
+    });
+
+    describe("plugin takeover integration", () => {
+      it("triggers takeover when disabling a plugin skill", async () => {
+        const spy = vi.spyOn(pluginTakeover, "getAllPluginsForComponent").mockResolvedValue([{
+          pluginId: "my-plugin@skillsmp",
+          marketplace: "skillsmp",
+          plugin: "my-plugin",
+          version: "1.0.0",
+          cachePath: "/fake/cache/path",
+          allSkills: ["superpowers", "bonus-skill"],
+          enabledSkills: ["superpowers", "bonus-skill"],
+        }]);
+        const setEnabledSpy = vi.spyOn(pluginTakeover, "setPluginEnabled").mockResolvedValue(undefined);
+        const syncSpy = vi.spyOn(pluginTakeover, "syncPluginSymlinks").mockResolvedValue({ created: ["bonus-skill"], removed: [] });
+
+        const result = await disableSkillOrMcp({
+          name: "superpowers",
+          global: true,
+          globalPath: globalMyceliumPath,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pluginTakeover).toBe(true);
+        expect(spy).toHaveBeenCalledWith("superpowers");
+        expect(setEnabledSpy).toHaveBeenCalledWith("my-plugin@skillsmp", false);
+        expect(syncSpy).toHaveBeenCalled();
+
+        // Verify manifest has takenOverPlugins
+        const manifest = yamlParse(await fs.readFile(path.join(globalMyceliumPath, "manifest.yaml"), "utf-8"));
+        expect(manifest.takenOverPlugins?.["my-plugin@skillsmp"]).toBeDefined();
+        expect(manifest.skills?.["superpowers"]?.pluginOrigin?.pluginId).toBe("my-plugin@skillsmp");
+
+        spy.mockRestore();
+        setEnabledSpy.mockRestore();
+        syncSpy.mockRestore();
+      });
+
+      it("does NOT trigger takeover for non-plugin skills", async () => {
+        const spy = vi.spyOn(pluginTakeover, "getAllPluginsForComponent").mockResolvedValue([]);
+
+        const result = await disableSkillOrMcp({
+          name: "superpowers",
+          global: true,
+          globalPath: globalMyceliumPath,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pluginTakeover).toBeFalsy();
+        expect(spy).toHaveBeenCalledWith("superpowers");
+
+        spy.mockRestore();
       });
     });
   });

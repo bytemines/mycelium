@@ -32,6 +32,10 @@ export interface ItemConfig {
   tools?: ToolId[];
   excludeTools?: ToolId[];
   enabledTools?: ToolId[];
+  pluginOrigin?: {
+    pluginId: string;
+    cachePath: string;
+  };
 }
 
 export interface ManifestConfig {
@@ -43,6 +47,12 @@ export interface ManifestConfig {
   memory?: Record<string, ItemConfig> | unknown;
   agents?: Record<string, ItemConfig>;
   commands?: Record<string, ItemConfig>;
+  takenOverPlugins?: Record<string, {
+    version: string;
+    cachePath: string;
+    allSkills: string[];
+    allComponents?: string[];
+  }>;
 }
 
 // ============================================================================
@@ -196,19 +206,35 @@ export function resolveManifestDir(opts: { global?: boolean; globalPath?: string
 
 /**
  * Ensure an item exists in the manifest. If not found, auto-registers it
- * as a skill with the given initial state.
+ * with the given initial state. Uses typeHint if provided, otherwise defaults to "skill".
  */
 export function ensureItem(
   manifest: ManifestConfig,
   name: string,
   initialState: ItemState,
+  typeHint?: ItemType,
 ): { type: ItemType; config: ItemConfig; autoRegistered: boolean } {
   const existing = findItemType(manifest, name);
-  if (existing) return { ...existing, autoRegistered: false };
+  if (existing) {
+    // If typeHint says this should be in a different section, move it there
+    if (typeHint && existing.type !== typeHint) {
+      const oldKey = sectionForType(existing.type)!;
+      const newKey = sectionForType(typeHint)!;
+      if (!manifest[newKey]) (manifest as unknown as Record<string, unknown>)[newKey] = {};
+      (manifest[newKey] as Record<string, ItemConfig>)[name] = existing.config;
+      delete (manifest[oldKey] as Record<string, ItemConfig>)[name];
+      return { type: typeHint, config: existing.config, autoRegistered: false };
+    }
+    return { ...existing, autoRegistered: false };
+  }
 
-  if (!manifest.skills) manifest.skills = {};
-  manifest.skills[name] = { state: initialState, source: "auto" };
-  return { type: "skill", config: manifest.skills[name], autoRegistered: true };
+  const type = typeHint ?? "skill";
+  const sectionKey = sectionForType(type)!;
+  if (!manifest[sectionKey]) {
+    (manifest as unknown as Record<string, unknown>)[sectionKey] = {};
+  }
+  (manifest[sectionKey] as Record<string, ItemConfig>)[name] = { state: initialState, source: "auto" };
+  return { type, config: (manifest[sectionKey] as Record<string, ItemConfig>)[name], autoRegistered: true };
 }
 
 /**

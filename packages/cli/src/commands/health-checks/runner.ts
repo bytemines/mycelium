@@ -84,7 +84,16 @@ export async function runAllChecks(): Promise<DoctorResult> {
     checks.push(await checkMemoryFileSize(memoryPath, maxLines));
   }
 
-  // 8. Check MCP self-registration
+  // 8. Check taken-over plugins
+  try {
+    const { checkTakenOverPlugins } = await import("./plugin-takeover-check.js");
+    const pluginChecks = await checkTakenOverPlugins();
+    checks.push(...pluginChecks);
+  } catch {
+    // plugin takeover check is optional
+  }
+
+  // 9. Check MCP self-registration
   try {
     const { checkSelfRegistration } = await import("./mcp-check.js");
     const selfRegChecks = await checkSelfRegistration();

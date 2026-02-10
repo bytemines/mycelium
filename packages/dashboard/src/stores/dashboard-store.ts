@@ -9,7 +9,7 @@ interface GraphData {
   skills: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
   mcps: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
   memory: Array<{ name: string; scope: "shared" | "coding" | "personal"; status: Status }>;
-  plugins: Array<{ name: string; marketplace: string; componentCount: number; enabled: boolean; skills: string[]; agents?: string[]; commands?: string[]; hooks?: string[]; libs?: string[] }>;
+  plugins: Array<{ name: string; marketplace: string; componentCount: number; enabled: boolean; skills: string[]; agents?: string[]; commands?: string[]; hooks?: string[]; libs?: string[]; disabledItems?: string[] }>;
   migrated: boolean;
 }
 
@@ -53,6 +53,7 @@ function parseState(state: any): GraphData {
       componentCount: sk.length + ag.length + cm.length + hk.length + lb.length,
       enabled: p.enabled ?? true,
       skills: sk, agents: ag, commands: cm, hooks: hk, libs: lb,
+      disabledItems: p.disabledItems ?? [],
     };
   });
   return {
@@ -102,6 +103,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   toggleResource: async (toggle) => {
+    // Route plugin toggles to dedicated handler
+    if (toggle.type === "plugin") {
+      return get().togglePlugin(toggle.name, toggle.enabled);
+    }
     // Optimistic update
     set((s) => {
       if (!s.graphData) return s;
@@ -129,6 +134,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       selectedPlugin: s.selectedPlugin ? { ...s.selectedPlugin, enabled } : null,
       hasPendingChanges: true,
     }));
+    get().fetchState();
   },
 
   togglePluginItem: async (pluginName, itemName, enabled) => {

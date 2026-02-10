@@ -72,6 +72,7 @@ export const reportCommand = new Command("report")
   .option("--scope <scope>", "Filter by scope (mcp, skill, config, memory, hook)")
   .option("--item <item>", "Filter by item name")
   .option("--cmd <cmd>", "Filter by command")
+  .option("--op <op>", "Filter by operation (e.g. takeover, release, symlink-create)")
   .option("--level <level>", "Filter by log level (debug, info, warn, error)")
   .option("--state <state>", "Filter by item state (enabled, disabled, deleted)")
   .option("--source <source>", "Filter by item source")
@@ -90,6 +91,7 @@ export const reportCommand = new Command("report")
       scope: opts.scope,
       item: opts.item,
       cmd: opts.cmd,
+      op: opts.op,
       level: opts.level,
       state: opts.state,
       source: opts.source,

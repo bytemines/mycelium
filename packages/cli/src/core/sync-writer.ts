@@ -99,9 +99,15 @@ export async function syncToTool(
     log?.error({ scope: "mcp", op: "write", msg: result.error ?? "Write failed", tool: toolId, method: result.method, path: configPath, format: desc.mcp.format, entryShape: desc.mcp.entryShape });
   }
 
-  // Handle hooks separately (Claude Code only)
-  if (toolId === "claude-code" && hooks?.length) {
-    await writeClaudeCodeHooks(hooks);
+  // Handle hooks for supported tools
+  if (hooks?.length) {
+    if (toolId === "claude-code") {
+      await writeClaudeCodeHooks(hooks);
+    } else if (toolId === "codex") {
+      await writeCodexHooks(hooks);
+    } else if (toolId === "cursor") {
+      await writeCursorHooks(hooks);
+    }
   }
 
   return {
@@ -113,6 +119,21 @@ export async function syncToTool(
   };
 }
 
+/** Group hooks by event into a JSON-friendly structure */
+function groupHooksByEvent(hooks: ScannedHook[]): Record<string, Record<string, unknown>[]> {
+  const grouped: Record<string, Record<string, unknown>[]> = {};
+  for (const hook of hooks) {
+    const event = hook.event ?? "PostToolUse";
+    if (!grouped[event]) grouped[event] = [];
+    const entry: Record<string, unknown> = {};
+    if (hook.matchers?.length) entry.matchers = hook.matchers;
+    if (hook.command) entry.command = hook.command;
+    if (hook.timeout) entry.timeout = hook.timeout;
+    grouped[event].push(entry);
+  }
+  return grouped;
+}
+
 async function writeClaudeCodeHooks(hooks: ScannedHook[]): Promise<void> {
   const settingsPath = expandPath("~/.claude/settings.json");
   const settingsRaw = await readFileIfExists(settingsPath);
@@ -122,20 +143,63 @@ async function writeClaudeCodeHooks(hooks: ScannedHook[]): Promise<void> {
     await backupConfig(settingsPath);
   }
 
-  const hooksObj: Record<string, unknown[]> = {};
-  for (const hook of hooks) {
-    const event = hook.event ?? "PostToolUse";
-    if (!hooksObj[event]) hooksObj[event] = [];
-    const hookEntry: Record<string, unknown> = {};
-    if (hook.matchers?.length) hookEntry.matchers = hook.matchers;
-    if (hook.command) hookEntry.command = hook.command;
-    if (hook.timeout) hookEntry.timeout = hook.timeout;
-    hooksObj[event].push(hookEntry);
-  }
-  settings.hooks = hooksObj;
+  settings.hooks = groupHooksByEvent(hooks);
 
   await mkdirp(path.dirname(settingsPath));
   await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+}
+
+async function writeCodexHooks(hooks: ScannedHook[]): Promise<void> {
+  const configPath = expandPath("~/.codex/config.toml");
+  const existing = await readFileIfExists(configPath);
+
+  if (existing) {
+    await backupConfig(configPath);
+  }
+
+  const lines: string[] = [];
+  if (existing) {
+    for (const line of existing.split("\n")) {
+      if (!line.startsWith("[[hooks.")) {
+        lines.push(line);
+      }
+    }
+    if (lines.length && lines[lines.length - 1] !== "") {
+      lines.push("");
+    }
+  }
+
+  const grouped = groupHooksByEvent(hooks);
+  for (const [event, entries] of Object.entries(grouped)) {
+    for (const entry of entries) {
+      lines.push(`[[hooks.${event}]]`);
+      if (entry.matchers) {
+        lines.push(`matchers = [${(entry.matchers as string[]).map(m => `"${m}"`).join(", ")}]`);
+      }
+      if (entry.command) lines.push(`command = "${entry.command}"`);
+      if (entry.timeout) lines.push(`timeout = ${entry.timeout}`);
+      lines.push("");
+    }
+  }
+
+  await mkdirp(path.dirname(configPath));
+  await fs.writeFile(configPath, lines.join("\n"), "utf-8");
+}
+
+async function writeCursorHooks(hooks: ScannedHook[]): Promise<void> {
+  const hooksPath = resolvePath(TOOL_REGISTRY["cursor"].paths.hooks);
+  if (!hooksPath) return;
+  const existing = await readFileIfExists(hooksPath);
+  const config: Record<string, unknown> = existing ? JSON.parse(existing) : {};
+
+  if (existing) {
+    await backupConfig(hooksPath);
+  }
+
+  config.hooks = groupHooksByEvent(hooks);
+
+  await mkdirp(path.dirname(hooksPath));
+  await fs.writeFile(hooksPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
 export async function dryRunSync(

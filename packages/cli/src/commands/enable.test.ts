@@ -9,12 +9,12 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
-// Import the module under test (doesn't exist yet - tests will fail)
 import {
   enableSkillOrMcp,
   type EnableOptions,
   type EnableResult,
 } from "./enable.js";
+import * as pluginTakeover from "../core/plugin-takeover.js";
 
 describe("Enable Command", () => {
   let tempDir: string;
@@ -522,6 +522,106 @@ describe("Enable Command", () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Invalid tool");
+      });
+    });
+
+    describe("plugin release integration", () => {
+      it("triggers release when enabling the last disabled plugin skill", async () => {
+        // Set up manifest with a taken-over plugin where only one skill is disabled
+        const pluginManifest = {
+          version: "1.0",
+          skills: {
+            "cool-skill": {
+              state: "enabled",
+              pluginOrigin: { pluginId: "my-plugin@skillsmp", cachePath: "/fake" },
+            },
+            "other-skill": {
+              state: "disabled",
+              pluginOrigin: { pluginId: "my-plugin@skillsmp", cachePath: "/fake" },
+            },
+          },
+          mcps: {},
+          takenOverPlugins: {
+            "my-plugin@skillsmp": {
+              version: "1.0.0",
+              cachePath: "/fake",
+              allSkills: ["cool-skill", "other-skill"],
+            },
+          },
+        };
+        await fs.writeFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          yamlStringify(pluginManifest),
+          "utf-8"
+        );
+
+        const setEnabledSpy = vi.spyOn(pluginTakeover, "setPluginEnabled").mockResolvedValue(undefined);
+        const syncSpy = vi.spyOn(pluginTakeover, "syncPluginSymlinks").mockResolvedValue({ created: [], removed: [] });
+
+        const result = await enableSkillOrMcp({
+          name: "other-skill",
+          global: true,
+          globalPath: globalMyceliumPath,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pluginReleased).toBe(true);
+        expect(setEnabledSpy).toHaveBeenCalledWith("my-plugin@skillsmp", true);
+        expect(syncSpy).toHaveBeenCalled();
+
+        // Verify takenOverPlugins was cleaned up
+        const manifest = yamlParse(await fs.readFile(path.join(globalMyceliumPath, "manifest.yaml"), "utf-8"));
+        expect(manifest.takenOverPlugins).toBeUndefined();
+        expect(manifest.skills?.["cool-skill"]?.pluginOrigin).toBeUndefined();
+
+        setEnabledSpy.mockRestore();
+        syncSpy.mockRestore();
+      });
+
+      it("does NOT release when some plugin skills are still disabled", async () => {
+        const pluginManifest = {
+          version: "1.0",
+          skills: {
+            "cool-skill": {
+              state: "disabled",
+              pluginOrigin: { pluginId: "my-plugin@skillsmp", cachePath: "/fake" },
+            },
+            "other-skill": {
+              state: "disabled",
+              pluginOrigin: { pluginId: "my-plugin@skillsmp", cachePath: "/fake" },
+            },
+          },
+          mcps: {},
+          takenOverPlugins: {
+            "my-plugin@skillsmp": {
+              version: "1.0.0",
+              cachePath: "/fake",
+              allSkills: ["cool-skill", "other-skill"],
+            },
+          },
+        };
+        await fs.writeFile(
+          path.join(globalMyceliumPath, "manifest.yaml"),
+          yamlStringify(pluginManifest),
+          "utf-8"
+        );
+
+        const setEnabledSpy = vi.spyOn(pluginTakeover, "setPluginEnabled").mockResolvedValue(undefined);
+        const syncSpy = vi.spyOn(pluginTakeover, "syncPluginSymlinks").mockResolvedValue({ created: [], removed: [] });
+
+        const result = await enableSkillOrMcp({
+          name: "cool-skill",
+          global: true,
+          globalPath: globalMyceliumPath,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.pluginReleased).toBeFalsy();
+        // setPluginEnabled should NOT have been called (plugin not released)
+        expect(setEnabledSpy).not.toHaveBeenCalled();
+
+        setEnabledSpy.mockRestore();
+        syncSpy.mockRestore();
       });
     });
   });

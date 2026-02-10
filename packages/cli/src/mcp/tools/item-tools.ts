@@ -19,7 +19,7 @@ const scopeSchema = z
 export function registerItemTools(server: McpServer): void {
   server.registerTool("mycelium_enable", {
     title: "Enable Item",
-    description: "Enable a skill, MCP, or plugin. Sets state to 'enabled' in manifest.",
+    description: "Enable a skill, MCP, or plugin. Sets state to 'enabled' in manifest. May release a taken-over plugin if all its skills are re-enabled (experimental).",
     inputSchema: { name: nameSchema, type: itemTypeSchema, scope: scopeSchema },
   }, async ({ name, scope }) => {
     const { enableSkillOrMcp } = await import("../../commands/enable.js");
@@ -32,7 +32,7 @@ export function registerItemTools(server: McpServer): void {
 
   server.registerTool("mycelium_disable", {
     title: "Disable Item",
-    description: "Disable a skill, MCP, or plugin. Sets state to 'disabled' in manifest.",
+    description: "Disable a skill, MCP, or plugin. Sets state to 'disabled' in manifest. For skills from Claude Code plugins, may trigger plugin takeover (experimental).",
     inputSchema: { name: nameSchema, type: itemTypeSchema, scope: scopeSchema },
   }, async ({ name, scope }) => {
     const { disableSkillOrMcp } = await import("../../commands/disable.js");

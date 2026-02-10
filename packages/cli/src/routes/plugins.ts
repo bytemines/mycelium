@@ -1,14 +1,9 @@
 import { Router } from "express";
 
-import { loadManifest } from "../core/migrator/index.js";
-import {
-  togglePlugin,
-} from "../core/marketplace-registry.js";
 import { enableSkillOrMcp } from "../commands/enable.js";
 import { disableSkillOrMcp } from "../commands/disable.js";
-import { buildPluginMap } from "./plugin-map.js";
 import { asyncHandler } from "./async-handler.js";
-import { getDisabledItems } from "../core/manifest-state.js";
+import { getLivePluginState } from "../core/plugin-state.js";
 
 import type { Express } from "express";
 import type { ToolId } from "@mycelish/core";
@@ -17,41 +12,46 @@ export function registerPluginsRoutes(app: Express): void {
   const router = Router();
 
   router.get("/", asyncHandler(async (_req, res) => {
-    const manifest = await loadManifest();
-    const pluginMap = buildPluginMap(manifest);
-    const disabledItems = await getDisabledItems(process.cwd());
-
-    const plugins = Array.from(pluginMap.entries()).map(([name, data]) => {
-      const parts: string[] = [];
-      if (data.skills.length) parts.push(`${data.skills.length} skills`);
-      if (data.agents.length) parts.push(`${data.agents.length} agents`);
-      if (data.commands.length) parts.push(`${data.commands.length} commands`);
-      if (data.hooks.length) parts.push(`${data.hooks.length} hooks`);
-      if (data.libs.length) parts.push(`${data.libs.length} libs`);
-      const allItems = [...data.skills, ...data.agents, ...data.commands, ...data.hooks, ...data.libs];
-      const allEnabled = allItems.every(i => !disabledItems.has(i));
-      return {
-        name,
-        marketplace: data.marketplace,
-        version: "",
-        description: parts.join(", "),
-        enabled: allEnabled,
-        skills: data.skills,
-        agents: data.agents,
-        commands: data.commands,
-        hooks: data.hooks,
-        libs: data.libs,
-        disabledItems: allItems.filter(i => disabledItems.has(i)),
-        installPath: "",
-      };
-    });
+    const plugins = await getLivePluginState(process.cwd());
     res.json(plugins);
   }));
 
   router.post("/toggle", asyncHandler(async (req, res) => {
     const { name, enabled } = req.body as { name: string; enabled: boolean };
-    await togglePlugin(name, enabled);
-    res.json({ success: true });
+
+    // Load plugin's items from live cache scan
+    const plugins = await getLivePluginState(process.cwd());
+    const plugin = plugins.find(p => p.name === name);
+    if (!plugin) {
+      res.status(404).json({ success: false, error: `Plugin '${name}' not found` });
+      return;
+    }
+
+    const allItems = [...plugin.skills, ...(plugin.agents ?? []), ...(plugin.commands ?? []), ...(plugin.hooks ?? []), ...(plugin.libs ?? [])];
+    const results = [];
+    let anyTakeover = false;
+    let anyReleased = false;
+
+    for (const itemName of allItems) {
+      const options = { name: itemName, global: true };
+      const result = enabled
+        ? await enableSkillOrMcp(options)
+        : await disableSkillOrMcp(options);
+      results.push(result);
+      if ((result as any).pluginTakeover) anyTakeover = true;
+      if ((result as any).pluginReleased) anyReleased = true;
+    }
+
+    const failures = results.filter(r => !r.success);
+    res.json({
+      success: failures.length === 0,
+      plugin: name,
+      enabled,
+      itemCount: allItems.length,
+      pluginTakeover: anyTakeover,
+      pluginReleased: anyReleased,
+      failures: failures.map(f => ({ name: f.name, error: f.error })),
+    });
   }));
 
   router.post("/:pluginName/items/:itemName/toggle", asyncHandler(async (req, res) => {
@@ -69,7 +69,16 @@ export function registerPluginsRoutes(app: Express): void {
       : await disableSkillOrMcp(options);
 
     if (result.success) {
-      res.json({ success: true, plugin: pluginName, item: itemName, enabled, type: result.type, level: result.level });
+      res.json({
+        success: true,
+        plugin: pluginName,
+        item: itemName,
+        enabled,
+        type: result.type,
+        level: result.level,
+        pluginTakeover: (result as any).pluginTakeover ?? false,
+        pluginReleased: (result as any).pluginReleased ?? false,
+      });
     } else {
       res.status(400).json({ success: false, error: result.error });
     }

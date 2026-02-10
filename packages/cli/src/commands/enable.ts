@@ -14,12 +14,15 @@ import {
   loadStateManifest,
   saveStateManifest,
   ensureItem,
+  findItemType,
   setItemInManifest,
   isValidToolId,
   resolveManifestDir,
   type ItemConfig,
   type ItemType,
 } from "../core/manifest-state.js";
+import { setPluginEnabled, syncPluginSymlinks } from "../core/plugin-takeover.js";
+import { scanPluginComponents } from "../core/plugin-scanner.js";
 
 // ============================================================================
 // Types
@@ -40,6 +43,7 @@ export interface EnableResult {
   level?: "global" | "project";
   tool?: ToolId;
   alreadyEnabled?: boolean;
+  pluginReleased?: boolean;
   message?: string;
   error?: string;
 }
@@ -72,10 +76,22 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     return { success: false, name, error };
   }
 
+  // Detect type from plugin cache if available
+  let typeHint: ItemType | undefined;
+  if (!tool && manifest.takenOverPlugins) {
+    for (const [, info] of Object.entries(manifest.takenOverPlugins)) {
+      try {
+        const components = await scanPluginComponents(info.cachePath);
+        const match = components.find(c => c.name === name);
+        if (match) { typeHint = match.type as ItemType; break; }
+      } catch { /* cache may not exist */ }
+    }
+  }
+
   // Find or auto-register item
-  const { type, config, autoRegistered } = ensureItem(manifest, name, "disabled");
+  const { type, config, autoRegistered } = ensureItem(manifest, name, "disabled", typeHint);
   if (autoRegistered) {
-    log.info({ scope: "manifest", op: "enable", msg: `Auto-registered '${name}' as skill in manifest`, item: name });
+    log.info({ scope: "manifest", op: "enable", msg: `Auto-registered '${name}' as ${type} in manifest`, item: name });
   }
 
   const level = isGlobal ? "global" : "project";
@@ -102,9 +118,56 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
   setItemInManifest(manifest, name, type, config);
   await saveStateManifest(manifestDir, manifest);
 
+  // Plugin release: check ALL taken-over plugins that contain this item.
+  // An item can exist in multiple plugins — release each one whose items are all enabled.
+  let pluginReleased = false;
+  if (!tool && manifest.takenOverPlugins) {
+    let manifestDirty = false;
+
+    for (const [pluginId, pluginEntry] of Object.entries(manifest.takenOverPlugins)) {
+      // Check if this item belongs to this plugin (check both allSkills and allComponents)
+      const allItems = [...(pluginEntry.allSkills ?? []), ...(pluginEntry.allComponents ?? [])];
+      if (!allItems.includes(name)) continue;
+
+      // Check ALL components are enabled (not just skills)
+      const allEnabled = allItems.every((itemName) => {
+        const found = findItemType(manifest, itemName);
+        if (!found) return true; // not registered = enabled by default
+        return found.config.state === "enabled" || found.config.state === undefined;
+      });
+
+      if (allEnabled) {
+        // Re-enable plugin in Claude Code settings and remove symlinks
+        await setPluginEnabled(pluginId, true);
+        delete manifest.takenOverPlugins![pluginId];
+        // Clean up pluginOrigin from ALL sections
+        for (const itemName of new Set(allItems)) {
+          for (const sectionName of ["skills", "agents", "commands", "hooks"] as const) {
+            const section = manifest[sectionName];
+            if (section && typeof section === "object" && itemName in section) {
+              delete (section as Record<string, any>)[itemName].pluginOrigin;
+            }
+          }
+        }
+        pluginReleased = true;
+        manifestDirty = true;
+        log.info({ scope: "plugin", op: "release", msg: `Released plugin: ${pluginId}`, item: pluginId, itemType: typeHint });
+      }
+    }
+
+    if (manifestDirty) {
+      if (Object.keys(manifest.takenOverPlugins!).length === 0) delete manifest.takenOverPlugins;
+      await saveStateManifest(manifestDir, manifest);
+    }
+
+    // Sync symlinks declaratively — handles both re-symlinking (partial release)
+    // and orphan cleanup (full release)
+    await syncPluginSymlinks(manifestDir);
+  }
+
   const toolMsg = tool ? ` for ${tool}` : "";
   log.info({ scope: "manifest", op: "enable", msg: `${type} '${name}' enabled${toolMsg}`, item: name, tool });
-  return { success: true, name, type, level, tool, message: `${type} '${name}' enabled${toolMsg}` };
+  return { success: true, name, type, level, tool, pluginReleased, message: `${type} '${name}' enabled${toolMsg}` };
 }
 
 function isAlreadyEnabled(config: ItemConfig, tool?: ToolId): boolean {
@@ -135,6 +198,9 @@ export const enableCommand = new Command("enable")
         console.log(result.message);
       } else {
         console.log(`\u2713 ${result.message}`);
+        if (result.pluginReleased) {
+          console.log(`  [experimental] Plugin released: all skills re-enabled, plugin restored in Claude Code`);
+        }
       }
     } else {
       console.error(`\u2717 Error: ${result.error}`);

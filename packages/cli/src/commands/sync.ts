@@ -34,6 +34,7 @@ import {
   resolveEnvVarsInMcps,
 } from "../core/mcp-injector.js";
 import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
+import { syncFilesToDir, type FileSyncStrategy } from "../core/file-syncer.js";
 import { startWatcher } from "../core/watcher.js";
 import { restoreBackups, dryRunSync } from "../core/sync-writer.js";
 import { getTracer, closeTracer } from "../core/global-tracer.js";
@@ -42,7 +43,9 @@ import {
   applyMachineOverrides,
   rescanOverrides,
 } from "../core/machine-overrides.js";
-import { getDisabledItems } from "../core/manifest-state.js";
+import { getDisabledItems, loadStateManifest } from "../core/manifest-state.js";
+import { scanPluginComponents } from "../core/plugin-scanner.js";
+import { PLUGIN_COMPONENT_DIRS } from "../core/plugin-takeover.js";
 
 // ============================================================================
 // Types
@@ -125,23 +128,63 @@ export async function syncTool(
   try {
     // 1. Sync skills via symlinks
     const skills = Object.values(mergedConfig.skills);
-    const skillResult = await syncSkillsToTool(skills, toolSkillsDir);
+    const skillResult = await syncSkillsToTool(skills, toolSkillsDir, { removeOrphans: true });
     const skillsCount =
       skillResult.created.length +
       skillResult.updated.length +
       skillResult.unchanged.length;
 
-    // 2. Filter and resolve MCPs for this tool
+    // 2. Sync agents via file-syncer
+    let agentsCount = 0;
+    if (desc.capabilities.includes("agents")) {
+      const agentsDir = resolvePath(desc.paths.agents);
+      if (agentsDir) {
+        const agents = Object.values(mergedConfig.agents).map(a => ({
+          name: a.name, path: a.path, state: a.state,
+        }));
+        const agentResult = await syncFilesToDir(agents, agentsDir, { type: "symlink" }, { removeOrphans: true });
+        agentsCount = agentResult.created.length + agentResult.updated.length + agentResult.unchanged.length;
+      }
+    }
+
+    // 3. Sync rules via file-syncer
+    let rulesCount = 0;
+    if (desc.capabilities.includes("rules")) {
+      const rulesDir = resolvePath(desc.paths.rules);
+      if (rulesDir) {
+        const rules = Object.values(mergedConfig.rules).map(r => ({
+          name: r.name, path: r.path, state: r.state,
+        }));
+        const strategy: FileSyncStrategy = desc.id === "vscode" ? { type: "symlink" } : { type: "copy" };
+        const rulesResult = await syncFilesToDir(rules, rulesDir, strategy, { removeOrphans: true });
+        rulesCount = rulesResult.created.length + rulesResult.updated.length + rulesResult.unchanged.length;
+      }
+    }
+
+    // 4. Sync commands via file-syncer
+    let commandsCount = 0;
+    if (desc.capabilities.includes("commands")) {
+      const commandsDir = resolvePath(desc.paths.commands);
+      if (commandsDir) {
+        const commands = Object.values(mergedConfig.commands).map(c => ({
+          name: c.name, path: c.path, state: c.state,
+        }));
+        const cmdResult = await syncFilesToDir(commands, commandsDir, { type: "symlink" }, { removeOrphans: true });
+        commandsCount = cmdResult.created.length + cmdResult.updated.length + cmdResult.unchanged.length;
+      }
+    }
+
+    // 5. Filter and resolve MCPs for this tool
     const filteredMcps = filterMcpsForTool(mergedConfig.mcps, toolId);
     const resolvedMcps = resolveEnvVarsInMcps(filteredMcps, envVars);
     const mcpsCount = Object.keys(resolvedMcps).length;
 
-    // 3. Sync MCPs via tool adapter (CLI-first, file fallback)
+    // 6. Sync MCPs via tool adapter (CLI-first, file fallback)
     const { getAdapter } = await import("../core/tool-adapter.js");
     const adapter = getAdapter(toolId);
     await adapter.syncAll(resolvedMcps);
 
-    // 4. Sync memory files
+    // 7. Sync memory files
     const memoryResult = await syncMemoryToTool(toolId);
 
     if (!memoryResult.success) {
@@ -150,12 +193,15 @@ export async function syncTool(
         status: "error",
         skillsCount,
         mcpsCount,
+        agentsCount,
+        rulesCount,
+        commandsCount,
         memoryFiles: [],
         error: memoryResult.error,
       };
     }
 
-    // 5. Get memory files for status reporting
+    // 8. Get memory files for status reporting
     const memoryFiles = await getMemoryFilesForTool(toolId);
 
     return {
@@ -163,6 +209,9 @@ export async function syncTool(
       status: "synced",
       skillsCount,
       mcpsCount,
+      agentsCount,
+      rulesCount,
+      commandsCount,
       memoryFiles: memoryFiles.map((f) => f.filename),
       lastSync: new Date(),
     };
@@ -172,6 +221,9 @@ export async function syncTool(
       status: "error",
       skillsCount: 0,
       mcpsCount: 0,
+      agentsCount: 0,
+      rulesCount: 0,
+      commandsCount: 0,
       memoryFiles: [],
       error: error instanceof Error ? error.message : String(error),
     };
@@ -228,7 +280,7 @@ export async function syncAll(
   // Apply manifest state filtering — remove disabled/deleted items from sync
   const disabledItems = await getDisabledItems(projectRoot);
 
-  // Filter disabled skills and MCPs from merged config
+  // Filter disabled skills, MCPs, agents, rules, and commands from merged config
   for (const name of disabledItems) {
     if (mergedConfig.skills[name]) {
       log.info({ scope: "skill", op: "filter", msg: `Skipped disabled skill: ${name}`, item: name, state: "disabled" });
@@ -237,6 +289,52 @@ export async function syncAll(
     if (mergedConfig.mcps[name]) {
       log.info({ scope: "mcp", op: "filter", msg: `Skipped disabled MCP: ${name}`, item: name, state: "disabled" });
       delete mergedConfig.mcps[name];
+    }
+    if (mergedConfig.agents[name]) {
+      log.info({ scope: "agent", op: "filter", msg: `Skipped disabled agent: ${name}`, item: name, state: "disabled" });
+      delete mergedConfig.agents[name];
+    }
+    if (mergedConfig.rules[name]) {
+      log.info({ scope: "rule", op: "filter", msg: `Skipped disabled rule: ${name}`, item: name, state: "disabled" });
+      delete mergedConfig.rules[name];
+    }
+    if (mergedConfig.commands[name]) {
+      log.info({ scope: "command", op: "filter", msg: `Skipped disabled command: ${name}`, item: name, state: "disabled" });
+      delete mergedConfig.commands[name];
+    }
+  }
+
+  // Inject ALL component types from taken-over plugins (skills, agents, commands)
+  const globalManifest = await loadStateManifest(expandPath("~/.mycelium"));
+  if (globalManifest?.takenOverPlugins) {
+    for (const [pluginId, pluginInfo] of Object.entries(globalManifest.takenOverPlugins)) {
+      try {
+        const components = await scanPluginComponents(pluginInfo.cachePath);
+        for (const comp of components) {
+          if (!(comp.type in PLUGIN_COMPONENT_DIRS)) continue;
+          if (disabledItems.has(comp.name)) continue;
+
+          if (comp.type === "skill") {
+            if (mergedConfig.skills[comp.name]) continue;
+            mergedConfig.skills[comp.name] = {
+              name: comp.name,
+              path: path.dirname(comp.path),
+              manifest: { name: comp.name, state: "enabled" },
+            } as any;
+            log.info({ scope: "skill", op: "inject", msg: `Injected plugin skill: ${comp.name} from ${pluginId}`, item: comp.name, source: `plugin:${pluginId}` });
+          } else if (comp.type === "agent") {
+            if (mergedConfig.agents[comp.name]) continue;
+            mergedConfig.agents[comp.name] = { name: comp.name, path: comp.path, state: "enabled" };
+            log.info({ scope: "agent", op: "inject", msg: `Injected plugin agent: ${comp.name} from ${pluginId}`, item: comp.name, source: `plugin:${pluginId}` });
+          } else if (comp.type === "command") {
+            if (mergedConfig.commands[comp.name]) continue;
+            mergedConfig.commands[comp.name] = { name: comp.name, path: comp.path, state: "enabled" };
+            log.info({ scope: "command", op: "inject", msg: `Injected plugin command: ${comp.name} from ${pluginId}`, item: comp.name, source: `plugin:${pluginId}` });
+          }
+        }
+      } catch {
+        log.warn({ scope: "plugin", op: "inject", msg: `Failed to scan plugin cache for ${pluginId}`, item: pluginId });
+      }
     }
   }
 
@@ -364,7 +462,7 @@ export const syncCommand = new Command("sync")
       for (const toolStatus of result.tools) {
         const statusIcon = toolStatus.status === "synced" ? "\u2713" : "\u2717";
         console.log(
-          `${statusIcon} ${toolStatus.tool}: ${toolStatus.skillsCount} skills, ${toolStatus.mcpsCount} MCPs`
+          `${statusIcon} ${toolStatus.tool}: ${toolStatus.skillsCount} skills, ${toolStatus.mcpsCount} MCPs, ${toolStatus.agentsCount} agents, ${toolStatus.rulesCount} rules, ${toolStatus.commandsCount} commands`
         );
       }
     }
@@ -394,7 +492,7 @@ export const syncCommand = new Command("sync")
         for (const toolStatus of watchResult.tools) {
           const statusIcon = toolStatus.status === "synced" ? "\u2713" : "\u2717";
           console.log(
-            `${statusIcon} ${toolStatus.tool}: ${toolStatus.skillsCount} skills, ${toolStatus.mcpsCount} MCPs`
+            `${statusIcon} ${toolStatus.tool}: ${toolStatus.skillsCount} skills, ${toolStatus.mcpsCount} MCPs, ${toolStatus.agentsCount} agents, ${toolStatus.rulesCount} rules, ${toolStatus.commandsCount} commands`
           );
         }
       });

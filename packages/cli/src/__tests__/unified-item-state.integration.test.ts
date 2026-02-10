@@ -74,6 +74,9 @@ function baseMergedConfig(
   return {
     mcps,
     skills,
+    agents: {},
+    rules: {},
+    commands: {},
     memory: { scopes: { shared: { syncTo: [], path: "", files: [] }, coding: { syncTo: [], path: "", files: [] }, personal: { syncTo: [], path: "", files: [] } } },
     sources: {},
   };

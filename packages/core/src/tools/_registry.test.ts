@@ -70,17 +70,18 @@ describe("toolsWithCapability", () => {
     expect(toolsWithCapability("mcp")).toHaveLength(9);
   });
 
-  it("returns only claude-code for hooks", () => {
+  it("returns tools with hooks capability", () => {
     const hooks = toolsWithCapability("hooks");
-    expect(hooks).toHaveLength(1);
-    expect(hooks[0].id).toBe("claude-code");
+    expect(hooks).toHaveLength(6);
+    const ids = hooks.map(t => t.id).sort();
+    expect(ids).toEqual(["claude-code", "codex", "cursor", "gemini-cli", "openclaw", "opencode"]);
   });
 
-  it("returns cursor and vscode for rules", () => {
+  it("returns tools with rules capability", () => {
     const rules = toolsWithCapability("rules");
-    expect(rules).toHaveLength(2);
+    expect(rules).toHaveLength(4);
     const ids = rules.map(t => t.id).sort();
-    expect(ids).toEqual(["cursor", "vscode"]);
+    expect(ids).toEqual(["aider", "codex", "cursor", "vscode"]);
   });
 });
 

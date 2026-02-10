@@ -90,6 +90,27 @@ The skill is automatically synced to your AI tools via `mycelium sync`.
    - What happened instead
    - The report file contents (or attach the file)
 
+## Debugging Plugin Takeover
+
+Plugin takeover lets Mycelium manage individual components from Claude Code plugins. Use these queries to debug issues:
+
+```bash
+# All plugin operations (takeover, release, symlink create/remove)
+mycelium report --scope plugin --since 1h --format table
+
+# Filter by operation type
+mycelium report --op takeover --format table
+mycelium report --op symlink-create,symlink-remove --format table
+
+# Health check results from doctor
+mycelium report --op health-check --scope plugin --format table
+
+# All operations on a specific plugin
+mycelium report --item superpowers@skillsmp --since 1d
+```
+
+Run `mycelium doctor` to check 8 plugin invariants: symlink validity, disabled/enabled state, settings.json consistency, cache matching, phantom entries, and orphaned symlinks.
+
 ## Trace Snapshots
 
 When an error occurs, Mycelium automatically saves a trace snapshot to:

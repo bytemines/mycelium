@@ -97,6 +97,9 @@ describe("Sync Command", () => {
         personal: { syncTo: ["openclaw"], path: "", files: [] },
       },
     },
+    agents: {},
+    rules: {},
+    commands: {},
     sources: {},
   };
 

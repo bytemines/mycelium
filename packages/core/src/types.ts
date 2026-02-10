@@ -110,6 +110,9 @@ export interface ToolSyncStatus {
   status: SyncStatus;
   skillsCount: number;
   mcpsCount: number;
+  agentsCount: number;
+  rulesCount: number;
+  commandsCount: number;
   memoryFiles: string[];
   lastSync?: Date;
   error?: string;
@@ -155,9 +158,18 @@ export interface TeamConfig {
 
 export type ConfigLevel = "global" | "machine" | "project";
 
+export interface FileItem {
+  name: string;
+  path: string;
+  state?: ItemState;
+}
+
 export interface MergedConfig {
   mcps: Record<string, McpServerConfig>;
   skills: Record<string, Skill>;
+  agents: Record<string, FileItem>;
+  rules: Record<string, FileItem>;
+  commands: Record<string, FileItem>;
   memory: MemoryConfig;
   sources: Record<string, ConfigLevel>;
 }

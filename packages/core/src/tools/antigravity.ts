@@ -15,6 +15,7 @@ export const antigravity: ToolDescriptor = {
     projectAgents: ".agent/",
     rules: null,
     hooks: null,
+    commands: null,
     backupDirs: ["~/.gemini/antigravity"],
   },
   mcp: { format: "json", key: "mcpServers", entryShape: "standard" },

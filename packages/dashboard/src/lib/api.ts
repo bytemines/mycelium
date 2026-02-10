@@ -72,12 +72,13 @@ export async function fetchPlugins(marketplace?: string): Promise<PluginInfo[]> 
   return res.json();
 }
 
-export async function togglePlugin(name: string, enabled: boolean): Promise<void> {
-  await fetch(`/api/plugins/toggle`, {
+export async function togglePlugin(name: string, enabled: boolean): Promise<{ success: boolean }> {
+  const res = await fetch(`/api/plugins/toggle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, enabled }),
   });
+  return res.json();
 }
 
 export async function togglePluginItem(

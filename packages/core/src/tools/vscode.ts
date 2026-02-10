@@ -19,6 +19,7 @@ export const vscode: ToolDescriptor = {
     projectAgents: ".github/agents/",
     rules: ".github/instructions/",
     hooks: null,
+    commands: null,
     backupDirs: [],
   },
   mcp: { format: "jsonc", key: "servers", entryShape: "vscode" },
