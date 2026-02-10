@@ -31,6 +31,7 @@ graph LR
         direction TB
         Sync["sync"] ~~~ Migrate["migrate"]
         Doctor["doctor"] ~~~ Serve["serve"]
+        MCP["mcp server"]
     end
 
     subgraph Core["🧠 Core"]
@@ -48,6 +49,7 @@ graph LR
     Dashboard -- REST API --> CLI
     CLI --> Core
     Core -- symlinks & overlays --> Tools
+    Tools -- MCP protocol --> CLI
 
     classDef dashboard fill:#6366f1,stroke:#4f46e5,color:#fff,font-weight:bold
     classDef cli fill:#10b981,stroke:#059669,color:#fff,font-weight:bold
@@ -55,13 +57,14 @@ graph LR
     classDef tools fill:#ec4899,stroke:#db2777,color:#fff,font-weight:bold
 
     class Graph,Wizard,Browser dashboard
-    class Sync,Doctor,Migrate,Serve cli
+    class Sync,Doctor,Migrate,Serve,MCP cli
     class Merger,Memory,Router,Registry core
     class CC,CX,GM,OC,OW,AI tools
 
     linkStyle 0 stroke:#6366f1,stroke-width:2px
     linkStyle 1 stroke:#10b981,stroke-width:2px
     linkStyle 2 stroke:#f59e0b,stroke-width:2px
+    linkStyle 3 stroke:#ec4899,stroke-width:2px,stroke-dasharray:5
 ```
 
 ## ✨ Features
@@ -78,6 +81,7 @@ graph LR
 | 🔌 | **Pluggable Marketplace** | Add/remove sources dynamically; manage plugins from CLI or dashboard |
 | 💻 | **Multi-PC Sync** | Git-based push/pull with machine overrides and env templates |
 | 🩺 | **Doctor** | Health checks for MCP connectivity, tool versions, and memory |
+| 🔌 | **MCP Server** | Exposes Mycelium as an MCP -- any AI tool can manage configs, memory, and marketplace |
 
 ## 🚀 Quick Start
 
@@ -131,6 +135,7 @@ Alias: `myc` (e.g., `myc sync`)
 | `mycelium env list / setup` | Manage environment variables |
 | `mycelium add / remove / enable / disable` | Unified item management (skills, MCPs, plugins) |
 | `mycelium report [--tool] [--scope] [--item]` | Query traces, generate bug reports |
+| `mycelium mcp` | Start MCP server (auto-registered in all tools by `init`) |
 | `mycelium serve` | Start dashboard API server (port 3378) |
 
 ## 🔧 Supported Tools
@@ -157,6 +162,17 @@ Launch with `mycelium serve`, then open `http://localhost:3378`:
 - **Marketplace Browser** — Search and install from configured sources
 - **Plugin Management** — Click plugin nodes for detail panels
 
+## 🔌 MCP Server
+
+Mycelium registers itself as an MCP server in all detected tools during `mycelium init`. This means any AI tool can:
+
+- **Manage config** — sync, enable/disable MCPs and skills, run doctor
+- **Read/write memory** — shared memory accessible from any tool
+- **Search marketplace** — find and install new skills and MCPs
+- **Query traces** — debug issues directly from the AI tool
+
+See [MCP Server docs](docs/MCP-SERVER.md) for the full tool reference and examples.
+
 ## 🔍 Troubleshooting
 
 | Problem | Solution |
@@ -181,6 +197,7 @@ Launch with `mycelium serve`, then open `http://localhost:3378`:
 | [Multi-PC Sync](docs/MULTI-PC.md) | Git-based sync, machine overrides, env templates |
 | [Migration Guide](docs/MIGRATION.md) | Detailed migration workflow, strategies, and cleanup |
 | [Reporting Issues](docs/reporting-issues.md) | How to use traces, AI debug skill, and file bug reports |
+| [MCP Server](docs/MCP-SERVER.md) | Using Mycelium as an MCP server -- tools, resources, prompts |
 | [Contributing](CLAUDE.md) | Developer guide: structure, conventions, testing |
 
 ## 📄 License

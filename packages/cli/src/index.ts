@@ -22,6 +22,7 @@ import { serveCommand } from "./commands/serve.js";
 import { pushCommand, pullCommand, envCommand } from "./commands/remote.js";
 import { removeCommand } from "./commands/remove.js";
 import { reportCommand } from "./commands/report.js";
+import { mcpCommand } from "./commands/mcp.js";
 
 const program = new Command();
 
@@ -51,5 +52,6 @@ program.addCommand(pullCommand);
 program.addCommand(envCommand);
 program.addCommand(removeCommand);
 program.addCommand(reportCommand);
+program.addCommand(mcpCommand);
 
 program.parse();

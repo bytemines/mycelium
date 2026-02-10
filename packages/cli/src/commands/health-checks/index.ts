@@ -8,7 +8,7 @@ export {
   checkMcpConfigYaml,
   checkOrphanedConfigs,
 } from "./config-check.js";
-export { checkMcpServerConnectivity } from "./mcp-check.js";
+export { checkMcpServerConnectivity, checkSelfRegistration } from "./mcp-check.js";
 export {
   checkMemoryFilesExist,
   checkMemoryFileSize,
