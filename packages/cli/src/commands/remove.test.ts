@@ -1,121 +1,196 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
 vi.mock("node:fs/promises", () => ({
-  unlink: vi.fn(),
+  readFile: vi.fn(),
   writeFile: vi.fn(),
-  readdir: vi.fn(),
+  access: vi.fn(),
 }));
 
-vi.mock("../core/fs-helpers.js", () => ({
-  readFileIfExists: vi.fn(),
-  mkdirp: vi.fn(),
-  MYCELIUM_HOME: "/mock/home/.mycelium",
+vi.mock("@mycelish/core", () => ({
+  expandPath: vi.fn((p: string) => p.replace("~", "/mock/home")),
 }));
 
-vi.mock("../core/migrator/index.js", () => ({
-  loadManifest: vi.fn(),
-  saveManifest: vi.fn(),
-}));
+const MANIFEST_DIR = "/test/project/.mycelium";
 
 describe("remove command", () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
-  describe("removeSkill", () => {
-    it("removes a skill that exists in manifest", async () => {
-      const { loadManifest, saveManifest } = await import("../core/migrator/index.js");
-      vi.mocked(loadManifest).mockResolvedValue({
-        entries: [{ type: "skill", name: "my-skill", source: "local" }],
-      } as any);
-      vi.mocked(saveManifest).mockResolvedValue(undefined);
+  describe("removeItem", () => {
+    it("sets state: deleted on a skill", async () => {
+      const yaml = await import("yaml");
+      const manifest = {
+        version: "1",
+        skills: { "my-skill": { enabled: true, source: "local" } },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-      const { removeSkill } = await import("./remove.js");
-      const result = await removeSkill("my-skill");
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("my-skill", { manifestDir: MANIFEST_DIR });
 
-      expect(result.removed).toBe(true);
-      expect(saveManifest).toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.section).toBe("skill");
+
+      // Verify saved manifest has state: deleted
+      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
+      expect(writeCall[0]).toBe(path.join(MANIFEST_DIR, "manifest.yaml"));
+      const saved = yaml.parse(writeCall[1] as string);
+      expect(saved.skills["my-skill"].state).toBe("deleted");
     });
 
-    it("returns error when skill not in manifest", async () => {
-      const { loadManifest } = await import("../core/migrator/index.js");
-      vi.mocked(loadManifest).mockResolvedValue({ entries: [] } as any);
+    it("sets state: deleted on an MCP", async () => {
+      const yaml = await import("yaml");
+      const manifest = {
+        version: "1",
+        mcps: { "my-mcp": { command: "npx", source: "local" } },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-      const { removeSkill } = await import("./remove.js");
-      const result = await removeSkill("nonexistent");
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("my-mcp", { manifestDir: MANIFEST_DIR });
 
-      expect(result.removed).toBe(false);
+      expect(result.success).toBe(true);
+      expect(result.section).toBe("mcp");
+
+      const saved = yaml.parse(vi.mocked(fs.writeFile).mock.calls[0][1] as string);
+      expect(saved.mcps["my-mcp"].state).toBe("deleted");
+    });
+
+    it("sets state: deleted on a hook", async () => {
+      const yaml = await import("yaml");
+      const manifest = {
+        version: "1",
+        hooks: { "my-hook": { event: "PreToolUse" } },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("my-hook", { manifestDir: MANIFEST_DIR });
+
+      expect(result.success).toBe(true);
+      expect(result.section).toBe("hook");
+    });
+
+    it("returns error when item not found", async () => {
+      const yaml = await import("yaml");
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify({ version: "1", skills: {} }));
+
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("nonexistent", { manifestDir: MANIFEST_DIR });
+
+      expect(result.success).toBe(false);
       expect(result.error).toContain("not found");
+    });
+
+    it("returns error when manifest cannot be loaded", async () => {
+      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("anything", { manifestDir: MANIFEST_DIR });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Could not load manifest");
+    });
+
+    it("returns collision error when name exists in multiple sections", async () => {
+      const yaml = await import("yaml");
+      const manifest = {
+        version: "1",
+        skills: { "shared-name": { source: "local" } },
+        mcps: { "shared-name": { command: "npx" } },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
+
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("shared-name", { manifestDir: MANIFEST_DIR });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("multiple sections");
+      expect(result.error).toContain("--type");
+    });
+
+    it("resolves collision with --type flag", async () => {
+      const yaml = await import("yaml");
+      const manifest = {
+        version: "1",
+        skills: { "shared-name": { source: "local" } },
+        mcps: { "shared-name": { command: "npx" } },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("shared-name", { type: "mcp", manifestDir: MANIFEST_DIR });
+
+      expect(result.success).toBe(true);
+      expect(result.section).toBe("mcp");
+
+      const saved = yaml.parse(vi.mocked(fs.writeFile).mock.calls[0][1] as string);
+      expect(saved.mcps["shared-name"].state).toBe("deleted");
+      // Skill should be untouched
+      expect(saved.skills["shared-name"].state).toBeUndefined();
+    });
+
+    it("returns error for invalid --type", async () => {
+      const yaml = await import("yaml");
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify({ version: "1", skills: { x: {} } }));
+
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("x", { type: "bogus", manifestDir: MANIFEST_DIR });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Invalid type");
     });
   });
 
-  describe("removeMcp", () => {
-    it("removes an MCP from mcps.yaml", async () => {
-      const { readFileIfExists } = await import("../core/fs-helpers.js");
-      const { loadManifest, saveManifest } = await import("../core/migrator/index.js");
-      const fs = await import("node:fs/promises");
-
-      vi.mocked(readFileIfExists).mockResolvedValue("my-mcp:\n  command: npx\n");
-      vi.mocked(loadManifest).mockResolvedValue({ entries: [{ type: "mcp", name: "my-mcp", source: "local" }] } as any);
-      vi.mocked(saveManifest).mockResolvedValue(undefined);
+  describe("removeBySource", () => {
+    it("marks all items from a source as deleted", async () => {
+      const yaml = await import("yaml");
+      const manifest = {
+        version: "1",
+        skills: {
+          "skill-a": { source: "my-plugin" },
+          "skill-b": { source: "my-plugin" },
+          "skill-c": { source: "other" },
+        },
+        mcps: {
+          "mcp-a": { source: "my-plugin", command: "npx" },
+        },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-      const { removeMcp } = await import("./remove.js");
-      const result = await removeMcp("my-mcp");
+      const { removeBySource } = await import("./remove.js");
+      const result = await removeBySource("my-plugin", { manifestDir: MANIFEST_DIR });
 
-      expect(result.removed).toBe(true);
-      expect(fs.writeFile).toHaveBeenCalled();
+      expect(result.removed).toHaveLength(3);
+      expect(result.removed).toContain("skill: skill-a");
+      expect(result.removed).toContain("skill: skill-b");
+      expect(result.removed).toContain("mcp: mcp-a");
+      expect(result.errors).toHaveLength(0);
+
+      const saved = yaml.parse(vi.mocked(fs.writeFile).mock.calls[0][1] as string);
+      expect(saved.skills["skill-a"].state).toBe("deleted");
+      expect(saved.skills["skill-b"].state).toBe("deleted");
+      expect(saved.skills["skill-c"].state).toBeUndefined();
+      expect(saved.mcps["mcp-a"].state).toBe("deleted");
     });
 
-    it("returns error when mcps.yaml not found", async () => {
-      const { readFileIfExists } = await import("../core/fs-helpers.js");
-      vi.mocked(readFileIfExists).mockResolvedValue(null);
+    it("returns error when no items found for source", async () => {
+      const yaml = await import("yaml");
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify({ version: "1", skills: {} }));
 
-      const { removeMcp } = await import("./remove.js");
-      const result = await removeMcp("missing");
+      const { removeBySource } = await import("./remove.js");
+      const result = await removeBySource("nonexistent", { manifestDir: MANIFEST_DIR });
 
-      expect(result.removed).toBe(false);
-      expect(result.error).toContain("No mcps.yaml");
-    });
-
-    it("returns error when MCP not found in mcps.yaml", async () => {
-      const { readFileIfExists } = await import("../core/fs-helpers.js");
-      vi.mocked(readFileIfExists).mockResolvedValue("other-mcp:\n  command: node\n");
-
-      const { removeMcp } = await import("./remove.js");
-      const result = await removeMcp("nonexistent");
-
-      expect(result.removed).toBe(false);
-      expect(result.error).toContain("not found");
-    });
-  });
-
-  describe("removeHook", () => {
-    it("removes a hook from hooks.yaml", async () => {
-      const { readFileIfExists } = await import("../core/fs-helpers.js");
-      const { loadManifest, saveManifest } = await import("../core/migrator/index.js");
-      const fs = await import("node:fs/promises");
-
-      vi.mocked(readFileIfExists).mockResolvedValue("my-hook:\n  event: PreToolUse\n");
-      vi.mocked(loadManifest).mockResolvedValue({ entries: [{ type: "hook", name: "my-hook", source: "local" }] } as any);
-      vi.mocked(saveManifest).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-      const { removeHook } = await import("./remove.js");
-      const result = await removeHook("my-hook");
-
-      expect(result.removed).toBe(true);
-    });
-
-    it("returns error when hooks.yaml not found", async () => {
-      const { readFileIfExists } = await import("../core/fs-helpers.js");
-      vi.mocked(readFileIfExists).mockResolvedValue(null);
-
-      const { removeHook } = await import("./remove.js");
-      const result = await removeHook("missing");
-
-      expect(result.removed).toBe(false);
-      expect(result.error).toContain("No hooks.yaml");
+      expect(result.removed).toHaveLength(0);
+      expect(result.errors[0]).toContain("No items found");
     });
   });
 
@@ -125,13 +200,18 @@ describe("remove command", () => {
       expect(removeCommand.name()).toBe("remove");
     });
 
-    it("has skill, mcp, hook, plugin subcommands", async () => {
+    it("has plugin subcommand", async () => {
       const { removeCommand } = await import("./remove.js");
       const names = removeCommand.commands.map((c) => c.name());
-      expect(names).toContain("skill");
-      expect(names).toContain("mcp");
-      expect(names).toContain("hook");
       expect(names).toContain("plugin");
+    });
+
+    it("does not have old skill/mcp/hook subcommands", async () => {
+      const { removeCommand } = await import("./remove.js");
+      const names = removeCommand.commands.map((c) => c.name());
+      expect(names).not.toContain("skill");
+      expect(names).not.toContain("mcp");
+      expect(names).not.toContain("hook");
     });
   });
 });
