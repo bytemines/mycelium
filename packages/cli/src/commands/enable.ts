@@ -76,9 +76,16 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     return { success: false, name, error };
   }
 
-  // Detect type from plugin cache if available
+  // Load global config once (used for MCP type detection and later for re-adding)
+  const { loadGlobalConfig } = await import("../core/config-merger.js");
+  const globalConfig = await loadGlobalConfig();
+
+  // Detect MCP type from config files (mcps.yaml)
   let typeHint: ItemType | undefined;
-  if (!tool && manifest.takenOverPlugins) {
+  if (globalConfig.mcps?.[name]) typeHint = "mcp";
+
+  // Detect type from plugin cache if available
+  if (!typeHint && !tool && manifest.takenOverPlugins) {
     for (const [, info] of Object.entries(manifest.takenOverPlugins)) {
       try {
         const components = await scanPluginComponents(info.cachePath);
@@ -117,6 +124,22 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
 
   setItemInManifest(manifest, name, type, config);
   await saveStateManifest(manifestDir, manifest);
+
+  // Add MCP back to tool configs immediately
+  if (type === "mcp") {
+    const { getAdapter } = await import("../core/tool-adapter.js");
+    const mcpConfig = globalConfig.mcps?.[name];
+    if (mcpConfig) {
+      const toolIds = tool ? [tool] : ALL_TOOL_IDS.filter(tid => {
+        if (config.excludeTools?.includes(tid)) return false;
+        if (config.tools?.length && !config.tools.includes(tid)) return false;
+        return true;
+      });
+      for (const tid of toolIds) {
+        try { await getAdapter(tid).add(name, mcpConfig); } catch { /* tool may not be installed */ }
+      }
+    }
+  }
 
   // Plugin release: check ALL taken-over plugins that contain this item.
   // An item can exist in multiple plugins — release each one whose items are all enabled.
