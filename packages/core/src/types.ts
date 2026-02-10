@@ -95,7 +95,7 @@ export interface MachineOverridesFile {
 
 export interface Manifest {
   version: string;
-  tools: Record<ToolId, { enabled: boolean }>;
+  tools: Record<ToolId, { enabled: boolean; state?: ItemState }>;
   memory: MemoryConfig;
 }
 

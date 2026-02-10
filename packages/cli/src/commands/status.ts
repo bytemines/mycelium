@@ -338,7 +338,7 @@ export function formatStatusJson(
 ): string {
   return JSON.stringify(
     {
-      tools: statuses,
+      tools: options.showAll ? statuses : statuses.filter(s => (s as any).itemState !== "deleted"),
       config: {
         global: options.globalConfigPath,
         project: options.projectConfigPath,
