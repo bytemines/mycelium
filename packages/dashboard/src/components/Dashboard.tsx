@@ -109,7 +109,7 @@ export function Dashboard() {
     selectedPlugin, setSelectedPlugin,
     apiStatus, checkApiStatus,
     hasPendingChanges, syncBanner, triggerSync,
-    togglePlugin, togglePluginSkill, removeItem,
+    togglePlugin, removeItem,
   } = useDashboardStore();
 
 useEffect(() => {
@@ -208,7 +208,6 @@ useEffect(() => {
         plugin={selectedPlugin}
         onClose={() => setSelectedPlugin(null)}
         onTogglePlugin={togglePlugin}
-        onToggleSkill={togglePluginSkill}
         onRemoveItem={removeItem}
       />
     </div>
