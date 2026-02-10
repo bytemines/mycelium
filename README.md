@@ -129,7 +129,7 @@ Alias: `myc` (e.g., `myc sync`)
 | `mycelium marketplace plugins/enable/disable` | Manage installed plugins |
 | `mycelium push / pull` | Git-based multi-PC sync |
 | `mycelium env list / setup` | Manage environment variables |
-| `mycelium add / remove / enable / disable` | Manage skills, MCPs, plugins |
+| `mycelium add / remove / enable / disable` | Unified item management (skills, MCPs, plugins) |
 | `mycelium serve` | Start dashboard API server (port 3378) |
 
 ## 🔧 Supported Tools
