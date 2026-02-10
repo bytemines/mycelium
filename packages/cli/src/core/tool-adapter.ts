@@ -56,7 +56,7 @@ export class OpenClawAdapter extends BaseToolAdapter {
       }
 
       for (const [name, mcp] of Object.entries(mcps)) {
-        if (mcp.enabled === false) continue;
+        if (mcp.state && mcp.state !== "enabled") continue;
         const shaped: Record<string, unknown> = {
           type: "mcp-adapter",
           name,
@@ -130,7 +130,7 @@ export class AiderAdapter extends BaseToolAdapter {
 
       const mcpJson: Record<string, unknown> = { mcpServers: {} };
       for (const [name, mcp] of Object.entries(mcps)) {
-        if (mcp.enabled === false) continue;
+        if (mcp.state && mcp.state !== "enabled") continue;
         const entry: Record<string, unknown> = {
           type: "stdio",
           command: mcp.command,

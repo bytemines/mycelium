@@ -137,7 +137,7 @@ export class GenericAdapter extends BaseToolAdapter {
 
       const entries: Record<string, unknown> = {};
       for (const [name, mcp] of Object.entries(mcps)) {
-        if (mcp.enabled === false) continue;
+        if (mcp.state && mcp.state !== "enabled") continue;
         const shaped = this.shapeEntry(mcp);
         const prev = existingEntries[name];
         if (prev) {
@@ -283,7 +283,7 @@ export class GenericAdapter extends BaseToolAdapter {
 
     const mcpLines: string[] = [];
     for (const [name, mcp] of Object.entries(mcps)) {
-      if (mcp.enabled === false) continue;
+      if (mcp.state && mcp.state !== "enabled") continue;
       mcpLines.push(`[mcp.servers."${name}"]`);
       mcpLines.push(`command = "${mcp.command}"`);
       if (mcp.args?.length) {

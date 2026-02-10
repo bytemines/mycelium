@@ -88,7 +88,7 @@ export abstract class BaseToolAdapter implements ToolAdapter {
     if (await this.hasCli()) {
       const errors: string[] = [];
       for (const [name, config] of Object.entries(mcps)) {
-        if (config.enabled === false) continue;
+        if (config.state && config.state !== "enabled") continue;
         const result = await this.addViaCli(name, config);
         if (!result.success) errors.push(`${name}: ${result.error}`);
       }
