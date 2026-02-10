@@ -337,6 +337,7 @@ export interface PluginInfo {
   commands: string[];
   hooks: string[];
   libs: string[];
+  disabledItems?: string[];
   installPath: string;
   installedAt?: string;
   lastUpdated?: string;

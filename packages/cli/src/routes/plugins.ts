@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { Router } from "express";
 
 import { loadManifest } from "../core/migrator/index.js";
@@ -8,6 +9,9 @@ import { enableSkillOrMcp } from "../commands/enable.js";
 import { disableSkillOrMcp } from "../commands/disable.js";
 import { buildPluginMap } from "./plugin-map.js";
 import { asyncHandler } from "./async-handler.js";
+import { readFileIfExists } from "../core/fs-helpers.js";
+import { parse as yamlParse } from "yaml";
+import { expandPath } from "@mycelish/core";
 
 import type { Express } from "express";
 import type { ToolId } from "@mycelish/core";
@@ -18,6 +22,27 @@ export function registerPluginsRoutes(app: Express): void {
   router.get("/", asyncHandler(async (_req, res) => {
     const manifest = await loadManifest();
     const pluginMap = buildPluginMap(manifest);
+
+    // Load state manifest to determine disabled items
+    const disabledItems = new Set<string>();
+    for (const manifestPath of [
+      path.join(expandPath("~/.mycelium"), "manifest.yaml"),
+      path.join(process.cwd(), ".mycelium", "manifest.yaml"),
+    ]) {
+      const content = await readFileIfExists(manifestPath);
+      if (!content) continue;
+      const stateManifest = yamlParse(content);
+      for (const section of ["skills", "mcps", "hooks", "memory"]) {
+        const items = stateManifest?.[section];
+        if (!items || typeof items !== "object") continue;
+        for (const [itemName, config] of Object.entries(items)) {
+          const state = (config as any)?.state;
+          if (state === "disabled" || state === "deleted") disabledItems.add(itemName);
+          else if (state === "enabled") disabledItems.delete(itemName);
+        }
+      }
+    }
+
     const plugins = Array.from(pluginMap.entries()).map(([name, data]) => {
       const parts: string[] = [];
       if (data.skills.length) parts.push(`${data.skills.length} skills`);
@@ -25,17 +50,20 @@ export function registerPluginsRoutes(app: Express): void {
       if (data.commands.length) parts.push(`${data.commands.length} commands`);
       if (data.hooks.length) parts.push(`${data.hooks.length} hooks`);
       if (data.libs.length) parts.push(`${data.libs.length} libs`);
+      const allItems = [...data.skills, ...data.agents, ...data.commands, ...data.hooks, ...data.libs];
+      const allEnabled = allItems.every(i => !disabledItems.has(i));
       return {
         name,
         marketplace: data.marketplace,
         version: "",
         description: parts.join(", "),
-        enabled: true,
+        enabled: allEnabled,
         skills: data.skills,
         agents: data.agents,
         commands: data.commands,
         hooks: data.hooks,
         libs: data.libs,
+        disabledItems: allItems.filter(i => disabledItems.has(i)),
         installPath: "",
       };
     });
