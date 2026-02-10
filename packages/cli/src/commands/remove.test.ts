@@ -94,6 +94,7 @@ describe("remove command", () => {
 
     it("returns error when manifest cannot be loaded", async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
       const { removeItem } = await import("./remove.js");
       const result = await removeItem("anything", { manifestDir: MANIFEST_DIR });

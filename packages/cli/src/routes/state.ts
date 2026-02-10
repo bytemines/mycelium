@@ -5,29 +5,16 @@ import { parse as parseYaml } from "yaml";
 
 import { loadManifest } from "../core/migrator/index.js";
 import { detectInstalledTools } from "../core/tool-detector.js";
-import { getAdapter } from "../core/tool-adapter.js";
+import { enableSkillOrMcp } from "../commands/enable.js";
+import { disableSkillOrMcp } from "../commands/disable.js";
 import { MYCELIUM_HOME } from "../core/fs-helpers.js";
+import { getDisabledItems, ALL_ITEM_TYPES } from "../core/manifest-state.js";
+import { verifyItemState } from "../core/state-verifier.js";
 import { buildPluginMap } from "./plugin-map.js";
 import { asyncHandler } from "./async-handler.js";
 
-import type { ToolId, McpServerConfig } from "@mycelish/core";
+import type { ToolId } from "@mycelish/core";
 import type { Express } from "express";
-
-const DISABLED_MCPS_FILE = path.join(MYCELIUM_HOME, "disabled-mcps.json");
-
-async function loadDisabledMcps(): Promise<Record<string, ToolId[]>> {
-  try {
-    const content = await fs.readFile(DISABLED_MCPS_FILE, "utf-8");
-    return JSON.parse(content);
-  } catch {
-    return {};
-  }
-}
-
-async function saveDisabledMcps(disabled: Record<string, ToolId[]>): Promise<void> {
-  await fs.mkdir(path.dirname(DISABLED_MCPS_FILE), { recursive: true });
-  await fs.writeFile(DISABLED_MCPS_FILE, JSON.stringify(disabled, null, 2), "utf-8");
-}
 
 export function registerStateRoutes(app: Express): void {
   const stateRouter = Router();
@@ -44,29 +31,32 @@ export function registerStateRoutes(app: Express): void {
       installed: t.installed,
     }));
 
+    // Load disabled items from manifest.yaml (single source of truth)
+    const disabledItems = await getDisabledItems(process.cwd());
+
     const skillsDir = path.join(MYCELIUM_HOME, "global", "skills");
-    let skills: Array<{ name: string; status: "synced"; enabled: boolean; connectedTools: ToolId[] }> = [];
+    let skills: Array<{ name: string; status: "synced" | "disabled"; enabled: boolean; connectedTools: ToolId[] }> = [];
     try {
       const entries = await fs.readdir(skillsDir);
-      skills = entries.map((name) => ({
-        name,
-        status: "synced" as const,
-        enabled: true,
-        connectedTools: installedToolIds,
-      }));
+      skills = entries
+        .filter((name) => !disabledItems.has(name))
+        .map((name) => ({
+          name,
+          status: "synced" as const,
+          enabled: true,
+          connectedTools: installedToolIds,
+        }));
     } catch {
       // directory doesn't exist yet
     }
 
-    const disabledMcps = await loadDisabledMcps();
     let mcps: Array<{ name: string; status: "synced" | "disabled"; enabled: boolean; connectedTools: ToolId[] }> = [];
     try {
       const mcpContent = await fs.readFile(path.join(MYCELIUM_HOME, "global", "mcps.yaml"), "utf-8");
       const parsed = parseYaml(mcpContent) as Record<string, unknown> | null;
       if (parsed && typeof parsed === "object") {
         mcps = Object.keys(parsed).map((name) => {
-          const disabledFor = disabledMcps[name] || [];
-          const enabled = disabledFor.length === 0;
+          const enabled = !disabledItems.has(name);
           return {
             name,
             status: enabled ? "synced" as const : "disabled" as const,
@@ -133,9 +123,9 @@ export function registerStateRoutes(app: Express): void {
     res.json({ migrated, configExists, snapshotCount });
   }));
 
-  // POST /api/toggle
+  // POST /api/toggle — uses enable/disable commands (writes to manifest.yaml)
   toggleRouter.post("/", asyncHandler(async (req, res) => {
-    const { type, name, toolId, enabled } = req.body as {
+    const { type, name, enabled } = req.body as {
       type: string;
       name: string;
       toolId?: string;
@@ -147,55 +137,34 @@ export function registerStateRoutes(app: Express): void {
       return;
     }
 
-    if (!["mcp", "skill", "memory"].includes(type)) {
-      res.status(400).json({ error: `Invalid type: ${type}. Must be mcp, skill, or memory` });
+    if (!ALL_ITEM_TYPES.includes(type as any)) {
+      res.status(400).json({ error: `Invalid type: ${type}. Must be one of: ${ALL_ITEM_TYPES.join(", ")}` });
       return;
     }
 
-    if (type !== "mcp") {
-      res.json({ success: true, action: req.body, message: "Only MCP toggles are supported" });
-      return;
-    }
+    const options = { name, global: true };
+    const result = enabled
+      ? await enableSkillOrMcp(options)
+      : await disableSkillOrMcp(options);
 
-    const targetTool = toolId || "claude-code";
-    const adapter = getAdapter(targetTool as ToolId);
-    const disabledMcps = await loadDisabledMcps();
-
-    if (enabled) {
-      const mcpContent = await fs.readFile(path.join(MYCELIUM_HOME, "global", "mcps.yaml"), "utf-8");
-      const parsed = parseYaml(mcpContent) as Record<string, Record<string, unknown>> | null;
-      const mcpConfig = parsed?.[name];
-
-      if (mcpConfig) {
-        const config: McpServerConfig = {
-          command: mcpConfig.command as string,
-          args: mcpConfig.args as string[] | undefined,
-          env: mcpConfig.env as Record<string, string> | undefined,
-        };
-        const result = await adapter.add(name, config);
-
-        if (disabledMcps[name]) {
-          disabledMcps[name] = disabledMcps[name].filter((t: string) => t !== targetTool);
-          if (disabledMcps[name].length === 0) delete disabledMcps[name];
-        }
-        await saveDisabledMcps(disabledMcps);
-
-        res.json({ success: result.success, method: result.method, message: result.message || result.error });
-        return;
-      }
-      res.status(404).json({ error: `MCP ${name} not found in mcps.yaml` });
-      return;
+    if (result.success) {
+      res.json({ success: true, type: result.type, level: result.level });
     } else {
-      const result = await adapter.remove(name);
-
-      if (!disabledMcps[name]) disabledMcps[name] = [];
-      if (!disabledMcps[name].includes(targetTool as ToolId)) {
-        disabledMcps[name].push(targetTool as ToolId);
-      }
-      await saveDisabledMcps(disabledMcps);
-
-      res.json({ success: result.success, method: result.method, message: result.message || result.error });
+      res.status(400).json({ success: false, error: result.error });
     }
+  }));
+
+  // GET /api/state/:name — verify item state in manifest AND actual tool configs
+  stateRouter.get("/:name", asyncHandler(async (req, res) => {
+    const name = req.params.name as string;
+    const tool = (req.query.tool as string) || undefined;
+    const type = (req.query.type as string) || undefined;
+    const result = await verifyItemState(name, {
+      projectRoot: process.cwd(),
+      tool: tool as import("@mycelish/core").ToolId | undefined,
+      type: type as import("../core/manifest-state.js").ItemType | undefined,
+    });
+    res.json(result);
   }));
 
   app.use("/api/state", stateRouter);
