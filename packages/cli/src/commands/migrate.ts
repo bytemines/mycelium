@@ -27,6 +27,10 @@ import {
   listSnapshots,
   deleteSnapshot,
 } from "../core/snapshot.js";
+import { migrateManifestV1ToV2 } from "../core/manifest-migrator.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { homedir } from "node:os";
 
 export const migrateCommand = new Command("migrate")
   .description("Scan installed tools and migrate configs into Mycelium")
@@ -192,6 +196,49 @@ export const migrateCommand = new Command("migrate")
     if (!apply) {
       console.log("\nRun with --apply to execute migration.");
       return;
+    }
+
+    // Migrate v1 manifests (enabled → state) if needed
+    const myceliumDir = path.join(homedir(), ".mycelium");
+    const manifestPaths = ["skills.json", "mcps.json", "global.json"];
+    for (const manifestFile of manifestPaths) {
+      const manifestPath = path.join(myceliumDir, manifestFile);
+      try {
+        const raw = await fs.readFile(manifestPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        // Detect v1 format: any item has "enabled" field
+        const sections = ["skills", "mcps", "hooks", "memory"];
+        const hasEnabledField = sections.some((s) => {
+          const items = parsed[s];
+          if (!items || typeof items !== "object") return false;
+          return Object.values(items).some(
+            (v: any) => typeof v === "object" && v !== null && "enabled" in v,
+          );
+        });
+        if (hasEnabledField) {
+          // Check for plugin-skills.json
+          const pluginSkillsPath = path.join(myceliumDir, "plugin-skills.json");
+          let pluginSkills: Record<string, Record<string, boolean>> | undefined;
+          try {
+            const psRaw = await fs.readFile(pluginSkillsPath, "utf-8");
+            pluginSkills = JSON.parse(psRaw);
+          } catch {
+            // No plugin-skills.json, that's fine
+          }
+
+          const migrated = migrateManifestV1ToV2(parsed, pluginSkills);
+          await fs.writeFile(manifestPath, JSON.stringify(migrated, null, 2) + "\n");
+          console.log(`  Migrated ${manifestFile} from v1 (enabled) to v2 (state)`);
+
+          // Delete plugin-skills.json after importing its data
+          if (pluginSkills) {
+            await fs.rm(pluginSkillsPath, { force: true });
+            console.log("  Removed plugin-skills.json (data imported into manifests)");
+          }
+        }
+      } catch {
+        // File doesn't exist, skip
+      }
     }
 
     // Execute

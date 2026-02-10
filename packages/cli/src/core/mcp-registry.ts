@@ -20,7 +20,7 @@ export function parseRegistryEntry(entry: RegistryEntry): McpServerConfig {
     command: entry.command,
     args: entry.args,
     env: entry.env,
-    enabled: true,
+    state: "enabled",
   };
 }
 

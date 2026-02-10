@@ -12,5 +12,8 @@ export * from "./schema.js";
 // Utilities
 export * from "./utils.js";
 
+// Logger
+export { createLogEntry, type LogEntry, type LogEntryInput, type LogLevel } from "./logger.js";
+
 // Tool Registry
 export * from "./tools/index.js";

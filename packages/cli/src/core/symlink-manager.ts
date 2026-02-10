@@ -47,7 +47,7 @@ export interface Skill {
   path: string;
   manifest: {
     name: string;
-    state?: "enabled" | "disabled";
+    state?: "enabled" | "disabled" | "deleted";
   };
 }
 
