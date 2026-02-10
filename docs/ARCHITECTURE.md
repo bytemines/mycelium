@@ -36,15 +36,15 @@ Dependencies flow one way: `core` <- `cli`, `core` <- `dashboard`. The CLI and d
   .env.local (gitignored)               ~/.aider/mcp-servers.json
 ```
 
-Configuration merges three levels with clear precedence: **Project > Machine > Global**. Project configs add to or override globals; they never replace the entire global set. Items can be explicitly disabled per-project with `enabled: false`.
+Configuration merges three levels with clear precedence: **Project > Machine > Global**. Project configs add to or override globals; they never replace the entire global set. All manifest items (skills, MCPs, plugins) have unified `state: ItemState` ("enabled"|"disabled"|"deleted") and `source: string` fields. State merges follow priority rules, with higher-priority configs overriding lower ones.
 
 ## Overlay Sync Strategy
 
-The sync process is designed to be safe and reversible:
+The sync process is designed to be safe and reversible using **read-preserve-write**:
 
-1. **Read** the tool's existing config file in full.
+1. **Read** the tool's existing config file in full, preserving user-set properties that Mycelium doesn't manage.
 2. **Replace only the Mycelium-managed section** (e.g., `mcpServers` key in JSON, `[mcp.servers.*]` sections in TOML). All other content is preserved byte-for-byte.
-3. **Write** the merged result back.
+3. **Write** the merged result back, maintaining both Mycelium-managed and user-managed properties.
 
 For tools with a native CLI (Claude Code, Codex, Gemini), Mycelium prefers the CLI path (`claude mcp add-json`) over direct file editing. This prevents the tool from overwriting Mycelium's changes on restart. The `ToolAdapter` abstraction routes each operation through CLI when available, falling back to file editing otherwise.
 
