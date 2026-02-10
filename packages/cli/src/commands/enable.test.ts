@@ -97,7 +97,7 @@ describe("Enable Command", () => {
         expect(result.name).toBe("disabled-skill");
       });
 
-      it("validates name exists in manifest - skill", async () => {
+      it("auto-registers unknown item as skill in manifest", async () => {
         const options: EnableOptions = {
           name: "non-existent-skill",
           global: true,
@@ -106,11 +106,11 @@ describe("Enable Command", () => {
 
         const result = await enableSkillOrMcp(options);
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain("not found");
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("skill");
       });
 
-      it("validates name exists in manifest - MCP", async () => {
+      it("auto-registers unknown MCP as skill in manifest", async () => {
         const options: EnableOptions = {
           name: "non-existent-mcp",
           global: true,
@@ -119,8 +119,8 @@ describe("Enable Command", () => {
 
         const result = await enableSkillOrMcp(options);
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain("not found");
+        expect(result.success).toBe(true);
+        expect(result.type).toBe("skill");
       });
     });
 

@@ -57,7 +57,7 @@ export function registerPluginsRoutes(app: Express): void {
       return;
     }
 
-    const options = { name: itemName, global: isGlobal, tool: tool as ToolId | undefined };
+    const options = { name: itemName, global: isGlobal ?? true, tool: tool as ToolId | undefined };
     const result = enabled
       ? await enableSkillOrMcp(options)
       : await disableSkillOrMcp(options);
