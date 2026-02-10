@@ -14,12 +14,15 @@ import {
   loadStateManifest,
   saveStateManifest,
   ensureItem,
+  findItemType,
   setItemInManifest,
   isValidToolId,
   resolveManifestDir,
   type ItemConfig,
   type ItemType,
 } from "../core/manifest-state.js";
+import { getAllPluginsForComponent, setPluginEnabled, syncPluginSymlinks } from "../core/plugin-takeover.js";
+import { scanPluginComponents } from "../core/plugin-scanner.js";
 
 // ============================================================================
 // Types
@@ -40,6 +43,7 @@ export interface DisableResult {
   level?: "global" | "project";
   tool?: ToolId;
   alreadyDisabled?: boolean;
+  pluginTakeover?: boolean;
   message?: string;
   error?: string;
 }
@@ -72,10 +76,21 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
     return { success: false, name, error };
   }
 
+  // Pre-fetch matching plugins (used for type detection and takeover)
+  const matchingPlugins = !tool ? await getAllPluginsForComponent(name) : [];
+
+  // Detect type from plugin cache if available (agents/commands shouldn't default to "skill")
+  let typeHint: ItemType | undefined;
+  for (const p of matchingPlugins) {
+    const components = await scanPluginComponents(p.cachePath, p.plugin, p.marketplace);
+    const match = components.find(c => c.name === name);
+    if (match) { typeHint = match.type as ItemType; break; }
+  }
+
   // Find or auto-register item
-  const { type, config, autoRegistered } = ensureItem(manifest, name, "enabled");
+  const { type, config, autoRegistered } = ensureItem(manifest, name, "enabled", typeHint);
   if (autoRegistered) {
-    log.info({ scope: "manifest", op: "disable", msg: `Auto-registered '${name}' as skill in manifest`, item: name });
+    log.info({ scope: "manifest", op: "disable", msg: `Auto-registered '${name}' as ${type} in manifest`, item: name });
   }
 
   const level = isGlobal ? "global" : "project";
@@ -103,9 +118,79 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
   setItemInManifest(manifest, name, type, config);
   await saveStateManifest(manifestDir, manifest);
 
+  // Plugin takeover: if disabling any component that belongs to a Claude Code plugin,
+  // take over ALL enabled plugins containing it so Mycelium manages their skills.
+  let pluginTakeover = false;
+  if (!tool && matchingPlugins.length > 0) {
+
+      for (const pluginInfo of matchingPlugins) {
+        // Scan all component types from plugin cache
+        const allPluginComponents = await scanPluginComponents(pluginInfo.cachePath, pluginInfo.plugin, pluginInfo.marketplace);
+        const allComponentNames = allPluginComponents.map(c => c.name);
+
+        // Collect all disabled items from ALL sections for this plugin
+        const disabledItems: string[] = [];
+        const allPluginItemNames = new Set([...pluginInfo.allSkills, ...allComponentNames]);
+        for (const itemName of allPluginItemNames) {
+          const found = findItemType(manifest, itemName);
+          if (found?.config.state === "disabled") disabledItems.push(itemName);
+        }
+        // Include the current item being disabled
+        if (allPluginItemNames.has(name) && !disabledItems.includes(name)) {
+          disabledItems.push(name);
+        }
+
+        // Disable plugin in Claude Code settings
+        await setPluginEnabled(pluginInfo.pluginId, false);
+
+        // Register plugin in takenOverPlugins with all component types
+        if (!manifest.takenOverPlugins) manifest.takenOverPlugins = {};
+        manifest.takenOverPlugins[pluginInfo.pluginId] = {
+          version: pluginInfo.version,
+          cachePath: pluginInfo.cachePath,
+          allSkills: pluginInfo.allSkills,
+          allComponents: allComponentNames,
+        };
+
+        // Register all plugin components in manifest with pluginOrigin
+        const pluginOrigin = { pluginId: pluginInfo.pluginId, cachePath: pluginInfo.cachePath };
+        for (const comp of allPluginComponents) {
+          const sectionKey = comp.type === "skill" ? "skills" : comp.type === "agent" ? "agents" : comp.type === "command" ? "commands" : comp.type === "hook" ? "hooks" : null;
+          if (!sectionKey) continue;
+          if (!manifest[sectionKey]) (manifest as any)[sectionKey] = {};
+          const section = manifest[sectionKey] as Record<string, any>;
+          const existing = section[comp.name] ?? { state: "enabled" as const };
+          existing.pluginOrigin = pluginOrigin;
+          section[comp.name] = existing;
+        }
+        // Also register skills from pluginInfo.allSkills (fallback when cache scan returns partial/empty)
+        if (!manifest.skills) manifest.skills = {};
+        for (const skillName of pluginInfo.allSkills) {
+          const existing = manifest.skills[skillName] ?? { state: "enabled" as const };
+          if (!existing.pluginOrigin) existing.pluginOrigin = pluginOrigin;
+          manifest.skills[skillName] = existing;
+        }
+
+        log.info({ scope: "plugin", op: "takeover", msg: `Took over plugin: ${pluginInfo.pluginId}`, item: pluginInfo.pluginId, itemType: typeHint });
+      }
+
+      await saveStateManifest(manifestDir, manifest);
+
+      // Sync symlinks declaratively — single source of truth
+      await syncPluginSymlinks(manifestDir);
+      pluginTakeover = true;
+  }
+
+  // If the item belongs to an already-taken-over plugin, syncPluginSymlinks
+  // wasn't called above (matchingPlugins is empty for already-disabled plugins).
+  // Re-sync to remove the newly disabled item's symlink.
+  if (!pluginTakeover && !tool && manifest.takenOverPlugins && Object.keys(manifest.takenOverPlugins).length > 0) {
+    await syncPluginSymlinks(manifestDir);
+  }
+
   const toolMsg = tool ? ` for ${tool}` : "";
   log.info({ scope: "manifest", op: "disable", msg: `${type} '${name}' disabled${toolMsg}`, item: name, tool });
-  return { success: true, name, type, level, tool, message: `${type} '${name}' disabled${toolMsg}` };
+  return { success: true, name, type, level, tool, pluginTakeover, message: `${type} '${name}' disabled${toolMsg}` };
 }
 
 function isAlreadyDisabled(config: ItemConfig, tool?: ToolId): boolean {
@@ -138,6 +223,9 @@ export const disableCommand = new Command("disable")
         console.log(result.message);
       } else {
         console.log(`\u2713 ${result.message}`);
+        if (result.pluginTakeover) {
+          console.log(`  [experimental] Plugin takeover: plugin disabled in Claude Code, skills now managed by Mycelium`);
+        }
       }
     } else {
       console.error(`\u2717 Error: ${result.error}`);

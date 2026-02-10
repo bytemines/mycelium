@@ -15,6 +15,7 @@ export const claudeCode: ToolDescriptor = {
     projectAgents: ".claude/agents/",
     rules: null,
     hooks: "~/.claude/settings.json",
+    commands: null,
     backupDirs: ["~/.claude", "~/"],
   },
   mcp: { format: "json", key: "mcpServers", entryShape: "standard" },

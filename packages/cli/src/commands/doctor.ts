@@ -26,6 +26,7 @@ export {
   checkMemoryFilesExist,
   checkMemoryFileSize,
   checkToolVersions,
+  checkTakenOverPlugins,
   runAllChecks,
   formatDoctorOutput,
   formatDoctorJson,

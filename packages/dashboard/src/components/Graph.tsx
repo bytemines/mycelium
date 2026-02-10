@@ -509,6 +509,7 @@ interface GraphProps {
   mode?: "dashboard" | "migrate";
   onNodeClick?: (node: Node) => void;
   onToggle?: (toggle: ToggleInfo) => void;
+  onPluginToggle?: (name: string, enabled: boolean) => void;
   onPluginClick?: (pluginName: string) => void;
   onMcpClick?: (mcpName: string) => void;
   onSkillClick?: (skillName: string) => void;
@@ -523,6 +524,7 @@ export function Graph({
   mode = "dashboard",
   onNodeClick,
   onToggle,
+  onPluginToggle,
   onPluginClick,
   onMcpClick,
   onSkillClick,
@@ -575,6 +577,8 @@ export function Graph({
   // Stabilize callback refs to prevent unnecessary re-renders and ELK re-layouts
   const onToggleRef = useRef(onToggle);
   onToggleRef.current = onToggle;
+  const onPluginToggleRef = useRef(onPluginToggle);
+  onPluginToggleRef.current = onPluginToggle;
   const onPluginClickRef = useRef(onPluginClick);
   onPluginClickRef.current = onPluginClick;
   const onAddToolRef = useRef(onAddTool);
@@ -591,6 +595,7 @@ export function Graph({
     () => ({
       handleToggle,
       onToggle: (toggle: ToggleInfo) => onToggleRef.current?.(toggle),
+      onPluginToggle: (name: string, enabled: boolean) => onPluginToggleRef.current?.(name, enabled),
       onPluginClick: (name: string) => onPluginClickRef.current?.(name),
       onAddTool: () => onAddToolRef.current?.(),
     }),

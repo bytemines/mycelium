@@ -169,16 +169,58 @@ If the fix requires a code change:
 - The user can paste the report into a GitHub issue
 - Or create a PR directly with the fix
 
+## Plugin Takeover Debugging
+
+When plugin takeover isn't working (skills/agents/commands from Claude Code plugins not appearing or disappearing):
+
+### Quick diagnosis
+
+```bash
+# All plugin operations
+mycelium report --scope plugin --since 1h --format table
+
+# Specific operation type (takeover, release, symlink-create, symlink-remove, health-check)
+mycelium report --op takeover --since 1d --format table
+
+# Symlink operations only
+mycelium report --op symlink-create,symlink-remove --since 1h --format table
+
+# Plugin health check results
+mycelium report --op health-check --scope plugin --since 1h --format table
+
+# All operations on a specific plugin
+mycelium report --item superpowers@skillsmp --since 1d --format table
+```
+
+### Common plugin issues
+
+**Component missing after disable/enable cycle**:
+1. Check symlink operations: `mycelium report --op symlink-create,symlink-remove --since 1h`
+2. Check if the component type is correct: look for `itemType` in trace entries (skill, agent, command)
+3. Run doctor: `mycelium doctor` — check "Plugin Takeover" section for invariant violations
+4. Fix: `mycelium sync` re-runs `syncPluginSymlinks()` to reconcile state
+
+**Plugin shows as taken over but components aren't working**:
+1. Check health: `mycelium doctor` — invariant checks verify symlinks, settings.json, cache
+2. Check sync: `mycelium report --cmd plugin-sync --level error,warn`
+3. Verify cache: `ls ~/.claude/plugins/cache/<marketplace>/<plugin>/`
+
+**Release didn't re-enable plugin**:
+1. Check settings.json: `cat ~/.claude/settings.json | grep enabledPlugins`
+2. Check traces: `mycelium report --op release --since 1h`
+3. Check if all components were re-enabled: `mycelium report --scope manifest --item <plugin-component>`
+
 ## Dimension Reference
 
 These are the filterable dimensions in `mycelium report`:
 
 | Flag | Description | Values |
 |------|------------|--------|
-| `--cmd` | CLI command | sync, enable, disable, add, remove, migrate, doctor |
-| `--scope` | What type | mcp, skill, config, memory, hook, plugin |
+| `--cmd` | CLI command | sync, enable, disable, add, remove, migrate, doctor, plugin-sync, mcp |
+| `--scope` | What type | mcp, skill, config, memory, hook, plugin, manifest |
+| `--op` | Operation | takeover, release, symlink-create, symlink-remove, health-check, inject, sync, disable, enable |
 | `--tool` | Which tool | claude-code, cursor, vscode, codex, gemini, opencode, openclaw, aider, antigravity |
-| `--item` | Item name | any MCP/skill/hook name |
+| `--item` | Item name | any MCP/skill/hook/plugin name |
 | `--level` | Severity | debug, info, warn, error |
 | `--state` | Manifest state | enabled, disabled, deleted |
 | `--source` | Item source | plugin name or "manual" |

@@ -14,5 +14,6 @@ export {
   checkMemoryFileSize,
 } from "./memory-check.js";
 export { checkToolVersions } from "./tool-version-check.js";
+export { checkTakenOverPlugins } from "./plugin-takeover-check.js";
 export { runAllChecks } from "./runner.js";
 export { formatDoctorOutput, formatDoctorJson } from "./formatter.js";

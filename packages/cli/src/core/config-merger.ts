@@ -18,8 +18,10 @@ import type {
   ConfigLevel,
   MemoryConfig,
   Skill,
+  FileItem,
 } from "@mycelish/core";
 import { MYCELIUM_HOME, readFileIfExists } from "./fs-helpers.js";
+import { loadItemsFromDir } from "./item-loader.js";
 
 /**
  * Default empty memory config
@@ -41,6 +43,9 @@ function createEmptyMergedConfig(): MergedConfig {
   return {
     mcps: {},
     skills: {},
+    agents: {},
+    rules: {},
+    commands: {},
     memory: getDefaultMemoryConfig(),
     sources: {},
   };
@@ -80,6 +85,11 @@ export function mergeConfigs(
       Object.assign(result.skills, config.skills);
     }
 
+    // Merge agents/rules/commands — simple overwrite by priority
+    if (config.agents) Object.assign(result.agents, config.agents);
+    if (config.rules) Object.assign(result.rules, config.rules);
+    if (config.commands) Object.assign(result.commands, config.commands);
+
     // Merge memory — scope-level overwrite
     if (config.memory) {
       result.memory = mergeMemoryConfig(result.memory, config.memory);
@@ -116,6 +126,19 @@ function mergeMemoryConfig(
 ): MemoryConfig {
   if (!source.scopes) return target;
   return { ...target, scopes: { ...target.scopes, ...source.scopes } };
+}
+
+// ============================================================================
+// Item Loading Helpers
+// ============================================================================
+
+async function loadFileItems(dir: string): Promise<Record<string, FileItem>> {
+  const items = await loadItemsFromDir(dir);
+  const result: Record<string, FileItem> = {};
+  for (const item of items) {
+    result[item.name] = item;
+  }
+  return result;
 }
 
 // ============================================================================
@@ -164,9 +187,13 @@ async function loadMcpsFromDir(dir: string): Promise<Record<string, McpServerCon
  * Load global config from ~/.mycelium/global/
  */
 export async function loadGlobalConfig(): Promise<Partial<MergedConfig>> {
+  const globalDir = path.join(MYCELIUM_HOME, "global");
   return {
-    mcps: await loadMcpsFromDir(path.join(MYCELIUM_HOME, "global")),
+    mcps: await loadMcpsFromDir(globalDir),
     skills: {},
+    agents: await loadFileItems(path.join(globalDir, "agents")),
+    rules: await loadFileItems(path.join(globalDir, "rules")),
+    commands: await loadFileItems(path.join(globalDir, "commands")),
   };
 }
 
@@ -177,9 +204,13 @@ export async function loadProjectConfig(
   projectRoot?: string
 ): Promise<Partial<MergedConfig>> {
   const root = projectRoot ?? process.cwd();
+  const projDir = path.join(root, ".mycelium");
   return {
-    mcps: await loadMcpsFromDir(path.join(root, ".mycelium")),
+    mcps: await loadMcpsFromDir(projDir),
     skills: {},
+    agents: await loadFileItems(path.join(projDir, "agents")),
+    rules: await loadFileItems(path.join(projDir, "rules")),
+    commands: await loadFileItems(path.join(projDir, "commands")),
   };
 }
 
@@ -191,22 +222,31 @@ export async function loadMachineConfig(): Promise<Partial<MergedConfig>> {
   const hostname = os.hostname();
   const machinesDir = path.join(MYCELIUM_HOME, "machines");
 
+  const hostDir = path.join(machinesDir, hostname);
+
+  // Load agents/rules/commands from hostname/ directory
+  const fileItems = {
+    agents: await loadFileItems(path.join(hostDir, "agents")),
+    rules: await loadFileItems(path.join(hostDir, "rules")),
+    commands: await loadFileItems(path.join(hostDir, "commands")),
+  };
+
   // Try hostname.yaml (flat MCP entries)
   const yamlContent = await readFileIfExists(path.join(machinesDir, `${hostname}.yaml`));
   if (yamlContent) {
     const mcps = parseConfig<Record<string, McpServerConfig>>(yamlContent, `machines/${hostname}.yaml`) ?? {};
-    return { mcps, skills: {} };
+    return { mcps, skills: {}, ...fileItems };
   }
 
   // Try hostname.json (nested { mcps: {} })
   const jsonContent = await readFileIfExists(path.join(machinesDir, `${hostname}.json`));
   if (jsonContent) {
     const data = parseConfig<{ mcps: Record<string, McpServerConfig> }>(jsonContent, `machines/${hostname}.json`);
-    return { mcps: data?.mcps ?? {}, skills: {} };
+    return { mcps: data?.mcps ?? {}, skills: {}, ...fileItems };
   }
 
   // Try hostname/ directory
-  return { mcps: await loadMcpsFromDir(path.join(machinesDir, hostname)), skills: {} };
+  return { mcps: await loadMcpsFromDir(hostDir), skills: {}, ...fileItems };
 }
 
 /**

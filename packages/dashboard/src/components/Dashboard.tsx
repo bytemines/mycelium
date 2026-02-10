@@ -36,7 +36,7 @@ function StatusIndicator({ status }: { status: Status }) {
 function GraphContainer() {
   const {
     graphData, loading, error, apiStatus,
-    fetchState, toggleResource, setActiveTab,
+    fetchState, toggleResource, togglePlugin, setActiveTab,
     openPluginPanel, openMcpPanel, openSkillPanel,
   } = useDashboardStore();
 
@@ -94,6 +94,7 @@ function GraphContainer() {
           data={data}
           showUninstalledTools={false}
           onToggle={toggleResource}
+          onPluginToggle={togglePlugin}
           onPluginClick={openPluginPanel}
           onMcpClick={openMcpPanel}
           onSkillClick={openSkillPanel}
