@@ -167,15 +167,40 @@ export async function dryRunSync(
   } else {
     // JSON tools
     const config: Record<string, unknown> = currentContent ? JSON.parse(currentContent) : {};
+    const key = desc?.mcp.key ?? "mcpServers";
+
+    // Get existing entries via nested key traversal
+    const parts = key.split(".");
+    let existingSection: unknown = config;
+    for (const part of parts) {
+      if (existingSection && typeof existingSection === "object") {
+        existingSection = (existingSection as Record<string, unknown>)[part];
+      } else {
+        existingSection = undefined;
+        break;
+      }
+    }
+    const existingEntries = (existingSection ?? {}) as Record<string, Record<string, unknown>>;
+
     const cleanMcps: Record<string, unknown> = {};
     for (const [name, mcp] of Object.entries(mcps)) {
       const entry: Record<string, unknown> = { command: mcp.command };
       if (mcp.args?.length) entry.args = mcp.args;
       if (mcp.env && Object.keys(mcp.env).length > 0) entry.env = mcp.env;
-      cleanMcps[name] = entry;
+      const prev = existingEntries[name];
+      cleanMcps[name] = prev ? { ...prev, ...entry } : entry;
     }
-    const key = desc?.mcp.key ?? "mcpServers";
-    config[key] = cleanMcps;
+
+    // Set via nested key traversal
+    let current: Record<string, unknown> = config;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!current[parts[i]] || typeof current[parts[i]] !== "object") {
+        current[parts[i]] = {};
+      }
+      current = current[parts[i]] as Record<string, unknown>;
+    }
+    current[parts[parts.length - 1]] = cleanMcps;
+
     newContent = JSON.stringify(config, null, 2);
   }
 

@@ -160,5 +160,44 @@ describe("sync-writer", () => {
       expect(result.currentContent).toBeNull();
       expect(result.newContent).toContain("whark-trading");
     });
+
+    it("preserves existing entry properties in preview", async () => {
+      mockFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          mcpServers: {
+            "whark-trading": { command: "old-cmd", disabled: true, custom: "flag" },
+          },
+        }),
+      );
+
+      const result = await dryRunSync("claude-code", sampleMcps);
+      const parsed = JSON.parse(result.newContent);
+      const entry = parsed.mcpServers["whark-trading"];
+      // New values override old
+      expect(entry.command).toBe("uvx");
+      expect(entry.args).toEqual(["whark-mcp"]);
+      // Existing properties are preserved
+      expect(entry.disabled).toBe(true);
+      expect(entry.custom).toBe("flag");
+    });
+
+    it("handles nested mcp key for opencode", async () => {
+      mockFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          mcp: {
+            "whark-trading": { command: "old", disabled: true },
+          },
+          otherSetting: true,
+        }),
+      );
+
+      const result = await dryRunSync("opencode", sampleMcps);
+      const parsed = JSON.parse(result.newContent);
+      // Nested key should work
+      expect(parsed.mcp["whark-trading"].command).toBe("uvx");
+      expect(parsed.mcp["whark-trading"].disabled).toBe(true);
+      // Other config preserved
+      expect(parsed.otherSetting).toBe(true);
+    });
   });
 });
