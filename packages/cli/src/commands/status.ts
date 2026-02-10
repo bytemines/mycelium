@@ -15,6 +15,7 @@ import {
   type ToolId,
   type SyncStatus,
   type ToolSyncStatus,
+  type ItemState,
   TOOL_REGISTRY,
   ALL_TOOL_IDS,
   resolvePath,
@@ -33,12 +34,18 @@ export interface ToolPathOptions {
   toolMcpPath: string;
   toolMemoryPath: string;
   isDisabled?: boolean;
+  itemState?: ItemState;
+}
+
+export interface ToolSyncStatusWithState extends ToolSyncStatus {
+  itemState?: ItemState;
 }
 
 export interface StatusOutputOptions {
   globalConfigPath?: string;
   projectConfigPath?: string;
   projectConfigExists?: boolean;
+  showAll?: boolean;
 }
 
 // Memory scope mapping - derived from registry
@@ -145,8 +152,8 @@ function determineSyncStatus(
 export async function getToolStatusFromPath(
   toolId: ToolId,
   options: ToolPathOptions
-): Promise<ToolSyncStatus> {
-  const { myceliumPath, toolSkillsPath, toolMcpPath, isDisabled = false } = options;
+): Promise<ToolSyncStatusWithState> {
+  const { myceliumPath, toolSkillsPath, toolMcpPath, isDisabled = false, itemState } = options;
 
   // Count skills synced to tool
   const skillsCount = await countSkills(toolSkillsPath);
@@ -169,6 +176,7 @@ export async function getToolStatusFromPath(
     skillsCount,
     mcpsCount,
     memoryFiles,
+    itemState,
   };
 }
 
@@ -206,18 +214,25 @@ export async function getToolStatus(toolId: ToolId): Promise<ToolSyncStatus> {
  */
 export async function getAllStatusFromPath(
   myceliumPath: string
-): Promise<ToolSyncStatus[]> {
+): Promise<ToolSyncStatusWithState[]> {
   const toolIds = ALL_TOOL_IDS;
-  const statuses: ToolSyncStatus[] = [];
+  const statuses: ToolSyncStatusWithState[] = [];
 
-  // Load manifest to check disabled tools
+  // Load manifest to check disabled/deleted tools and their state
   let disabledTools: Set<ToolId> = new Set();
+  let toolStates: Map<string, ItemState> = new Map();
   try {
     const manifestPath = path.join(myceliumPath, "manifest.json");
     const manifestContent = await fs.readFile(manifestPath, "utf-8");
     const manifest = JSON.parse(manifestContent);
     for (const [toolId, config] of Object.entries(manifest.tools || {})) {
-      if ((config as { enabled: boolean }).enabled === false) {
+      const toolConfig = config as { enabled?: boolean; state?: ItemState };
+      if (toolConfig.state) {
+        toolStates.set(toolId, toolConfig.state);
+        if (toolConfig.state === "disabled" || toolConfig.state === "deleted") {
+          disabledTools.add(toolId as ToolId);
+        }
+      } else if (toolConfig.enabled === false) {
         disabledTools.add(toolId as ToolId);
       }
     }
@@ -228,6 +243,7 @@ export async function getAllStatusFromPath(
   for (const toolId of toolIds) {
     const desc = TOOL_REGISTRY[toolId];
     const isDisabled = !desc.enabled || disabledTools.has(toolId);
+    const itemState = toolStates.get(toolId);
 
     const status = await getToolStatusFromPath(toolId, {
       myceliumPath,
@@ -235,6 +251,7 @@ export async function getAllStatusFromPath(
       toolMcpPath: resolvePath(desc.paths.mcp) ?? "",
       toolMemoryPath: resolvePath(desc.paths.globalMemory) ?? "",
       isDisabled,
+      itemState,
     });
     statuses.push(status);
   }
@@ -258,7 +275,7 @@ export async function getAllStatus(): Promise<ToolSyncStatus[]> {
  * Format status output for terminal display
  */
 export function formatStatusOutput(
-  statuses: ToolSyncStatus[],
+  statuses: ToolSyncStatusWithState[],
   options: StatusOutputOptions = {}
 ): string {
   const lines: string[] = [];
@@ -271,17 +288,29 @@ export function formatStatusOutput(
 
   // Format each tool status
   for (const status of statuses) {
+    // Hide deleted items unless --all is passed
+    if (status.itemState === "deleted" && !options.showAll) {
+      continue;
+    }
+
     const desc2 = TOOL_REGISTRY[status.tool];
     const toolName = desc2.display.name.padEnd(14);
     const statusStr = formatStatus(status.status);
 
+    // State markers
+    const stateMarker = status.itemState === "disabled"
+      ? " [disabled]"
+      : status.itemState === "deleted"
+        ? " [deleted]"
+        : "";
+
     if (status.status === "disabled") {
-      lines.push(`  ${toolName}${statusStr}`);
+      lines.push(`  ${toolName}${statusStr}${stateMarker}`);
     } else {
       const skills = `Skills: ${status.skillsCount}`.padEnd(12);
       const mcps = `MCPs: ${status.mcpsCount}`.padEnd(10);
       const memory = `Memory: ${status.memoryFiles.length} files`;
-      lines.push(`  ${toolName}${statusStr}    ${skills}${mcps}${memory}`);
+      lines.push(`  ${toolName}${statusStr}    ${skills}${mcps}${memory}${stateMarker}`);
     }
   }
 
@@ -329,6 +358,7 @@ export const statusCommand = new Command("status")
   .description("Show sync status of all tools")
   .option("-j, --json", "Output as JSON")
   .option("-v, --verbose", "Show detailed status")
+  .option("-a, --all", "Show all items including deleted")
   .action(async (options) => {
     try {
       const statuses = await getAllStatus();
@@ -340,6 +370,7 @@ export const statusCommand = new Command("status")
         globalConfigPath: "~/.mycelium/",
         projectConfigPath: projectPath,
         projectConfigExists: projectExists,
+        showAll: options.all,
       };
 
       if (options.json) {
