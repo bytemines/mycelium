@@ -19,34 +19,7 @@ interface PluginDetailPanelProps {
   } | null;
   onClose: () => void;
   onTogglePlugin: (name: string, enabled: boolean) => void;
-  onToggleSkill: (pluginName: string, skillName: string, enabled: boolean) => void;
   onRemoveItem?: (type: "skill" | "mcp" | "plugin", name: string) => void;
-}
-
-// Reusable toggle row
-function ToggleRow({ name, enabled, onToggle }: { name: string; enabled: boolean; onToggle: () => void }) {
-  return (
-    <div className="flex items-center justify-between rounded-md border px-3 py-2">
-      <span className="text-sm">{name}</span>
-      <button
-        role="switch"
-        aria-checked={enabled}
-        aria-label={`Toggle ${name}`}
-        onClick={onToggle}
-        className={cn(
-          "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-          enabled ? "bg-primary" : "bg-muted"
-        )}
-      >
-        <span
-          className={cn(
-            "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-            enabled ? "translate-x-3" : "translate-x-0"
-          )}
-        />
-      </button>
-    </div>
-  );
 }
 
 // Section header with count badge and color
@@ -58,7 +31,7 @@ const SECTION_META: Record<string, { label: string; color: string; icon: React.R
   lib:     { label: "Libraries", color: "text-pink-400", icon: <Library size={14} className="text-pink-400" /> },
 };
 
-export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSkill, onRemoveItem }: PluginDetailPanelProps) {
+export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onRemoveItem }: PluginDetailPanelProps) {
   const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
   const [confirmRemove, setConfirmRemove] = useState(false);
 
@@ -78,12 +51,6 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
   }, [plugin]);
 
   if (!plugin) return null;
-
-  const toggle = (name: string) => {
-    const next = !toggleStates[name];
-    setToggleStates(prev => ({ ...prev, [name]: next }));
-    onToggleSkill(plugin.name, name, next);
-  };
 
   const toggleAll = (enabled: boolean) => {
     const next: Record<string, boolean> = {};
@@ -180,12 +147,15 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleSki
                 </h3>
                 <div className="space-y-2">
                   {items.map((item) => (
-                    <ToggleRow
-                      key={item}
-                      name={item}
-                      enabled={toggleStates[item] ?? true}
-                      onToggle={() => toggle(item)}
-                    />
+                    <div key={item} className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <span className="text-sm">{item}</span>
+                      <span className={cn(
+                        "text-xs font-medium",
+                        toggleStates[item] ? "text-green-400" : "text-muted-foreground"
+                      )}>
+                        {toggleStates[item] ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
                   ))}
                 </div>
               </div>
