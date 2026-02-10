@@ -16,6 +16,7 @@ interface PluginDetailPanelProps {
     commands: string[];
     hooks?: string[];
     libs?: string[];
+    disabledItems?: string[];
   } | null;
   onClose: () => void;
   onTogglePlugin: (name: string, enabled: boolean) => void;
@@ -38,6 +39,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleIte
 
   useEffect(() => {
     if (plugin) {
+      const disabled = new Set(plugin.disabledItems ?? []);
       const initial: Record<string, boolean> = {};
       const allItems = [
         ...plugin.skills,
@@ -46,7 +48,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleIte
         ...(plugin.hooks ?? []),
         ...(plugin.libs ?? []),
       ];
-      for (const item of allItems) initial[item] = plugin.enabled;
+      for (const item of allItems) initial[item] = !disabled.has(item);
       setToggleStates(initial);
     }
   }, [plugin]);
