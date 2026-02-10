@@ -169,6 +169,25 @@ If the fix requires a code change:
 - The user can paste the report into a GitHub issue
 - Or create a PR directly with the fix
 
+## MCP Server Issues
+
+If the Mycelium MCP server isn't working in an AI tool:
+
+### Tool not showing mycelium MCP tools
+1. Check self-registration: `mycelium doctor` (look for "MCP Self-Registration" section)
+2. Re-register: `mycelium init` (re-runs self-registration)
+3. Check traces: `mycelium report --cmd mcp --level error`
+
+### MCP server hanging or not responding
+1. Check if process exists: `ps aux | grep "mycelium mcp"`
+2. Test manually: `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | mycelium mcp`
+3. Check for port conflicts if using HTTP transport
+
+### MCP tools returning errors
+1. Query recent MCP traces: `mycelium report --cmd mcp --level error,warn --since 1h`
+2. Verify config is valid: `mycelium status --json`
+3. Run doctor: `mycelium doctor`
+
 ## Dimension Reference
 
 These are the filterable dimensions in `mycelium report`:

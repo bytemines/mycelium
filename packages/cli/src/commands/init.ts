@@ -470,6 +470,20 @@ export async function autoSetup(options: {
     }
   }
 
+  // Self-register Mycelium as an MCP in all detected tools
+  try {
+    const { selfRegister } = await import("../core/self-register.js");
+    const { getTracer } = await import("../core/global-tracer.js");
+    const log = getTracer().createTrace("init");
+    const regResults = await selfRegister(log);
+    const registered = Object.entries(regResults).filter(([, ok]) => ok).map(([t]) => t);
+    if (registered.length > 0) {
+      console.log(`\n  Mycelium MCP registered in: ${registered.join(", ")}`);
+    }
+  } catch (err) {
+    console.warn("Self-registration failed:", err instanceof Error ? err.message : String(err));
+  }
+
   console.log("\nSetup complete. Next steps:");
   console.log("  mycelium sync          # Push config to all installed tools");
   console.log(`  mycelium serve         # Start dashboard at http://localhost:${DEFAULT_PORT}`);

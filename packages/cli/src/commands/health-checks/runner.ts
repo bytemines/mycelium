@@ -84,6 +84,15 @@ export async function runAllChecks(): Promise<DoctorResult> {
     checks.push(await checkMemoryFileSize(memoryPath, maxLines));
   }
 
+  // 8. Check MCP self-registration
+  try {
+    const { checkSelfRegistration } = await import("./mcp-check.js");
+    const selfRegChecks = await checkSelfRegistration();
+    checks.push(...selfRegChecks);
+  } catch {
+    // self-registration check is optional
+  }
+
   // Calculate summary
   const summary = {
     passed: checks.filter((c) => c.status === "pass").length,
