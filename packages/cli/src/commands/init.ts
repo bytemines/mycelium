@@ -12,6 +12,7 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { stringify as yamlStringify } from "yaml";
 import { expandPath, ensureDir, pathExists } from "@mycelish/core";
 import { ensureGitignore, generateEnvTemplate, getMissingEnvVars } from "../core/env-template.js";
@@ -171,6 +172,24 @@ export async function initGlobal(options: InitGlobalOptions): Promise<InitResult
 
   // Write global/mcps.yaml
   await fs.writeFile(path.join(globalPath, "global/mcps.yaml"), GLOBAL_MCPS_YAML_CONTENT, "utf-8");
+
+  // Copy bundled skills (e.g. debug-mycelium) if they don't already exist
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const bundledSkillsDir = path.resolve(__dirname, "../../skills");
+  const globalSkillsDir = path.join(globalPath, "global", "skills");
+  try {
+    const entries = await fs.readdir(bundledSkillsDir);
+    const skills = entries.filter((f) => f.endsWith(".md"));
+    for (const skill of skills) {
+      const dest = path.join(globalSkillsDir, skill);
+      if (!(await pathExists(dest))) {
+        await fs.copyFile(path.join(bundledSkillsDir, skill), dest);
+        console.log(`  Bundled skill: ${skill}`);
+      }
+    }
+  } catch {
+    // bundled skills dir doesn't exist in this build — skip
+  }
 
   return {
     success: true,

@@ -17,6 +17,7 @@ import {
   addMcp,
   fetchMcpFromRegistry,
 } from "../core/add-helpers.js";
+import { getTracer } from "../core/global-tracer.js";
 
 // Re-export types and functions for backward compatibility
 export type {
@@ -38,14 +39,18 @@ const skillCommand = new Command("skill")
   .option("-g, --global", "Add to global configuration (~/.mycelium/)")
   .option("-f, --force", "Overwrite existing skill")
   .action(async (source: string, options: { global?: boolean; force?: boolean }) => {
+    const log = getTracer().createTrace("add");
+    log.info({ scope: "skill", op: "add", msg: `Adding skill from ${source}`, item: source });
     const result = await addSkill(source, {
       global: options.global ?? true,
       force: options.force ?? false,
     });
 
     if (result.success) {
+      log.info({ scope: "skill", op: "add", msg: result.message ?? "Added", item: source });
       console.log(result.message);
     } else {
+      log.error({ scope: "skill", op: "add", msg: result.error ?? "Failed", item: source, error: result.error });
       console.error(`Error: ${result.error}`);
       process.exit(1);
     }
@@ -90,6 +95,9 @@ const mcpCommand = new Command("mcp")
         }
       }
 
+      const log = getTracer().createTrace("add");
+      log.info({ scope: "mcp", op: "add", msg: `Adding MCP ${name}`, item: name });
+
       if (!options.command) {
         console.error("Error: --command is required (or use --from-registry)");
         process.exit(1);
@@ -115,8 +123,10 @@ const mcpCommand = new Command("mcp")
       });
 
       if (result.success) {
+        log.info({ scope: "mcp", op: "add", msg: result.message ?? "Added", item: name });
         console.log(result.message);
       } else {
+        log.error({ scope: "mcp", op: "add", msg: result.error ?? "Failed", item: name, error: result.error });
         console.error(`Error: ${result.error}`);
         process.exit(1);
       }
