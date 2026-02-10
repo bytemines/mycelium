@@ -36,6 +36,7 @@ import {
 import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
 import { startWatcher } from "../core/watcher.js";
 import { restoreBackups, dryRunSync } from "../core/sync-writer.js";
+import { getTracer, closeTracer } from "../core/global-tracer.js";
 import {
   loadMachineOverrides,
   applyMachineOverrides,
@@ -192,8 +193,12 @@ export async function syncAll(
     warnings: [],
   };
 
+  const tracer = getTracer();
+  const log = tracer.createTrace("sync");
+
   // Load and merge all configs
   const mergedConfig = await loadAndMergeAllConfigs(projectRoot);
+  log.info({ scope: "config", op: "merge", msg: "Loaded and merged config", configLevel: "all" });
 
   // Apply machine-level overrides to MCP commands
   if (options.rescan) {
@@ -219,21 +224,33 @@ export async function syncAll(
     result.warnings.push(conflict.message);
   }
 
+  // Log skipped MCPs (manifest v2 state filtering)
+  for (const [name, mcp] of Object.entries(mergedConfig.mcps)) {
+    if (mcp.state && mcp.state !== "enabled") {
+      log.debug({ scope: "mcp", op: "filter", msg: `Skipped: state=${mcp.state}`, item: name, state: mcp.state, source: mcp.source ?? undefined });
+    }
+  }
+
   // Sync each enabled tool
   for (const [toolId, config] of Object.entries(enabledTools)) {
     if (!config.enabled) {
       continue;
     }
 
+    log.info({ scope: "config", op: "filter", msg: `Syncing to ${toolId}`, tool: toolId as string });
     const toolStatus = await syncTool(toolId as ToolId, mergedConfig, envVars);
     result.tools.push(toolStatus);
 
     if (toolStatus.status === "error") {
       result.success = false;
       result.errors.push(`${toolId}: ${toolStatus.error}`);
+      log.error({ scope: "config", op: "sync", msg: toolStatus.error ?? "Sync failed", tool: toolId as string, error: toolStatus.error });
+    } else {
+      log.info({ scope: "config", op: "sync", msg: `Synced ${toolStatus.mcpsCount} MCPs, ${toolStatus.skillsCount} skills`, tool: toolId as string });
     }
   }
 
+  closeTracer();
   return result;
 }
 
