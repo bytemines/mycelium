@@ -20,7 +20,6 @@ import {
   listPlugins,
   getPluginDetails,
   togglePlugin,
-  toggleSkillInPlugin,
 } from "./marketplace-registry.js";
 
 beforeEach(() => {
@@ -286,19 +285,3 @@ describe("togglePlugin", () => {
   });
 });
 
-// ============================================================================
-// toggleSkillInPlugin
-// ============================================================================
-
-describe("toggleSkillInPlugin", () => {
-  it("writes skill toggle to plugin-skills.json", async () => {
-    mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
-    mockFs.mkdir.mockResolvedValue(undefined);
-    mockFs.writeFile.mockResolvedValue(undefined);
-
-    await toggleSkillInPlugin("my-plugin", "my-skill", false);
-
-    const written = JSON.parse(mockFs.writeFile.mock.calls[0][1] as string);
-    expect(written["my-plugin"]["my-skill"]).toBe(false);
-  });
-});

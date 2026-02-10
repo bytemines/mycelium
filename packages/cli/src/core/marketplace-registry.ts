@@ -258,21 +258,3 @@ export async function togglePlugin(
   await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
-export async function toggleSkillInPlugin(
-  key: string,
-  skillName: string,
-  enabled: boolean
-): Promise<void> {
-  const configPath = path.join(MYCELIUM_DIR, "plugin-skills.json");
-  let config: Record<string, Record<string, boolean>> = {};
-  try {
-    const raw = await fs.readFile(configPath, "utf-8");
-    config = JSON.parse(raw);
-  } catch {
-    // No config yet
-  }
-  if (!config[key]) config[key] = {};
-  config[key][skillName] = enabled;
-  await fs.mkdir(MYCELIUM_DIR, { recursive: true });
-  await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
-}
