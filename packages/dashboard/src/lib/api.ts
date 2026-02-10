@@ -80,6 +80,18 @@ export async function togglePlugin(name: string, enabled: boolean): Promise<void
   });
 }
 
+export async function togglePluginItem(
+  pluginName: string, itemName: string, enabled: boolean,
+  options?: { global?: boolean; tool?: string },
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`/api/plugins/${encodeURIComponent(pluginName)}/items/${encodeURIComponent(itemName)}/toggle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled, ...options }),
+  });
+  return res.json();
+}
+
 export async function fetchPopularSkills(): Promise<MarketplaceSearchResult[]> {
   const res = await fetch(`/api/marketplace/popular`);
   return res.json();

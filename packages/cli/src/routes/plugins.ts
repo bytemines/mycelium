@@ -4,6 +4,8 @@ import { loadManifest } from "../core/migrator/index.js";
 import {
   togglePlugin,
 } from "../core/marketplace-registry.js";
+import { enableSkillOrMcp } from "../commands/enable.js";
+import { disableSkillOrMcp } from "../commands/disable.js";
 import { buildPluginMap } from "./plugin-map.js";
 import { asyncHandler } from "./async-handler.js";
 
@@ -43,6 +45,23 @@ export function registerPluginsRoutes(app: Express): void {
     const { name, enabled } = req.body as { name: string; enabled: boolean };
     await togglePlugin(name, enabled);
     res.json({ success: true });
+  }));
+
+  router.post("/:pluginName/items/:itemName/toggle", asyncHandler(async (req, res) => {
+    const pluginName = req.params.pluginName as string;
+    const itemName = req.params.itemName as string;
+    const { enabled, global: isGlobal, tool } = req.body as { enabled: boolean; global?: boolean; tool?: string };
+
+    const options = { name: itemName, global: isGlobal, tool: tool as any };
+    const result = enabled
+      ? await enableSkillOrMcp(options)
+      : await disableSkillOrMcp(options);
+
+    if (result.success) {
+      res.json({ success: true, plugin: pluginName, item: itemName, enabled, type: result.type, level: result.level });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
   }));
 
   app.use("/api/plugins", router);
