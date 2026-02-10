@@ -322,31 +322,29 @@ describe("loadGlobalConfig", () => {
     vi.resetAllMocks();
   });
 
-  it("loads from ~/.mycelium/", async () => {
+  it("loads from ~/.mycelium/global/mcps.yaml", async () => {
     const fs = await import("node:fs/promises");
     const { loadGlobalConfig } = await import("./config-merger.js");
 
-    const mockMcpsConfig = {
-      mcps: {
-        "test-mcp": {
-          command: "npx",
-          args: ["-y", "test-mcp"],
-          state: "enabled",
-        },
-      },
-    };
+    const yamlContent = `test-mcp:
+  command: npx
+  args:
+    - "-y"
+    - test-mcp
+  state: enabled`;
 
     vi.mocked(fs.access).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockMcpsConfig));
+    vi.mocked(fs.readFile).mockResolvedValue(yamlContent);
 
     const result = await loadGlobalConfig();
 
     const home = os.homedir();
     expect(fs.readFile).toHaveBeenCalledWith(
-      path.join(home, ".mycelium", "mcps.json"),
+      path.join(home, ".mycelium", "global", "mcps.yaml"),
       "utf-8"
     );
     expect(result.mcps).toHaveProperty("test-mcp");
+    expect(result.mcps!["test-mcp"].command).toBe("npx");
   });
 
   it("returns empty config if global config does not exist", async () => {
@@ -366,27 +364,23 @@ describe("loadProjectConfig", () => {
     vi.resetAllMocks();
   });
 
-  it("loads from .mycelium/ in project root", async () => {
+  it("loads from .mycelium/mcps.yaml in project root", async () => {
     const fs = await import("node:fs/promises");
     const { loadProjectConfig } = await import("./config-merger.js");
 
-    const mockMcpsConfig = {
-      mcps: {
-        "project-mcp": {
-          command: "node",
-          args: ["./mcp.js"],
-          state: "enabled",
-        },
-      },
-    };
+    const yamlContent = `project-mcp:
+  command: node
+  args:
+    - "./mcp.js"
+  state: enabled`;
 
     vi.mocked(fs.access).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockMcpsConfig));
+    vi.mocked(fs.readFile).mockResolvedValue(yamlContent);
 
     const result = await loadProjectConfig("/home/user/my-project");
 
     expect(fs.readFile).toHaveBeenCalledWith(
-      "/home/user/my-project/.mycelium/mcps.json",
+      "/home/user/my-project/.mycelium/mcps.yaml",
       "utf-8"
     );
     expect(result.mcps).toHaveProperty("project-mcp");
@@ -409,29 +403,30 @@ describe("loadMachineConfig", () => {
     vi.resetAllMocks();
   });
 
-  it("loads from ~/.mycelium/machines/{hostname}/", async () => {
+  it("loads from ~/.mycelium/machines/{hostname}.yaml", async () => {
     const fs = await import("node:fs/promises");
     const { loadMachineConfig } = await import("./config-merger.js");
 
-    const mockMcpsConfig = {
-      mcps: {
-        "machine-mcp": {
-          command: "cuda-mcp",
-          args: ["--gpu"],
-          state: "enabled",
-        },
-      },
-    };
-
-    vi.mocked(fs.access).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockMcpsConfig));
-
-    const result = await loadMachineConfig();
+    const yamlContent = `machine-mcp:
+  command: cuda-mcp
+  args:
+    - "--gpu"
+  state: enabled`;
 
     const home = os.homedir();
     const hostname = os.hostname();
+
+    vi.mocked(fs.access).mockImplementation(async (p) => {
+      const s = String(p);
+      if (s.endsWith(`${hostname}.yaml`)) return undefined;
+      throw new Error("ENOENT");
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(yamlContent);
+
+    const result = await loadMachineConfig();
+
     expect(fs.readFile).toHaveBeenCalledWith(
-      path.join(home, ".mycelium", "machines", hostname, "mcps.json"),
+      path.join(home, ".mycelium", "machines", `${hostname}.yaml`),
       "utf-8"
     );
     expect(result.mcps).toHaveProperty("machine-mcp");
@@ -458,35 +453,23 @@ describe("loadAndMergeAllConfigs", () => {
     const fs = await import("node:fs/promises");
     const { loadAndMergeAllConfigs } = await import("./config-merger.js");
 
-    const globalMcps = {
-      mcps: {
-        "global-mcp": { command: "global", args: [], state: "enabled" },
-      },
-    };
-    const machineMcps = {
-      mcps: {
-        "machine-mcp": { command: "machine", args: [], state: "enabled" },
-      },
-    };
-    const projectMcps = {
-      mcps: {
-        "project-mcp": { command: "project", args: [], state: "enabled" },
-      },
-    };
+    const globalYaml = `global-mcp:\n  command: global\n  args: []\n  state: enabled`;
+    const machineYaml = `machine-mcp:\n  command: machine\n  args: []\n  state: enabled`;
+    const projectYaml = `project-mcp:\n  command: project\n  args: []\n  state: enabled`;
 
     const home = os.homedir();
     const hostname = os.hostname();
 
-    vi.mocked(fs.access).mockResolvedValue(undefined);
+    vi.mocked(fs.access).mockImplementation(async (p) => {
+      const s = String(p);
+      if (s.endsWith("mcps.yaml") || s.endsWith(`${hostname}.yaml`)) return undefined;
+      throw new Error("ENOENT");
+    });
     vi.mocked(fs.readFile).mockImplementation(async (filePath) => {
       const pathStr = filePath.toString();
-      if (pathStr.includes("machines")) {
-        return JSON.stringify(machineMcps);
-      } else if (pathStr.includes(".mycelium/mcps.json") && !pathStr.includes("my-project")) {
-        return JSON.stringify(globalMcps);
-      } else {
-        return JSON.stringify(projectMcps);
-      }
+      if (pathStr.includes(`${hostname}.yaml`)) return machineYaml;
+      if (pathStr.includes("global/mcps.yaml")) return globalYaml;
+      return projectYaml;
     });
 
     const result = await loadAndMergeAllConfigs("/home/user/my-project");

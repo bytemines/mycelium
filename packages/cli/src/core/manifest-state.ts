@@ -12,16 +12,16 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import { expandPath } from "@mycelish/core";
-import { readFileIfExists } from "./fs-helpers.js";
+import { expandPath, TOOL_REGISTRY } from "@mycelish/core";
+import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 
-import type { ToolId } from "@mycelish/core";
+import type { ToolId, ItemState } from "@mycelish/core";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-type ItemState = "enabled" | "disabled" | "deleted";
+export type { ItemState };
 
 export interface ItemConfig {
   state?: ItemState;
@@ -46,53 +46,16 @@ export interface ManifestConfig {
 }
 
 // ============================================================================
-// Load / Save
+// Central Registry
 // ============================================================================
 
-/**
- * Load manifest.yaml from a directory. Auto-creates an empty one if the
- * directory exists but the file doesn't.
- */
-export async function loadStateManifest(manifestDir: string): Promise<ManifestConfig | null> {
-  const manifestPath = path.join(manifestDir, "manifest.yaml");
-  try {
-    const content = await fs.readFile(manifestPath, "utf-8");
-    return yamlParse(content) as ManifestConfig;
-  } catch {
-    // Auto-create empty manifest if the mycelium directory exists
-    try {
-      await fs.access(manifestDir);
-      const empty: ManifestConfig = { version: "1.0.0", skills: {}, mcps: {}, hooks: {}, memory: {} };
-      await fs.writeFile(manifestPath, yamlStringify(empty), "utf-8");
-      return empty;
-    } catch {
-      return null;
-    }
-  }
-}
-
-/**
- * Save manifest.yaml to a directory.
- */
-export async function saveStateManifest(manifestDir: string, manifest: ManifestConfig): Promise<void> {
-  const manifestPath = path.join(manifestDir, "manifest.yaml");
-  await fs.writeFile(manifestPath, yamlStringify(manifest), "utf-8");
-}
-
-// ============================================================================
-// Query Helpers
-// ============================================================================
-
-/**
- * Find an item by name across all sections (skills, mcps, hooks, memory).
- */
 export type ItemType = "skill" | "mcp" | "hook" | "memory" | "agent" | "command";
 
 /**
  * Central registry of item sections. To add a new item type:
  * 1. Add the section to ManifestConfig interface
  * 2. Add an entry here
- * Everything else (findItemType, getDisabledItems, sectionForType) derives from this.
+ * Everything else (findItemType, getDisabledItems, sectionForType, emptyManifest) derives from this.
  */
 export const ITEM_SECTIONS: { key: keyof ManifestConfig; type: ItemType }[] = [
   { key: "skills", type: "skill" },
@@ -110,6 +73,60 @@ export function sectionForType(type: string): keyof ManifestConfig | null {
   const entry = ITEM_SECTIONS.find(s => s.type === type);
   return entry?.key ?? null;
 }
+
+/** Create an empty manifest with all sections derived from ITEM_SECTIONS */
+function createEmptyManifest(): ManifestConfig {
+  const manifest: ManifestConfig = { version: "1.0.0" };
+  for (const { key } of ITEM_SECTIONS) {
+    (manifest as unknown as Record<string, unknown>)[key] = {};
+  }
+  return manifest;
+}
+
+// ============================================================================
+// Load / Save
+// ============================================================================
+
+/**
+ * Load manifest.yaml from a directory. Auto-creates an empty one if the
+ * directory exists but the file doesn't.
+ */
+export async function loadStateManifest(manifestDir: string): Promise<ManifestConfig | null> {
+  const manifestPath = path.join(manifestDir, "manifest.yaml");
+
+  const content = await readFileIfExists(manifestPath);
+  if (content) {
+    try {
+      return yamlParse(content) as ManifestConfig;
+    } catch (err) {
+      console.warn(`Mycelium: failed to parse ${manifestPath}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  // File doesn't exist — auto-create if the directory exists
+  try {
+    await fs.access(manifestDir);
+    const empty = createEmptyManifest();
+    await fs.writeFile(manifestPath, yamlStringify(empty), "utf-8");
+    return empty;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save manifest.yaml to a directory. Creates the directory if needed.
+ */
+export async function saveStateManifest(manifestDir: string, manifest: ManifestConfig): Promise<void> {
+  await mkdirp(manifestDir);
+  const manifestPath = path.join(manifestDir, "manifest.yaml");
+  await fs.writeFile(manifestPath, yamlStringify(manifest), "utf-8");
+}
+
+// ============================================================================
+// Query Helpers
+// ============================================================================
 
 export function findItemType(
   manifest: ManifestConfig,
@@ -152,7 +169,6 @@ export async function getDisabledItems(projectRoot?: string): Promise<Set<string
         if (state === "disabled" || state === "deleted") {
           disabledItems.add(itemName);
         } else if (state === "enabled") {
-          // Project can re-enable a globally disabled item
           disabledItems.delete(itemName);
         }
       }
@@ -160,6 +176,55 @@ export async function getDisabledItems(projectRoot?: string): Promise<Set<string
   }
 
   return disabledItems;
+}
+
+// ============================================================================
+// State Mutations — used by enable/disable/remove commands
+// ============================================================================
+
+/** Validate a tool ID against the registry */
+export function isValidToolId(toolId: string): toolId is ToolId {
+  return toolId in TOOL_REGISTRY;
+}
+
+/** Resolve manifest directory from options */
+export function resolveManifestDir(opts: { global?: boolean; globalPath?: string; projectPath?: string }): string {
+  return opts.global
+    ? opts.globalPath || expandPath("~/.mycelium")
+    : opts.projectPath || path.join(process.cwd(), ".mycelium");
+}
+
+/**
+ * Ensure an item exists in the manifest. If not found, auto-registers it
+ * as a skill with the given initial state.
+ */
+export function ensureItem(
+  manifest: ManifestConfig,
+  name: string,
+  initialState: ItemState,
+): { type: ItemType; config: ItemConfig; autoRegistered: boolean } {
+  const existing = findItemType(manifest, name);
+  if (existing) return { ...existing, autoRegistered: false };
+
+  if (!manifest.skills) manifest.skills = {};
+  manifest.skills[name] = { state: initialState, source: "auto" };
+  return { type: "skill", config: manifest.skills[name], autoRegistered: true };
+}
+
+/**
+ * Write an item config back to the correct section in the manifest.
+ */
+export function setItemInManifest(
+  manifest: ManifestConfig,
+  name: string,
+  type: ItemType,
+  config: ItemConfig,
+): void {
+  const sectionKey = sectionForType(type)!;
+  if (!manifest[sectionKey]) {
+    (manifest as unknown as Record<string, unknown>)[sectionKey] = {};
+  }
+  (manifest[sectionKey] as Record<string, ItemConfig>)[name] = config;
 }
 
 // ============================================================================

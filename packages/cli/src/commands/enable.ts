@@ -8,16 +8,17 @@
  */
 
 import { Command } from "commander";
-import * as path from "node:path";
-import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelish/core";
+import { type ToolId, ALL_TOOL_IDS } from "@mycelish/core";
 import { getTracer } from "../core/global-tracer.js";
 import {
   loadStateManifest,
   saveStateManifest,
-  findItemType,
-  sectionForType,
+  ensureItem,
+  setItemInManifest,
+  isValidToolId,
+  resolveManifestDir,
   type ItemConfig,
-  type ManifestConfig,
+  type ItemType,
 } from "../core/manifest-state.js";
 
 // ============================================================================
@@ -35,38 +36,12 @@ export interface EnableOptions {
 export interface EnableResult {
   success: boolean;
   name: string;
-  type?: "skill" | "mcp" | "hook" | "memory" | "agent" | "command";
+  type?: ItemType;
   level?: "global" | "project";
   tool?: ToolId;
   alreadyEnabled?: boolean;
   message?: string;
   error?: string;
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function isValidToolId(toolId: string): toolId is ToolId {
-  return toolId in TOOL_REGISTRY;
-}
-
-/**
- * Check if item is already enabled (globally or for a specific tool)
- */
-function isAlreadyEnabled(
-  config: ItemConfig,
-  tool?: ToolId
-): boolean {
-  if (tool) {
-    // Check tool-specific enablement
-    if (config.enabledTools?.includes(tool) || config.tools?.includes(tool)) {
-      return true;
-    }
-    return false;
-  }
-  // Check global enablement — undefined (no state) means enabled by default
-  return config.state === "enabled" || config.state === undefined;
 }
 
 // ============================================================================
@@ -89,12 +64,7 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     return { success: false, name, error };
   }
 
-  // Determine which manifest to use
-  const manifestDir = isGlobal
-    ? options.globalPath || expandPath("~/.mycelium")
-    : options.projectPath || path.join(process.cwd(), ".mycelium");
-
-  // Load manifest
+  const manifestDir = resolveManifestDir(options);
   const manifest = await loadStateManifest(manifestDir);
   if (!manifest) {
     const error = `Could not load manifest from ${manifestDir}`;
@@ -102,76 +72,46 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
     return { success: false, name, error };
   }
 
-  // Find the item, or auto-register as a skill if not found
-  let item = findItemType(manifest, name);
-  if (!item) {
-    if (!manifest.skills) manifest.skills = {};
-    manifest.skills[name] = { state: "disabled", source: "auto" };
+  // Find or auto-register item
+  const { type, config, autoRegistered } = ensureItem(manifest, name, "disabled");
+  if (autoRegistered) {
     log.info({ scope: "manifest", op: "enable", msg: `Auto-registered '${name}' as skill in manifest`, item: name });
-    item = { type: "skill", config: manifest.skills[name] };
   }
 
-  const { type, config } = item;
   const level = isGlobal ? "global" : "project";
 
   // Check if already enabled
   if (isAlreadyEnabled(config, tool)) {
     const toolMsg = tool ? ` for ${tool}` : "";
-    return {
-      success: true,
-      name,
-      type,
-      level,
-      tool,
-      alreadyEnabled: true,
-      message: `${type} '${name}' is already enabled${toolMsg}`,
-    };
+    return { success: true, name, type, level, tool, alreadyEnabled: true, message: `${type} '${name}' is already enabled${toolMsg}` };
   }
 
-  // Enable the item
+  // Apply enable
   if (tool) {
-    // Enable for specific tool
-    if (!config.enabledTools) {
-      config.enabledTools = [];
-    }
-    if (!config.enabledTools.includes(tool)) {
-      config.enabledTools.push(tool);
-    }
-    // Also add to tools array if it exists
-    if (!config.tools) {
-      config.tools = [];
-    }
-    if (!config.tools.includes(tool)) {
-      config.tools.push(tool);
-    }
-    // Remove from excludeTools if present
+    if (!config.enabledTools) config.enabledTools = [];
+    if (!config.enabledTools.includes(tool)) config.enabledTools.push(tool);
+    if (!config.tools) config.tools = [];
+    if (!config.tools.includes(tool)) config.tools.push(tool);
     if (config.excludeTools) {
       config.excludeTools = config.excludeTools.filter((t) => t !== tool);
     }
   } else {
-    // Enable globally — restores both disabled and deleted items
     config.state = "enabled";
   }
 
-  // Update manifest — write config back to appropriate section
-  const sectionKey = sectionForType(type)!;
-  if (!manifest[sectionKey]) (manifest as unknown as Record<string, unknown>)[sectionKey] = {};
-  (manifest[sectionKey] as Record<string, ItemConfig>)[name] = config;
-
-  // Save manifest
+  setItemInManifest(manifest, name, type, config);
   await saveStateManifest(manifestDir, manifest);
 
-  // Build success message
   const toolMsg = tool ? ` for ${tool}` : "";
   log.info({ scope: "manifest", op: "enable", msg: `${type} '${name}' enabled${toolMsg}`, item: name, tool });
-  return {
-    success: true,
-    name,
-    type,
-    level,
-    tool,
-    message: `${type} '${name}' enabled${toolMsg}`,
-  };
+  return { success: true, name, type, level, tool, message: `${type} '${name}' enabled${toolMsg}` };
+}
+
+function isAlreadyEnabled(config: ItemConfig, tool?: ToolId): boolean {
+  if (tool) {
+    return !!(config.enabledTools?.includes(tool) || config.tools?.includes(tool));
+  }
+  return config.state === "enabled" || config.state === undefined;
 }
 
 // ============================================================================

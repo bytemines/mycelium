@@ -8,16 +8,17 @@
  */
 
 import { Command } from "commander";
-import * as path from "node:path";
-import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelish/core";
+import { type ToolId, ALL_TOOL_IDS } from "@mycelish/core";
 import { getTracer } from "../core/global-tracer.js";
 import {
   loadStateManifest,
   saveStateManifest,
-  findItemType,
-  sectionForType,
+  ensureItem,
+  setItemInManifest,
+  isValidToolId,
+  resolveManifestDir,
   type ItemConfig,
-  type ManifestConfig,
+  type ItemType,
 } from "../core/manifest-state.js";
 
 // ============================================================================
@@ -35,42 +36,12 @@ export interface DisableOptions {
 export interface DisableResult {
   success: boolean;
   name: string;
-  type?: "skill" | "mcp" | "hook" | "memory" | "agent" | "command";
+  type?: ItemType;
   level?: "global" | "project";
   tool?: ToolId;
   alreadyDisabled?: boolean;
   message?: string;
   error?: string;
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function isValidToolId(toolId: string): toolId is ToolId {
-  return toolId in TOOL_REGISTRY;
-}
-
-/**
- * Check if item is already disabled (globally or for a specific tool)
- */
-function isAlreadyDisabled(
-  config: ItemConfig,
-  tool?: ToolId
-): boolean {
-  if (tool) {
-    // Check tool-specific disablement
-    if (config.excludeTools?.includes(tool)) {
-      return true;
-    }
-    // If tools array exists and doesn't include this tool, it's effectively disabled
-    if (config.tools && !config.tools.includes(tool)) {
-      return true;
-    }
-    return false;
-  }
-  // Check global disablement
-  return config.state === "disabled";
 }
 
 // ============================================================================
@@ -93,12 +64,7 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
     return { success: false, name, error };
   }
 
-  // Determine which manifest to use
-  const manifestDir = isGlobal
-    ? options.globalPath || expandPath("~/.mycelium")
-    : options.projectPath || path.join(process.cwd(), ".mycelium");
-
-  // Load manifest
+  const manifestDir = resolveManifestDir(options);
   const manifest = await loadStateManifest(manifestDir);
   if (!manifest) {
     const error = `Could not load manifest from ${manifestDir}`;
@@ -106,41 +72,24 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
     return { success: false, name, error };
   }
 
-  // Find the item, or auto-register as a skill if not found
-  let item = findItemType(manifest, name);
-  if (!item) {
-    if (!manifest.skills) manifest.skills = {};
-    manifest.skills[name] = { state: "enabled", source: "auto" };
+  // Find or auto-register item
+  const { type, config, autoRegistered } = ensureItem(manifest, name, "enabled");
+  if (autoRegistered) {
     log.info({ scope: "manifest", op: "disable", msg: `Auto-registered '${name}' as skill in manifest`, item: name });
-    item = { type: "skill", config: manifest.skills[name] };
   }
 
-  const { type, config } = item;
   const level = isGlobal ? "global" : "project";
 
   // Check if already disabled
   if (isAlreadyDisabled(config, tool)) {
     const toolMsg = tool ? ` for ${tool}` : "";
-    return {
-      success: true,
-      name,
-      type,
-      level,
-      tool,
-      alreadyDisabled: true,
-      message: `${type} '${name}' is already disabled${toolMsg}`,
-    };
+    return { success: true, name, type, level, tool, alreadyDisabled: true, message: `${type} '${name}' is already disabled${toolMsg}` };
   }
 
-  // Disable the item
+  // Apply disable
   if (tool) {
-    // Disable for specific tool
-    if (!config.excludeTools) {
-      config.excludeTools = [];
-    }
-    if (!config.excludeTools.includes(tool)) {
-      config.excludeTools.push(tool);
-    }
+    if (!config.excludeTools) config.excludeTools = [];
+    if (!config.excludeTools.includes(tool)) config.excludeTools.push(tool);
     if (config.tools) {
       config.tools = config.tools.filter((t) => t !== tool);
     }
@@ -148,29 +97,24 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
       config.enabledTools = config.enabledTools.filter((t) => t !== tool);
     }
   } else {
-    // Disable globally
     config.state = "disabled";
   }
 
-  // Update manifest — write config back to appropriate section
-  const sectionKey = sectionForType(type)!;
-  if (!manifest[sectionKey]) (manifest as unknown as Record<string, unknown>)[sectionKey] = {};
-  (manifest[sectionKey] as Record<string, ItemConfig>)[name] = config;
-
-  // Save manifest
+  setItemInManifest(manifest, name, type, config);
   await saveStateManifest(manifestDir, manifest);
 
-  // Build success message
   const toolMsg = tool ? ` for ${tool}` : "";
   log.info({ scope: "manifest", op: "disable", msg: `${type} '${name}' disabled${toolMsg}`, item: name, tool });
-  return {
-    success: true,
-    name,
-    type,
-    level,
-    tool,
-    message: `${type} '${name}' disabled${toolMsg}`,
-  };
+  return { success: true, name, type, level, tool, message: `${type} '${name}' disabled${toolMsg}` };
+}
+
+function isAlreadyDisabled(config: ItemConfig, tool?: ToolId): boolean {
+  if (tool) {
+    if (config.excludeTools?.includes(tool)) return true;
+    if (config.tools && !config.tools.includes(tool)) return true;
+    return false;
+  }
+  return config.state === "disabled";
 }
 
 // ============================================================================
