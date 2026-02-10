@@ -10,6 +10,7 @@ import { buildPluginMap } from "./plugin-map.js";
 import { asyncHandler } from "./async-handler.js";
 
 import type { Express } from "express";
+import type { ToolId } from "@mycelish/core";
 
 export function registerPluginsRoutes(app: Express): void {
   const router = Router();
@@ -51,8 +52,12 @@ export function registerPluginsRoutes(app: Express): void {
     const pluginName = req.params.pluginName as string;
     const itemName = req.params.itemName as string;
     const { enabled, global: isGlobal, tool } = req.body as { enabled: boolean; global?: boolean; tool?: string };
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({ success: false, error: "Missing required field: enabled (boolean)" });
+      return;
+    }
 
-    const options = { name: itemName, global: isGlobal, tool: tool as any };
+    const options = { name: itemName, global: isGlobal, tool: tool as ToolId | undefined };
     const result = enabled
       ? await enableSkillOrMcp(options)
       : await disableSkillOrMcp(options);
