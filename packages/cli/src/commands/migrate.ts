@@ -31,6 +31,7 @@ import { migrateManifestV1ToV2 } from "../core/manifest-migrator.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { homedir } from "node:os";
+import { getTracer } from "../core/global-tracer.js";
 
 export const migrateCommand = new Command("migrate")
   .description("Scan installed tools and migrate configs into Mycelium")
@@ -49,6 +50,7 @@ export const migrateCommand = new Command("migrate")
   .option("--snapshots", "List all saved snapshots")
   .option("--snapshot-delete <name>", "Delete a saved snapshot")
   .action(async (opts) => {
+    const log = getTracer().createTrace("migrate");
     const apply = opts.apply ?? false;
     const strategy = (opts.strategy ?? "latest") as ConflictStrategy;
 
@@ -121,6 +123,7 @@ export const migrateCommand = new Command("migrate")
     }
 
     // Scan
+    log.info({ scope: "migration", op: "scan", msg: "Scanning installed tools" });
     console.log("Scanning installed tools...\n");
 
     const scans = opts.tool
@@ -242,6 +245,7 @@ export const migrateCommand = new Command("migrate")
     }
 
     // Execute
+    log.info({ scope: "migration", op: "execute", msg: `Applying migration: ${plan.skills.length} skills, ${plan.mcps.length} MCPs` });
     console.log("\nApplying migration...");
     const result = await executeMigration(plan);
 
@@ -252,12 +256,14 @@ export const migrateCommand = new Command("migrate")
       console.log(`Wrote ${allHooks.length} hooks to hooks.yaml`);
     }
 
+    log.info({ scope: "migration", op: "complete", msg: `Imported ${result.skillsImported} skills, ${result.mcpsImported} MCPs, ${result.memoryImported} memory` });
     console.log(
       `\nDone! Imported ${result.skillsImported} skills, ${result.mcpsImported} MCPs, ${result.memoryImported} memory files.`,
     );
     if (result.errors.length > 0) {
       console.error("Errors:");
       for (const e of result.errors) {
+        log.error({ scope: "migration", op: "execute", msg: e, error: e });
         console.error(`  - ${e}`);
       }
     }

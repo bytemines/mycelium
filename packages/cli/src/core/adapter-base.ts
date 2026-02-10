@@ -6,6 +6,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { McpServerConfig } from "@mycelish/core";
+import type { TraceLogger } from "./tracer.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -61,6 +62,7 @@ export async function execCli(cmd: string, args: string[]): Promise<{ stdout: st
 
 export abstract class BaseToolAdapter implements ToolAdapter {
   abstract toolId: string;
+  log?: TraceLogger;
 
   abstract addViaCli(name: string, config: McpServerConfig): Promise<AdapterResult>;
   abstract removeViaCli(name: string): Promise<AdapterResult>;

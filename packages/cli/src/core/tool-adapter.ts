@@ -20,6 +20,7 @@ export {
 } from "./adapter-base.js";
 
 import { BaseToolAdapter, type AdapterResult } from "./adapter-base.js";
+import type { TraceLogger } from "./tracer.js";
 
 // ---------------------------------------------------------------------------
 // OpenClaw (custom: array-based plugins.entries)
@@ -75,6 +76,11 @@ export class OpenClawAdapter extends BaseToolAdapter {
       await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
       return { success: true, method: "file" };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "write", msg: String(err), tool: "openclaw",
+        method: "file", format: "json", entryShape: "openclaw",
+        path: expandPath("~/.openclaw/openclaw.json"), error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }
@@ -95,6 +101,11 @@ export class OpenClawAdapter extends BaseToolAdapter {
       }
       return { success: false, method: "file", error: `${name} not found` };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "remove", msg: String(err), tool: "openclaw",
+        item: name, method: "file", format: "json", entryShape: "openclaw",
+        path: expandPath("~/.openclaw/openclaw.json"), error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }
@@ -153,6 +164,11 @@ export class AiderAdapter extends BaseToolAdapter {
 
       return { success: true, method: "file" };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "write", msg: String(err), tool: "aider",
+        method: "file", format: "json", entryShape: "standard",
+        path: expandPath("~/.aider/mcp-servers.json"), error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }
@@ -171,6 +187,11 @@ export class AiderAdapter extends BaseToolAdapter {
       }
       return { success: false, method: "file", error: `${name} not found` };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "remove", msg: String(err), tool: "aider",
+        item: name, method: "file", format: "json", entryShape: "standard",
+        path: expandPath("~/.aider/mcp-servers.json"), error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }

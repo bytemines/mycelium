@@ -12,6 +12,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelish/core";
+import { getTracer } from "../core/global-tracer.js";
 
 // ============================================================================
 // Types
@@ -149,14 +150,15 @@ function isAlreadyDisabled(
  */
 export async function disableSkillOrMcp(options: DisableOptions): Promise<DisableResult> {
   const { name, tool, global: isGlobal } = options;
+  const tracer = getTracer();
+  const log = tracer.createTrace("disable");
+  log.info({ scope: "manifest", op: "disable", msg: `Disabling ${name}`, item: name, tool });
 
   // Validate tool if provided
   if (tool && !isValidToolId(tool)) {
-    return {
-      success: false,
-      name,
-      error: `Invalid tool: ${tool}. Supported tools: ${ALL_TOOL_IDS.join(", ")}`,
-    };
+    const error = `Invalid tool: ${tool}. Supported tools: ${ALL_TOOL_IDS.join(", ")}`;
+    log.error({ scope: "manifest", op: "disable", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   // Determine which manifest to use
@@ -167,21 +169,17 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
   // Load manifest
   const manifest = await loadManifest(manifestDir);
   if (!manifest) {
-    return {
-      success: false,
-      name,
-      error: `Could not load manifest from ${manifestDir}`,
-    };
+    const error = `Could not load manifest from ${manifestDir}`;
+    log.error({ scope: "manifest", op: "disable", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   // Find the item
   const item = findItemType(manifest, name);
   if (!item) {
-    return {
-      success: false,
-      name,
-      error: `'${name}' not found in manifest (checked skills, mcps, hooks, and memory)`,
-    };
+    const error = `'${name}' not found in manifest (checked skills, mcps, hooks, and memory)`;
+    log.error({ scope: "manifest", op: "disable", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   const { type, config } = item;
@@ -241,6 +239,7 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
 
   // Build success message
   const toolMsg = tool ? ` for ${tool}` : "";
+  log.info({ scope: "manifest", op: "disable", msg: `${type} '${name}' disabled${toolMsg}`, item: name, tool });
   return {
     success: true,
     name,

@@ -12,6 +12,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { expandPath } from "@mycelish/core";
+import { getTracer } from "../core/global-tracer.js";
 
 // ============================================================================
 // Types
@@ -125,10 +126,14 @@ export async function removeItem(
   name: string,
   opts?: { type?: string; manifestDir?: string },
 ): Promise<RemoveResult> {
+  const log = getTracer().createTrace("remove");
+  log.info({ scope: "manifest", op: "remove", msg: `Removing ${name}`, item: name });
   const manifestDir = opts?.manifestDir ?? await resolveManifestDir();
   const manifest = await loadManifest(manifestDir);
   if (!manifest) {
-    return { success: false, name, error: `Could not load manifest from ${manifestDir}` };
+    const error = `Could not load manifest from ${manifestDir}`;
+    log.error({ scope: "manifest", op: "remove", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   let matches = findItemInManifest(manifest, name);
@@ -143,7 +148,9 @@ export async function removeItem(
   }
 
   if (matches.length === 0) {
-    return { success: false, name, error: `'${name}' not found in manifest` };
+    const error = `'${name}' not found in manifest`;
+    log.error({ scope: "manifest", op: "remove", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   if (matches.length > 1 && !opts?.type) {
@@ -164,12 +171,9 @@ export async function removeItem(
 
   await saveManifest(manifestDir, manifest);
 
-  return {
-    success: true,
-    name,
-    section: sectionToType(match.section),
-    message: `${sectionToType(match.section)} '${name}' marked as deleted`,
-  };
+  const msg = `${sectionToType(match.section)} '${name}' marked as deleted`;
+  log.info({ scope: "manifest", op: "remove", msg, item: name });
+  return { success: true, name, section: sectionToType(match.section), message: msg };
 }
 
 /**

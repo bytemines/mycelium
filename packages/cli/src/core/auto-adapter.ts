@@ -73,6 +73,10 @@ export class GenericAdapter extends BaseToolAdapter {
       }
       return { success: true, method: "cli", message: `Added ${name} via ${cli.command} CLI` };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "add", msg: String(err), tool: this.desc.id,
+        item: name, method: "cli", error: String(err),
+      });
       return { success: false, method: "cli", error: String(err) };
     }
   }
@@ -87,6 +91,10 @@ export class GenericAdapter extends BaseToolAdapter {
       await execCli(cli.command, args);
       return { success: true, method: "cli" };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "remove", msg: String(err), tool: this.desc.id,
+        item: name, method: "cli", error: String(err),
+      });
       return { success: false, method: "cli", error: String(err) };
     }
   }
@@ -99,6 +107,10 @@ export class GenericAdapter extends BaseToolAdapter {
       await execCli(cli.command, [...cli.mcp.disable, name]);
       return { success: true, method: "cli" };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "disable", msg: String(err), tool: this.desc.id,
+        item: name, method: "cli", error: String(err),
+      });
       return { success: false, method: "cli", error: String(err) };
     }
   }
@@ -111,6 +123,10 @@ export class GenericAdapter extends BaseToolAdapter {
       await execCli(cli.command, [...cli.mcp.enable, name]);
       return { success: true, method: "cli" };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "enable", msg: String(err), tool: this.desc.id,
+        item: name, method: "cli", error: String(err),
+      });
       return { success: false, method: "cli", error: String(err) };
     }
   }
@@ -159,6 +175,12 @@ export class GenericAdapter extends BaseToolAdapter {
       await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
       return { success: true, method: "file", message: `Wrote MCPs to ${configPath}` };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "write", msg: String(err), tool: this.desc.id,
+        method: "file", format: this.desc.mcp.format,
+        entryShape: this.desc.mcp.entryShape, path: configPath,
+        error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }
@@ -186,6 +208,12 @@ export class GenericAdapter extends BaseToolAdapter {
       }
       return { success: false, method: "file", error: `${name} not found` };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "remove", msg: String(err), tool: this.desc.id,
+        item: name, method: "file", format: this.desc.mcp.format,
+        entryShape: this.desc.mcp.entryShape, path: configPath,
+        error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }
@@ -211,6 +239,12 @@ export class GenericAdapter extends BaseToolAdapter {
       }
       return { success: false, method: "file", error: `${name} not found` };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "disable", msg: String(err), tool: this.desc.id,
+        item: name, method: "file", format: this.desc.mcp.format,
+        entryShape: this.desc.mcp.entryShape, path: configPath,
+        error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }
@@ -236,6 +270,12 @@ export class GenericAdapter extends BaseToolAdapter {
       }
       return { success: false, method: "file", error: `${name} not found` };
     } catch (err) {
+      this.log?.error({
+        scope: "mcp", op: "enable", msg: String(err), tool: this.desc.id,
+        item: name, method: "file", format: this.desc.mcp.format,
+        entryShape: this.desc.mcp.entryShape, path: configPath,
+        error: String(err),
+      });
       return { success: false, method: "file", error: String(err) };
     }
   }

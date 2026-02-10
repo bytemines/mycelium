@@ -6,6 +6,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import type { McpServerConfig, ScannedHook } from "@mycelish/core";
+import type { TraceLogger } from "./tracer.js";
 import { TOOL_REGISTRY, resolvePath, expandPath } from "@mycelish/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 import { getAdapter } from "./tool-adapter.js";
@@ -75,6 +76,7 @@ export async function syncToTool(
   toolId: string,
   mcps: Record<string, McpServerConfig>,
   hooks?: ScannedHook[],
+  log?: TraceLogger,
 ): Promise<SyncWriteResult> {
   const desc = TOOL_REGISTRY[toolId];
   if (!desc) {
@@ -88,7 +90,14 @@ export async function syncToTool(
     return { configPath: "", backupPath: "", sectionsUpdated: [], success: false, error: `Unsupported tool: ${toolId}` };
   }
 
+  log?.info({ scope: "mcp", op: "write", msg: `Writing ${Object.keys(mcps).length} MCPs`, tool: toolId, progress: `0/${Object.keys(mcps).length}` });
+
   const result = await adapter.syncAll(mcps);
+
+  if (!result.success) {
+    const configPath = resolvePath(desc.paths.mcp) ?? "";
+    log?.error({ scope: "mcp", op: "write", msg: result.error ?? "Write failed", tool: toolId, method: result.method, path: configPath, format: desc.mcp.format, entryShape: desc.mcp.entryShape });
+  }
 
   // Handle hooks separately (Claude Code only)
   if (toolId === "claude-code" && hooks?.length) {

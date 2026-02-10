@@ -12,6 +12,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { type ToolId, TOOL_REGISTRY, ALL_TOOL_IDS, expandPath } from "@mycelish/core";
+import { getTracer } from "../core/global-tracer.js";
 
 // ============================================================================
 // Types
@@ -173,14 +174,15 @@ function isAlreadyEnabled(
  */
 export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableResult> {
   const { name, tool, global: isGlobal } = options;
+  const tracer = getTracer();
+  const log = tracer.createTrace("enable");
+  log.info({ scope: "manifest", op: "enable", msg: `Enabling ${name}`, item: name, tool });
 
   // Validate tool if provided
   if (tool && !isValidToolId(tool)) {
-    return {
-      success: false,
-      name,
-      error: `Invalid tool: ${tool}. Supported tools: ${ALL_TOOL_IDS.join(", ")}`,
-    };
+    const error = `Invalid tool: ${tool}. Supported tools: ${ALL_TOOL_IDS.join(", ")}`;
+    log.error({ scope: "manifest", op: "enable", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   // Determine which manifest to use
@@ -191,21 +193,17 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
   // Load manifest
   const manifest = await loadManifest(manifestDir);
   if (!manifest) {
-    return {
-      success: false,
-      name,
-      error: `Could not load manifest from ${manifestDir}`,
-    };
+    const error = `Could not load manifest from ${manifestDir}`;
+    log.error({ scope: "manifest", op: "enable", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   // Find the item
   const item = findItemType(manifest, name);
   if (!item) {
-    return {
-      success: false,
-      name,
-      error: `'${name}' not found in manifest (checked skills, mcps, hooks, and memory)`,
-    };
+    const error = `'${name}' not found in manifest (checked skills, mcps, hooks, and memory)`;
+    log.error({ scope: "manifest", op: "enable", msg: error, item: name, error });
+    return { success: false, name, error };
   }
 
   const { type, config } = item;
@@ -270,6 +268,7 @@ export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableRe
 
   // Build success message
   const toolMsg = tool ? ` for ${tool}` : "";
+  log.info({ scope: "manifest", op: "enable", msg: `${type} '${name}' enabled${toolMsg}`, item: name, tool });
   return {
     success: true,
     name,
