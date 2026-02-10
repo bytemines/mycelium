@@ -1,312 +1,223 @@
 /**
- * Remove command — remove skills, MCPs, or hooks from mycelium config.
+ * Remove command — soft-delete items from mycelium sync.
  *
- * mycelium remove skill <name>       — Remove a skill symlink + manifest entry
- * mycelium remove mcp <name>         — Remove an MCP from mcps.yaml + manifest
- * mycelium remove hook <name>        — Remove a hook from hooks.yaml + manifest
- * mycelium remove plugin <name>      — Remove all skills from a plugin at once
+ * mycelium remove <name>              — Find item in manifest, set state: "deleted"
+ * mycelium remove <name> --type mcp   — Disambiguate when name exists in multiple sections
+ * mycelium remove plugin <name>       — Mark all items from that source as deleted
  *
  * After removing, run `mycelium sync` to propagate to tool configs.
  */
 import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { readFileIfExists, mkdirp, MYCELIUM_HOME } from "../core/fs-helpers.js";
-import { loadManifest, saveManifest } from "../core/migrator/index.js";
-
-const MYCELIUM_DIR = MYCELIUM_HOME;
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+import { expandPath } from "@mycelish/core";
 
 // ============================================================================
-// Core remove functions
+// Types
 // ============================================================================
 
-export async function removeSkill(name: string): Promise<{ removed: boolean; error?: string }> {
-  return removeComponent("skill", name);
+type ItemSection = "skills" | "mcps" | "hooks" | "memory";
+const ALL_SECTIONS: ItemSection[] = ["skills", "mcps", "hooks", "memory"];
+
+interface ManifestConfig {
+  version: string;
+  skills?: Record<string, Record<string, unknown>>;
+  mcps?: Record<string, Record<string, unknown>>;
+  hooks?: Record<string, Record<string, unknown>>;
+  memory?: Record<string, Record<string, unknown>>;
+  [key: string]: unknown;
 }
 
-export async function removeComponent(type: string, name: string): Promise<{ removed: boolean; error?: string }> {
-  const dir = type === "lib" ? "libs" : `${type}s`;
-  const itemPath = path.join(MYCELIUM_DIR, "global", dir, name);
+export interface RemoveResult {
+  success: boolean;
+  name: string;
+  section?: string;
+  message?: string;
+  error?: string;
+}
+
+export interface RemoveBySourceResult {
+  removed: string[];
+  errors: string[];
+}
+
+// ============================================================================
+// Manifest helpers (same pattern as disable.ts / enable.ts)
+// ============================================================================
+
+async function resolveManifestDir(): Promise<string> {
+  // Prefer project-level, fall back to global
+  const projectDir = path.join(process.cwd(), ".mycelium");
   try {
-    await fs.unlink(itemPath);
+    await fs.access(path.join(projectDir, "manifest.yaml"));
+    return projectDir;
   } catch {
-    // Not found on disk is OK — still remove from manifest
+    return expandPath("~/.mycelium");
   }
-
-  // Remove from manifest
-  const manifest = await loadManifest();
-  const before = manifest.entries.length;
-  manifest.entries = manifest.entries.filter(
-    (e) => !(e.type === type && e.name === name),
-  );
-  if (manifest.entries.length === before) {
-    return { removed: false, error: `${type} "${name}" not found in manifest` };
-  }
-  await saveManifest(manifest);
-
-  return { removed: true };
 }
 
-export async function removeMcp(name: string): Promise<{ removed: boolean; error?: string }> {
-  const mcpsPath = path.join(MYCELIUM_DIR, "global", "mcps.yaml");
-  const content = await readFileIfExists(mcpsPath);
-  if (!content) {
-    return { removed: false, error: "No mcps.yaml found" };
+async function loadManifest(manifestDir: string): Promise<ManifestConfig | null> {
+  const manifestPath = path.join(manifestDir, "manifest.yaml");
+  try {
+    const content = await fs.readFile(manifestPath, "utf-8");
+    return yamlParse(content) as ManifestConfig;
+  } catch {
+    return null;
   }
-
-  // Parse YAML and remove the named MCP block
-  const lines = content.split("\n");
-  const newLines: string[] = [];
-  let skipping = false;
-  let found = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Top-level key (no indentation, ends with colon, no spaces in key)
-    if (!line.startsWith(" ") && !line.startsWith("\t") && trimmed.endsWith(":") && !trimmed.startsWith("#")) {
-      const key = trimmed.slice(0, -1);
-      if (key === name) {
-        skipping = true;
-        found = true;
-        continue;
-      }
-      skipping = false;
-    }
-
-    if (!skipping) {
-      newLines.push(line);
-    }
-  }
-
-  if (!found) {
-    return { removed: false, error: `MCP "${name}" not found in mcps.yaml` };
-  }
-
-  // Clean up trailing blank lines
-  const cleaned = newLines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
-  await fs.writeFile(mcpsPath, cleaned, "utf-8");
-
-  // Remove from manifest
-  const manifest = await loadManifest();
-  manifest.entries = manifest.entries.filter(
-    (e) => !(e.type === "mcp" && e.name === name),
-  );
-  await saveManifest(manifest);
-
-  return { removed: true };
 }
 
-export async function removeHook(name: string): Promise<{ removed: boolean; error?: string }> {
-  const hooksPath = path.join(MYCELIUM_DIR, "global", "hooks.yaml");
-  const content = await readFileIfExists(hooksPath);
-  if (!content) {
-    return { removed: false, error: "No hooks.yaml found" };
-  }
-
-  const lines = content.split("\n");
-  const newLines: string[] = [];
-  let skipping = false;
-  let found = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!line.startsWith(" ") && !line.startsWith("\t") && trimmed.endsWith(":") && !trimmed.startsWith("#")) {
-      const key = trimmed.slice(0, -1);
-      if (key === name) {
-        skipping = true;
-        found = true;
-        continue;
-      }
-      skipping = false;
-    }
-    if (!skipping) {
-      newLines.push(line);
-    }
-  }
-
-  if (!found) {
-    return { removed: false, error: `Hook "${name}" not found in hooks.yaml` };
-  }
-
-  const cleaned = newLines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
-  await fs.writeFile(hooksPath, cleaned, "utf-8");
-
-  const manifest = await loadManifest();
-  manifest.entries = manifest.entries.filter(
-    (e) => !(e.type === "hook" && e.name === name),
-  );
-  await saveManifest(manifest);
-
-  return { removed: true };
+async function saveManifest(manifestDir: string, manifest: ManifestConfig): Promise<void> {
+  const manifestPath = path.join(manifestDir, "manifest.yaml");
+  const content = yamlStringify(manifest);
+  await fs.writeFile(manifestPath, content, "utf-8");
 }
 
-export async function removePlugin(pluginName: string): Promise<{ removed: string[]; errors: string[] }> {
-  const manifest = await loadManifest();
-  const pluginEntries = manifest.entries.filter(
-    (e) => e.pluginName === pluginName || e.marketplace === pluginName,
-  );
+// ============================================================================
+// Type flag to section mapping
+// ============================================================================
 
-  if (pluginEntries.length === 0) {
-    return { removed: [], errors: [`No entries found for plugin "${pluginName}"`] };
+function typeToSection(type: string): ItemSection | null {
+  const map: Record<string, ItemSection> = {
+    skill: "skills",
+    mcp: "mcps",
+    hook: "hooks",
+    memory: "memory",
+  };
+  return map[type] ?? null;
+}
+
+function sectionToType(section: ItemSection): string {
+  const map: Record<ItemSection, string> = {
+    skills: "skill",
+    mcps: "mcp",
+    hooks: "hook",
+    memory: "memory",
+  };
+  return map[section];
+}
+
+// ============================================================================
+// Core functions
+// ============================================================================
+
+/**
+ * Find an item across all manifest sections. Returns all matches.
+ */
+function findItemInManifest(
+  manifest: ManifestConfig,
+  name: string,
+): { section: ItemSection; config: Record<string, unknown> }[] {
+  const matches: { section: ItemSection; config: Record<string, unknown> }[] = [];
+  for (const section of ALL_SECTIONS) {
+    const sectionData = manifest[section] as Record<string, Record<string, unknown>> | undefined;
+    if (sectionData && name in sectionData) {
+      matches.push({ section, config: sectionData[name] });
+    }
+  }
+  return matches;
+}
+
+/**
+ * Remove (soft-delete) an item by setting state: "deleted" in manifest.
+ */
+export async function removeItem(
+  name: string,
+  opts?: { type?: string; manifestDir?: string },
+): Promise<RemoveResult> {
+  const manifestDir = opts?.manifestDir ?? await resolveManifestDir();
+  const manifest = await loadManifest(manifestDir);
+  if (!manifest) {
+    return { success: false, name, error: `Could not load manifest from ${manifestDir}` };
+  }
+
+  let matches = findItemInManifest(manifest, name);
+
+  // Filter by type if provided
+  if (opts?.type) {
+    const section = typeToSection(opts.type);
+    if (!section) {
+      return { success: false, name, error: `Invalid type: ${opts.type}. Use: skill, mcp, hook, memory` };
+    }
+    matches = matches.filter((m) => m.section === section);
+  }
+
+  if (matches.length === 0) {
+    return { success: false, name, error: `'${name}' not found in manifest` };
+  }
+
+  if (matches.length > 1 && !opts?.type) {
+    const sections = matches.map((m) => sectionToType(m.section));
+    return {
+      success: false,
+      name,
+      error: `'${name}' found in multiple sections: ${sections.join(", ")}. Use --type to disambiguate.`,
+    };
+  }
+
+  const match = matches[0];
+  match.config.state = "deleted";
+
+  // Write back
+  const sectionData = manifest[match.section] as Record<string, Record<string, unknown>>;
+  sectionData[name] = match.config;
+
+  await saveManifest(manifestDir, manifest);
+
+  return {
+    success: true,
+    name,
+    section: sectionToType(match.section),
+    message: `${sectionToType(match.section)} '${name}' marked as deleted`,
+  };
+}
+
+/**
+ * Mark all items from a given source as deleted.
+ */
+export async function removeBySource(
+  source: string,
+  opts?: { manifestDir?: string },
+): Promise<RemoveBySourceResult> {
+  const manifestDir = opts?.manifestDir ?? await resolveManifestDir();
+  const manifest = await loadManifest(manifestDir);
+  if (!manifest) {
+    return { removed: [], errors: [`Could not load manifest from ${manifestDir}`] };
   }
 
   const removed: string[] = [];
-  const errors: string[] = [];
 
-  for (const entry of pluginEntries) {
-    let result: { removed: boolean; error?: string };
-    if (entry.type === "mcp") {
-      result = await removeMcp(entry.name);
-    } else if (entry.type === "hook") {
-      result = await removeHook(entry.name);
-      // If hook not in hooks.yaml, still clean up manifest
-      if (!result.removed) {
-        result = await removeComponent("hook", entry.name);
-      }
-    } else {
-      result = await removeComponent(entry.type, entry.name);
-    }
+  for (const section of ALL_SECTIONS) {
+    const sectionData = manifest[section] as Record<string, Record<string, unknown>> | undefined;
+    if (!sectionData) continue;
 
-    if (result.removed) {
-      removed.push(`${entry.type}: ${entry.name}`);
-    } else if (result.error) {
-      errors.push(result.error);
-    }
-  }
-
-  return { removed, errors };
-}
-
-// ============================================================================
-// List what can be removed
-// ============================================================================
-
-export async function listRemovable(): Promise<void> {
-  // Skills
-  const skillsDir = path.join(MYCELIUM_DIR, "global", "skills");
-  try {
-    const entries = await fs.readdir(skillsDir);
-    if (entries.length > 0) {
-      console.log(`\nSkills (${entries.length}):`);
-      // Group by plugin from manifest
-      const manifest = await loadManifest();
-      const grouped = new Map<string, string[]>();
-      for (const name of entries) {
-        const entry = manifest.entries.find((e) => e.name === name && e.type === "skill");
-        const group = entry?.pluginName
-          ? `${entry.marketplace}/${entry.pluginName}`
-          : entry?.source ?? "unknown";
-        const list = grouped.get(group) ?? [];
-        list.push(name);
-        grouped.set(group, list);
-      }
-      for (const [group, names] of grouped) {
-        console.log(`  ${group}:`);
-        for (const name of names) {
-          console.log(`    - ${name}`);
-        }
-      }
-    }
-  } catch { /* empty */ }
-
-  // MCPs
-  const mcpsContent = await readFileIfExists(path.join(MYCELIUM_DIR, "global", "mcps.yaml"));
-  if (mcpsContent) {
-    const mcpNames: string[] = [];
-    for (const line of mcpsContent.split("\n")) {
-      const trimmed = line.trim();
-      if (!line.startsWith(" ") && trimmed.endsWith(":") && !trimmed.startsWith("#") && trimmed !== "mcps:") {
-        mcpNames.push(trimmed.slice(0, -1));
-      }
-    }
-    if (mcpNames.length > 0) {
-      console.log(`\nMCPs (${mcpNames.length}):`);
-      for (const name of mcpNames) {
-        console.log(`  - ${name}`);
+    for (const [name, config] of Object.entries(sectionData)) {
+      if (config.source === source) {
+        config.state = "deleted";
+        removed.push(`${sectionToType(section)}: ${name}`);
       }
     }
   }
 
-  // Hooks
-  const hooksContent = await readFileIfExists(path.join(MYCELIUM_DIR, "global", "hooks.yaml"));
-  if (hooksContent) {
-    const hookNames: string[] = [];
-    for (const line of hooksContent.split("\n")) {
-      const trimmed = line.trim();
-      if (!line.startsWith(" ") && trimmed.endsWith(":") && !trimmed.startsWith("#")) {
-        hookNames.push(trimmed.slice(0, -1));
-      }
-    }
-    if (hookNames.length > 0) {
-      console.log(`\nHooks (${hookNames.length}):`);
-      for (const name of hookNames) {
-        console.log(`  - ${name}`);
-      }
-    }
+  if (removed.length === 0) {
+    return { removed: [], errors: [`No items found with source '${source}'`] };
   }
 
-  console.log("\nUsage:");
-  console.log("  mycelium remove skill <name>");
-  console.log("  mycelium remove mcp <name>");
-  console.log("  mycelium remove hook <name>");
-  console.log("  mycelium remove plugin <name>  (removes all skills from a plugin)");
-  console.log("\nAfter removing, run `mycelium sync` to propagate changes to all tools.");
+  await saveManifest(manifestDir, manifest);
+  return { removed, errors: [] };
 }
 
 // ============================================================================
 // Commander.js Commands
 // ============================================================================
 
-const skillCmd = new Command("skill")
-  .description("Remove a skill from mycelium")
-  .argument("<name>", "Skill name")
-  .action(async (name: string) => {
-    const result = await removeSkill(name);
-    if (result.removed) {
-      console.log(`Removed skill: ${name}`);
-      console.log("Run `mycelium sync` to propagate to all tools.");
-    } else {
-      console.error(result.error);
-      process.exit(1);
-    }
-  });
-
-const mcpCmd = new Command("mcp")
-  .description("Remove an MCP from mycelium")
-  .argument("<name>", "MCP name")
-  .action(async (name: string) => {
-    const result = await removeMcp(name);
-    if (result.removed) {
-      console.log(`Removed MCP: ${name}`);
-      console.log("Run `mycelium sync` to propagate to all tools.");
-    } else {
-      console.error(result.error);
-      process.exit(1);
-    }
-  });
-
-const hookCmd = new Command("hook")
-  .description("Remove a hook from mycelium")
-  .argument("<name>", "Hook name")
-  .action(async (name: string) => {
-    const result = await removeHook(name);
-    if (result.removed) {
-      console.log(`Removed hook: ${name}`);
-      console.log("Run `mycelium sync` to propagate to all tools.");
-    } else {
-      console.error(result.error);
-      process.exit(1);
-    }
-  });
-
 const pluginCmd = new Command("plugin")
-  .description("Remove all skills from a plugin")
-  .argument("<name>", "Plugin name (e.g., 'superpowers')")
+  .description("Remove all items from a plugin/source")
+  .argument("<name>", "Plugin/source name")
   .action(async (name: string) => {
-    const result = await removePlugin(name);
+    const result = await removeBySource(name);
     if (result.removed.length > 0) {
-      console.log("Removed:");
+      console.log("Marked as deleted:");
       for (const r of result.removed) {
         console.log(`  - ${r}`);
       }
@@ -323,12 +234,18 @@ const pluginCmd = new Command("plugin")
   });
 
 export const removeCommand = new Command("remove")
-  .description("Remove skills, MCPs, hooks, or plugins from mycelium")
-  .addCommand(skillCmd)
-  .addCommand(mcpCmd)
-  .addCommand(hookCmd)
-  .addCommand(pluginCmd)
-  .action(async () => {
-    // No subcommand — list what can be removed
-    await listRemovable();
+  .description("Remove (soft-delete) an item from mycelium sync")
+  .argument("<name>", "Name of the item to remove")
+  .option("--type <type>", "Item type if name is ambiguous (skill, mcp, hook, memory)")
+  .action(async (name: string, options: { type?: string }) => {
+    const result = await removeItem(name, { type: options.type });
+    if (result.success) {
+      console.log(`✓ ${result.message}`);
+      console.log("Run `mycelium sync` to propagate to all tools.");
+    } else {
+      console.error(`✗ Error: ${result.error}`);
+      process.exit(1);
+    }
   });
+
+removeCommand.addCommand(pluginCmd);
