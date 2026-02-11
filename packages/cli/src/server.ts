@@ -48,16 +48,32 @@ export function startServer(port = DEFAULT_PORT) {
   const __dirname = path.dirname(__filename);
   const bundledDashboard = path.resolve(__dirname, "dashboard");
   const monorepoDashboard = path.resolve(__dirname, "..", "..", "dashboard", "dist");
-  const dashboardDist = fs.existsSync(path.join(bundledDashboard, "index.html")) ? bundledDashboard : monorepoDashboard;
 
-  app.use(express.static(dashboardDist));
+  let dashboardDist: string | null = null;
+  if (fs.existsSync(path.join(bundledDashboard, "index.html"))) {
+    dashboardDist = bundledDashboard;
+  } else if (fs.existsSync(path.join(monorepoDashboard, "index.html"))) {
+    dashboardDist = monorepoDashboard;
+  }
 
-  // SPA fallback — non-API routes get index.html
+  if (dashboardDist) {
+    app.use(express.static(dashboardDist));
+  }
+
+  // SPA fallback — non-API routes get index.html or upgrade notice
   app.use((req, res, next) => {
     if (req.path.startsWith("/api")) return next();
+    if (!dashboardDist) {
+      res.status(503).send(`<!DOCTYPE html>
+<html><head><title>Mycelium</title><style>body{font-family:system-ui;background:#0a0a0a;color:#e5e5e5;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.c{text-align:center;max-width:480px}.t{font-size:2rem;margin-bottom:1rem}code{background:#1a1a1a;padding:2px 8px;border-radius:4px;font-size:.9rem}</style></head>
+<body><div class="c"><div class="t">🍄 Mycelium</div><p>Dashboard not available in this version.</p><p>Upgrade to get the dashboard:</p>
+<p><code>npm install -g @mycelish/cli@latest</code></p><p style="color:#888;font-size:.85rem">API is running — tools and sync work fine without the dashboard.</p></div></body></html>`);
+      return;
+    }
     const indexPath = path.join(dashboardDist, "index.html");
     res.sendFile(indexPath, (err) => {
-      if (err) res.status(404).send("Dashboard not built. Run: pnpm -C packages/dashboard build");
+      if (err) res.status(500).send("Dashboard error");
     });
   });
 
