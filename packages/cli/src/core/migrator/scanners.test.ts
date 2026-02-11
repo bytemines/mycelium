@@ -59,7 +59,7 @@ vi.mock("../plugin-scanner.js", () => ({
   scanPluginCache: vi.fn().mockResolvedValue([]),
 }));
 
-const { decodeProjectName, scanOpenCode, scanAider, scanTool } = await import("./scanners.js");
+const { decodeProjectName, scanOpenCode, scanTool } = await import("./scanners.js");
 
 describe("decodeProjectName", () => {
   it("resolves to project basename via filesystem", () => {
@@ -213,68 +213,6 @@ describe("scanOpenCode", () => {
   });
 });
 
-describe("scanAider", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    vi.mocked(os.homedir).mockReturnValue("/Users/conrado");
-  });
-
-  it("returns empty result when no config exists", async () => {
-    const result = await scanAider();
-    expect(result.toolId).toBe("aider");
-    expect(result.toolName).toBe("Aider");
-    expect(result.installed).toBe(true);
-    expect(result.mcps).toEqual([]);
-    expect(result.memory).toEqual([]);
-    expect(result.skills).toEqual([]);
-  });
-
-  it("scans CONVENTIONS.md memory", async () => {
-    const { readFileIfExists } = await import("../fs-helpers.js");
-    const conventionsPath = path.join(process.cwd(), "CONVENTIONS.md");
-
-    vi.mocked(readFileIfExists).mockImplementation(async (p: string) => {
-      if (p === conventionsPath) return "# Conventions\nUse snake_case";
-      return null;
-    });
-
-    const result = await scanAider();
-    expect(result.memory).toHaveLength(1);
-    expect(result.memory[0].name).toBe("CONVENTIONS");
-    expect(result.memory[0].source).toBe("aider");
-  });
-
-  it("scans chat history", async () => {
-    const { readFileIfExists } = await import("../fs-helpers.js");
-    const historyPath = path.join(process.cwd(), ".aider.chat.history.md");
-
-    vi.mocked(readFileIfExists).mockImplementation(async (p: string) => {
-      if (p === historyPath) return "# Chat history\nsome history";
-      return null;
-    });
-
-    const result = await scanAider();
-    expect(result.memory).toHaveLength(1);
-    expect(result.memory[0].name).toBe("chat-history");
-    expect(result.memory[0].source).toBe("aider");
-  });
-
-  it("scans aider config as memory", async () => {
-    const { readFileIfExists } = await import("../fs-helpers.js");
-    const confPath = path.join("/Users/conrado", ".aider.conf.yml");
-
-    vi.mocked(readFileIfExists).mockImplementation(async (p: string) => {
-      if (p === confPath) return "model: gpt-4\nread:\n  - CONVENTIONS.md";
-      return null;
-    });
-
-    const result = await scanAider();
-    expect(result.memory).toHaveLength(1);
-    expect(result.memory[0].name).toBe("aider-config");
-    expect(result.memory[0].path).toBe(confPath);
-  });
-});
-
 describe("scanTool routing", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -284,12 +222,6 @@ describe("scanTool routing", () => {
   it("routes opencode to scanOpenCode", async () => {
     const result = await scanTool("opencode");
     expect(result.toolId).toBe("opencode");
-    expect(result.installed).toBe(true);
-  });
-
-  it("routes aider to scanAider", async () => {
-    const result = await scanTool("aider");
-    expect(result.toolId).toBe("aider");
     expect(result.installed).toBe(true);
   });
 });

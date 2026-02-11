@@ -59,16 +59,47 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
     setError(null);
     setStep("apply");
     try {
-      const graphData = buildGraphData(scans, toggleState);
-      // Build migration plan from enabled items
-      const enabledSkills = Object.entries(toggleState.skills).filter(([, v]) => v).map(([name]) => name);
-      const enabledMcps = Object.entries(toggleState.mcps).filter(([, v]) => v).map(([name]) => name);
-      const enabledMemory = Object.entries(toggleState.memory).filter(([, v]) => v).map(([name]) => name);
+      const enabledSkills = new Set(Object.entries(toggleState.skills).filter(([, v]) => v).map(([name]) => name));
+      const enabledMcps = new Set(Object.entries(toggleState.mcps).filter(([, v]) => v).map(([name]) => name));
+      const enabledMemory = new Set(Object.entries(toggleState.memory).filter(([, v]) => v).map(([name]) => name));
+      const enabledTools = new Set(Object.entries(toggleState.tools).filter(([, v]) => v).map(([id]) => id));
 
+      // Build plan from raw scan data (preserves path, config, content)
       const plan = {
-        skills: graphData.plugins.flatMap(p => p.skills.filter(s => enabledSkills.includes(s)).map(s => ({ name: s, source: "scan" }))),
-        mcps: graphData.mcps.filter(m => enabledMcps.includes(m.name)).map(m => ({ name: m.name, source: "scan", config: { command: "", args: [] } })),
-        memory: graphData.memory.filter(m => enabledMemory.includes(m.name)).map(m => ({ name: m.name, source: "scan", content: "" })),
+        skills: scans
+          .filter(s => enabledTools.has(s.toolId))
+          .flatMap(s => s.skills.filter(sk => enabledSkills.has(sk.name)).map(sk => ({
+            name: sk.name,
+            path: sk.path,
+            source: s.toolId,
+            metadata: sk.metadata,
+            marketplace: sk.marketplace,
+            pluginName: sk.pluginName,
+          }))),
+        mcps: scans
+          .filter(s => enabledTools.has(s.toolId))
+          .flatMap(s => s.mcps.filter(m => enabledMcps.has(m.name)).map(m => ({
+            name: m.name,
+            source: s.toolId,
+            config: m.config,
+          }))),
+        memory: scans
+          .filter(s => enabledTools.has(s.toolId))
+          .flatMap(s => s.memory.filter(m => enabledMemory.has(m.name)).map(m => ({
+            name: m.name,
+            path: m.path,
+            source: s.toolId,
+            content: m.content ?? "",
+          }))),
+        components: scans
+          .filter(s => enabledTools.has(s.toolId))
+          .flatMap(s => (s.components ?? []).map(c => ({
+            type: c.type,
+            name: c.name,
+            path: c.path,
+            marketplace: c.marketplace,
+            pluginName: c.pluginName,
+          }))),
         conflicts: [],
       };
 

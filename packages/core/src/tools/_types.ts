@@ -57,6 +57,8 @@ export interface ToolDescriptor {
   id: string;
   display: ToolDisplay;
   cli: ToolCli | null;
+  /** Path to check for tool presence when cli is null (must be a file the tool itself creates, not mycelium). */
+  detectPath: PathSpec;
   paths: ToolPaths;
   mcp: McpConfig;
   scopes: string[];

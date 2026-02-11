@@ -35,7 +35,7 @@ vi.mock("./fs-helpers.js", () => ({
 }));
 
 import { GenericAdapter } from "./auto-adapter.js";
-import { getAdapter, createAdapter, OpenClawAdapter, AiderAdapter } from "./tool-adapter.js";
+import { getAdapter, createAdapter, OpenClawAdapter } from "./tool-adapter.js";
 import { TOOL_REGISTRY, ALL_TOOL_IDS } from "@mycelish/core";
 
 const sampleMcp = {
@@ -199,12 +199,9 @@ describe("auto-adapter", () => {
       expect(createAdapter(TOOL_REGISTRY["openclaw"])).toBeInstanceOf(OpenClawAdapter);
     });
 
-    it("returns AiderAdapter for aider", () => {
-      expect(createAdapter(TOOL_REGISTRY["aider"])).toBeInstanceOf(AiderAdapter);
-    });
   });
 
-  describe("getAdapter works for all 9 registry tools", () => {
+  describe("getAdapter works for all 8 registry tools", () => {
     it("does not throw for any tool in the registry", () => {
       for (const id of ALL_TOOL_IDS) {
         expect(() => getAdapter(id)).not.toThrow();
@@ -269,48 +266,3 @@ describe("OpenClawAdapter writeToFile — preserves existing entry properties", 
   });
 });
 
-describe("AiderAdapter writeToFile — preserves existing entry properties", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockReadFileIfExists.mockResolvedValue(null);
-  });
-
-  it("preserves extra properties on existing MCP entries", async () => {
-    mockReadFileIfExists.mockImplementation(async (p: string) => {
-      if (p.includes("mcp-servers.json")) {
-        return JSON.stringify({
-          mcpServers: {
-            "my-server": { type: "stdio", command: "npx", args: ["-y", "my-server"], disabled: true, customProp: "keep" },
-          },
-        });
-      }
-      if (p.includes(".aider.conf.yml")) {
-        return "mcp-servers-file: /mock/home/.aider/mcp-servers.json\n";
-      }
-      return null;
-    });
-    const adapter = new AiderAdapter();
-    const mcps = { "my-server": { command: "npx", args: ["-y", "my-server-v2"] } };
-    await adapter.writeToFile(mcps);
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
-    const entry = written.mcpServers["my-server"];
-    expect(entry.command).toBe("npx");
-    expect(entry.args).toEqual(["-y", "my-server-v2"]);
-    expect(entry.disabled).toBe(true);
-    expect(entry.customProp).toBe("keep");
-    expect(entry.type).toBe("stdio");
-  });
-
-  it("does not add extra properties to new entries", async () => {
-    mockReadFileIfExists.mockResolvedValue(null);
-    const adapter = new AiderAdapter();
-    const mcps = { "brand-new": { command: "npx", args: ["-y", "brand-new"] } };
-    await adapter.writeToFile(mcps);
-    const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
-    const entry = written.mcpServers["brand-new"];
-    expect(entry.type).toBe("stdio");
-    expect(entry.command).toBe("npx");
-    expect(entry.args).toEqual(["-y", "brand-new"]);
-    expect(entry.disabled).toBeUndefined();
-  });
-});

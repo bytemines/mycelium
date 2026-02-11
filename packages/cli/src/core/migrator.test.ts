@@ -226,12 +226,6 @@ describe("scanners", () => {
       expect(result.skills).toEqual([]);
     });
 
-    it("returns installed for aider with empty results when no config exists", async () => {
-      mockDeps(makeFsMock());
-      const { scanTool } = await import("./migrator/index.js");
-      const result = await scanTool("aider");
-      expect(result.installed).toBe(true);
-    });
   });
 
   describe("scanGemini", () => {

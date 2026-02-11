@@ -604,74 +604,6 @@ export async function scanOpenCode(): Promise<ToolScanResult> {
   return result;
 }
 
-export async function scanAider(): Promise<ToolScanResult> {
-  const home = os.homedir();
-  const result: ToolScanResult = {
-    toolId: "aider",
-    toolName: "Aider",
-    installed: true,
-    skills: [],
-    mcps: [],
-    memory: [],
-    hooks: [],
-    components: [],
-  };
-
-  try {
-    // Memory: CONVENTIONS.md in current working directory
-    const conventionsPath = path.join(process.cwd(), "CONVENTIONS.md");
-    const content = await readFileIfExists(conventionsPath);
-    if (content) {
-      result.memory.push({
-        name: "CONVENTIONS",
-        path: conventionsPath,
-        source: "aider",
-        scope: "shared",
-        content,
-      });
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    // Memory: .aider.chat.history.md in current working directory
-    const historyPath = path.join(process.cwd(), ".aider.chat.history.md");
-    const content = await readFileIfExists(historyPath);
-    if (content) {
-      result.memory.push({
-        name: "chat-history",
-        path: historyPath,
-        source: "aider",
-        scope: "shared",
-        content,
-      });
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    // Config: ~/.aider.conf.yml — model settings, read files, etc.
-    // Aider doesn't have MCPs but we can extract read-file references
-    const confPath = path.join(home, ".aider.conf.yml");
-    const content = await readFileIfExists(confPath);
-    if (content) {
-      result.memory.push({
-        name: "aider-config",
-        path: confPath,
-        source: "aider",
-        scope: "shared",
-        content,
-      });
-    }
-  } catch {
-    // ignore
-  }
-
-  return result;
-}
-
 export async function scanTool(toolId: ToolId): Promise<ToolScanResult> {
   switch (toolId) {
     case "claude-code":
@@ -684,8 +616,6 @@ export async function scanTool(toolId: ToolId): Promise<ToolScanResult> {
       return scanOpenClaw();
     case "opencode":
       return scanOpenCode();
-    case "aider":
-      return scanAider();
     case "cursor":
     case "vscode":
     case "antigravity":

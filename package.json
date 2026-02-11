@@ -2,7 +2,7 @@
   "name": "mycelium",
   "private": true,
   "version": "0.1.0",
-  "description": "Universal AI Tool Orchestrator - Sync skills, MCPs, and memory across Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, and Aider",
+  "description": "Universal AI Tool Orchestrator - Sync skills, MCPs, and memory across Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, Cursor, VS Code, and Antigravity",
   "author": "Mycelium Contributors",
   "license": "MIT",
   "type": "module",

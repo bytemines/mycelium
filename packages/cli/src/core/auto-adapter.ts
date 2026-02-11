@@ -1,6 +1,6 @@
 /**
  * Auto-Adapter Factory — generates a GenericAdapter from any ToolDescriptor.
- * Custom adapters (OpenClaw, Aider) are returned for tools that need special handling.
+ * Custom adapters (OpenClaw) are returned for tools that need special handling.
  */
 
 import * as fs from "node:fs/promises";

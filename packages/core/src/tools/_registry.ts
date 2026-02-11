@@ -5,7 +5,6 @@ import { codex } from "./codex.js";
 import { geminiCli } from "./gemini-cli.js";
 import { opencode } from "./opencode.js";
 import { openclaw } from "./openclaw.js";
-import { aider } from "./aider.js";
 import { cursor } from "./cursor.js";
 import { vscode } from "./vscode.js";
 import { antigravity } from "./antigravity.js";
@@ -16,7 +15,6 @@ export const TOOL_REGISTRY: Record<string, ToolDescriptor> = {
   [geminiCli.id]: geminiCli,
   [opencode.id]: opencode,
   [openclaw.id]: openclaw,
-  [aider.id]: aider,
   [cursor.id]: cursor,
   [vscode.id]: vscode,
   [antigravity.id]: antigravity,

@@ -4,6 +4,7 @@ export const cursor: ToolDescriptor = {
   id: "cursor",
   display: { name: "Cursor", icon: "cursor", color: "#00D4AA" },
   cli: { command: "cursor" },
+  detectPath: null,
   paths: {
     mcp: "~/.cursor/mcp.json",
     projectMcp: ".cursor/mcp.json",

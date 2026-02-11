@@ -4,6 +4,7 @@ export const opencode: ToolDescriptor = {
   id: "opencode",
   display: { name: "OpenCode", icon: "opencode", color: "#6366F1" },
   cli: null,
+  detectPath: "~/.config/opencode/opencode.json",
   paths: {
     mcp: "~/.config/opencode/opencode.json",
     projectMcp: null,

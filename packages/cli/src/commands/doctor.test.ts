@@ -156,31 +156,8 @@ vi.mock("@mycelish/core", () => ({
       enabled: true,
       memoryMaxLines: null,
     },
-    aider: {
-      id: "aider",
-      display: { name: "Aider", icon: "aider", color: "#F59E0B" },
-      cli: { command: "aider" },
-      paths: {
-        mcp: "~/.aider.conf.yml",
-        projectMcp: null,
-        skills: "~/.aider/plugins",
-        projectSkills: null,
-        globalMemory: "~/.aider/MEMORY.md",
-        projectMemory: null,
-        agents: null,
-        projectAgents: null,
-        rules: null,
-        hooks: null,
-        backupDirs: [],
-      },
-      mcp: { format: "yaml", key: "mcps", entryShape: "standard" },
-      scopes: ["shared", "coding"],
-      capabilities: ["mcp", "memory"],
-      enabled: true,
-      memoryMaxLines: null,
-    },
   },
-  ALL_TOOL_IDS: ["claude-code", "codex", "gemini-cli", "opencode", "openclaw", "aider"],
+  ALL_TOOL_IDS: ["claude-code", "codex", "gemini-cli", "opencode", "openclaw"],
   resolvePath: (p: any) => {
     if (p === null) return null;
     if (typeof p === "string") {
@@ -200,7 +177,6 @@ vi.mock("@mycelish/core", () => ({
       "gemini-cli": { id: "gemini-cli", scopes: ["shared", "coding"] },
       opencode: { id: "opencode", scopes: ["shared", "coding"] },
       openclaw: { id: "openclaw", scopes: ["shared", "personal"] },
-      aider: { id: "aider", scopes: ["shared", "coding"] },
     };
     return Object.values(registry).filter((t: any) => t.scopes.includes(scope));
   },

@@ -20,7 +20,6 @@ const TOOL_POOL = [
   { id: "gemini", name: "Gemini CLI" },
   { id: "opencode", name: "OpenCode" },
   { id: "openclaw", name: "OpenClaw" },
-  { id: "aider", name: "Aider" },
 ] as const;
 
 const PLUGIN_POOL = [

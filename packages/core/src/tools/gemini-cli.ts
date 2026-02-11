@@ -4,6 +4,7 @@ export const geminiCli: ToolDescriptor = {
   id: "gemini-cli",
   display: { name: "Gemini CLI", icon: "gemini", color: "#4285F4" },
   cli: { command: "gemini", mcp: { add: ["mcp", "add"], remove: ["mcp", "remove"], enable: ["mcp", "enable"], disable: ["mcp", "disable"] } },
+  detectPath: null,
   paths: {
     mcp: "~/.gemini/settings.json",
     projectMcp: null,

@@ -113,92 +113,6 @@ export class OpenClawAdapter extends BaseToolAdapter {
 }
 
 // ---------------------------------------------------------------------------
-// Aider (custom: dual-file with mcp-servers.json + .aider.conf.yml)
-// ---------------------------------------------------------------------------
-
-export class AiderAdapter extends BaseToolAdapter {
-  toolId = "aider";
-
-  async addViaCli(): Promise<AdapterResult> {
-    return { success: false, method: "cli", error: "Aider MCP CLI not yet available" };
-  }
-
-  async removeViaCli(): Promise<AdapterResult> {
-    return { success: false, method: "cli", error: "Aider MCP CLI not yet available" };
-  }
-
-  async writeToFile(mcps: Record<string, McpServerConfig>): Promise<AdapterResult> {
-    try {
-      const mcpFilePath = expandPath("~/.aider/mcp-servers.json");
-      const confPath = expandPath("~/.aider.conf.yml");
-
-      // Read existing entries to preserve extra properties
-      const existingRaw = await readFileIfExists(mcpFilePath);
-      let existingMcpJson: Record<string, unknown> = {};
-      if (existingRaw) {
-        try { existingMcpJson = JSON.parse(existingRaw); } catch { /* ignore invalid JSON */ }
-      }
-      const existingEntries = (existingMcpJson.mcpServers ?? {}) as Record<string, Record<string, unknown>>;
-
-      const mcpJson: Record<string, unknown> = { mcpServers: {} };
-      for (const [name, mcp] of Object.entries(mcps)) {
-        if (mcp.state && mcp.state !== "enabled") continue;
-        const entry: Record<string, unknown> = {
-          type: "stdio",
-          command: mcp.command,
-        };
-        if (mcp.args?.length) entry.args = mcp.args;
-        if (mcp.env && Object.keys(mcp.env).length > 0) entry.env = mcp.env;
-        const prev = existingEntries[name];
-        (mcpJson.mcpServers as Record<string, unknown>)[name] = prev ? { ...prev, ...entry } : entry;
-      }
-
-      await mkdirp(path.dirname(mcpFilePath));
-      await fs.writeFile(mcpFilePath, JSON.stringify(mcpJson, null, 2), "utf-8");
-
-      const existingConf = await readFileIfExists(confPath);
-      if (existingConf && !existingConf.includes("mcp-servers-file")) {
-        await fs.appendFile(confPath, `\nmcp-servers-file: ${mcpFilePath}\n`);
-      } else if (!existingConf) {
-        await fs.writeFile(confPath, `mcp-servers-file: ${mcpFilePath}\n`);
-      }
-
-      return { success: true, method: "file" };
-    } catch (err) {
-      this.log?.error({
-        scope: "mcp", op: "write", msg: String(err), tool: "aider",
-        method: "file", format: "json", entryShape: "standard",
-        path: expandPath("~/.aider/mcp-servers.json"), error: String(err),
-      });
-      return { success: false, method: "file", error: String(err) };
-    }
-  }
-
-  async removeFromFile(name: string): Promise<AdapterResult> {
-    try {
-      const mcpFilePath = expandPath("~/.aider/mcp-servers.json");
-      const existing = await readFileIfExists(mcpFilePath);
-      if (!existing) return { success: false, method: "file", error: "Config not found" };
-      const config = JSON.parse(existing);
-
-      if (config.mcpServers?.[name]) {
-        delete config.mcpServers[name];
-        await fs.writeFile(mcpFilePath, JSON.stringify(config, null, 2), "utf-8");
-        return { success: true, method: "file" };
-      }
-      return { success: false, method: "file", error: `${name} not found` };
-    } catch (err) {
-      this.log?.error({
-        scope: "mcp", op: "remove", msg: String(err), tool: "aider",
-        item: name, method: "file", format: "json", entryShape: "standard",
-        path: expandPath("~/.aider/mcp-servers.json"), error: String(err),
-      });
-      return { success: false, method: "file", error: String(err) };
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -210,6 +124,5 @@ export function getAdapter(toolId: string): import("./adapter-base.js").ToolAdap
 
 export function createAdapter(desc: import("@mycelish/core").ToolDescriptor): import("./adapter-base.js").ToolAdapter {
   if (desc.mcp.entryShape === "openclaw") return new OpenClawAdapter();
-  if (desc.id === "aider") return new AiderAdapter();
   return new GenericAdapter(desc);
 }

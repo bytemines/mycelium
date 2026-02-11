@@ -255,7 +255,6 @@ describe("status command", () => {
       expect(toolIds).toContain("gemini-cli");
       expect(toolIds).toContain("opencode");
       expect(toolIds).toContain("openclaw");
-      expect(toolIds).toContain("aider");
     });
   });
 

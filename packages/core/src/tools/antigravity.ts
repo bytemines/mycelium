@@ -4,6 +4,7 @@ export const antigravity: ToolDescriptor = {
   id: "antigravity",
   display: { name: "Antigravity", icon: "antigravity", color: "#FF6B35" },
   cli: { command: "agy" },
+  detectPath: null,
   paths: {
     mcp: "~/.gemini/antigravity/mcp_config.json",
     projectMcp: null,

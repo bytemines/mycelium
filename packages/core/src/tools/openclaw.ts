@@ -3,7 +3,8 @@ import type { ToolDescriptor } from "./_types.js";
 export const openclaw: ToolDescriptor = {
   id: "openclaw",
   display: { name: "OpenClaw", icon: "openclaw", color: "#EC4899" },
-  cli: null,
+  cli: { command: "openclaw" },
+  detectPath: null,
   paths: {
     mcp: "~/.openclaw/openclaw.json",
     projectMcp: null,

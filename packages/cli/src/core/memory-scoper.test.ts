@@ -40,7 +40,6 @@ describe("memory-scoper", () => {
         "gemini-cli",
         "opencode",
         "openclaw",
-        "aider",
         "cursor",
         "vscode",
         "antigravity",
@@ -55,7 +54,6 @@ describe("memory-scoper", () => {
         "codex",
         "gemini-cli",
         "opencode",
-        "aider",
         "cursor",
         "vscode",
         "antigravity",
@@ -72,7 +70,6 @@ describe("memory-scoper", () => {
         "codex",
         "gemini-cli",
         "opencode",
-        "aider",
         "cursor",
         "vscode",
         "antigravity",
@@ -112,15 +109,6 @@ describe("memory-scoper", () => {
       expect(isToolInScope("openclaw", "personal")).toBe(true);
     });
 
-    it("should return true for aider in coding scope", async () => {
-      const { isToolInScope } = await import("./memory-scoper.js");
-      expect(isToolInScope("aider", "coding")).toBe(true);
-    });
-
-    it("should return false for aider in personal scope", async () => {
-      const { isToolInScope } = await import("./memory-scoper.js");
-      expect(isToolInScope("aider", "personal")).toBe(false);
-    });
   });
 
   describe("getScopesForTool", () => {
@@ -145,12 +133,6 @@ describe("memory-scoper", () => {
     it("should return shared and coding scopes for opencode", async () => {
       const { getScopesForTool } = await import("./memory-scoper.js");
       const scopes = getScopesForTool("opencode");
-      expect(scopes).toEqual(["shared", "coding"]);
-    });
-
-    it("should return shared and coding scopes for aider", async () => {
-      const { getScopesForTool } = await import("./memory-scoper.js");
-      const scopes = getScopesForTool("aider");
       expect(scopes).toEqual(["shared", "coding"]);
     });
 

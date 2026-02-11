@@ -12,13 +12,13 @@ import {
 
 describe("Tool Registry", () => {
   it("has 9 tools registered", () => {
-    expect(ALL_TOOL_IDS).toHaveLength(9);
+    expect(ALL_TOOL_IDS).toHaveLength(8);
   });
 
   it("contains all expected tool ids", () => {
     const expected = [
       "claude-code", "codex", "gemini-cli", "opencode",
-      "openclaw", "aider", "cursor", "vscode", "antigravity",
+      "openclaw", "cursor", "vscode", "antigravity",
     ];
     for (const id of expected) {
       expect(TOOL_REGISTRY[id]).toBeDefined();
@@ -66,8 +66,8 @@ describe("getDescriptor", () => {
 });
 
 describe("toolsWithCapability", () => {
-  it("returns all 9 for mcp", () => {
-    expect(toolsWithCapability("mcp")).toHaveLength(9);
+  it("returns all 8 for mcp", () => {
+    expect(toolsWithCapability("mcp")).toHaveLength(8);
   });
 
   it("returns tools with hooks capability", () => {
@@ -79,15 +79,15 @@ describe("toolsWithCapability", () => {
 
   it("returns tools with rules capability", () => {
     const rules = toolsWithCapability("rules");
-    expect(rules).toHaveLength(4);
+    expect(rules).toHaveLength(3);
     const ids = rules.map(t => t.id).sort();
-    expect(ids).toEqual(["aider", "codex", "cursor", "vscode"]);
+    expect(ids).toEqual(["codex", "cursor", "vscode"]);
   });
 });
 
 describe("toolsForScope", () => {
-  it("returns all 9 for shared", () => {
-    expect(toolsForScope("shared")).toHaveLength(9);
+  it("returns all 8 for shared", () => {
+    expect(toolsForScope("shared")).toHaveLength(8);
   });
 
   it("returns only openclaw for personal", () => {

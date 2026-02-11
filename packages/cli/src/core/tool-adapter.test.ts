@@ -38,7 +38,6 @@ vi.mock("./fs-helpers.js", () => ({
 import {
   getAdapter,
   OpenClawAdapter,
-  AiderAdapter,
 } from "./tool-adapter.js";
 import { GenericAdapter } from "./auto-adapter.js";
 
@@ -73,9 +72,6 @@ describe("tool-adapter", () => {
     it("returns OpenClawAdapter for openclaw", () => {
       expect(getAdapter("openclaw")).toBeInstanceOf(OpenClawAdapter);
     });
-    it("returns AiderAdapter for aider", () => {
-      expect(getAdapter("aider")).toBeInstanceOf(AiderAdapter);
-    });
     it("throws for unknown tool", () => {
       expect(() => getAdapter("nope")).toThrow("No adapter for tool: nope");
     });
@@ -106,9 +102,6 @@ describe("tool-adapter", () => {
       expect(await getAdapter("openclaw").hasCli()).toBe(false);
     });
 
-    it("Aider always returns false", async () => {
-      expect(await getAdapter("aider").hasCli()).toBe(false);
-    });
   });
 
   // -----------------------------------------------------------------------
@@ -266,42 +259,6 @@ describe("tool-adapter", () => {
       expect(result.success).toBe(true);
       const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
       expect(written.mcp["test-mcp"].enabled).toBe(false);
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // Aider writeToFile
-  // -----------------------------------------------------------------------
-  describe("Aider writeToFile", () => {
-    it("writes mcp-servers.json and creates conf.yml reference", async () => {
-      mockReadFileIfExists.mockResolvedValue(null);
-
-      const result = await getAdapter("aider").writeToFile({ "test-mcp": sampleMcp });
-
-      expect(result.success).toBe(true);
-
-      // First writeFile: mcp-servers.json
-      const mcpJson = JSON.parse(mockWriteFile.mock.calls[0][1]);
-      expect(mcpJson.mcpServers["test-mcp"]).toEqual({
-        type: "stdio",
-        command: "npx",
-        args: ["-y", "some-server"],
-        env: { API_KEY: "test123" },
-      });
-
-      // Second writeFile: .aider.conf.yml
-      expect(mockWriteFile.mock.calls[1][1]).toContain("mcp-servers-file:");
-    });
-
-    it("appends conf.yml reference if file exists without it", async () => {
-      mockReadFileIfExists.mockResolvedValue("some-other-setting: true\n");
-
-      await getAdapter("aider").writeToFile({ "test-mcp": sampleMcp });
-
-      expect(mockAppendFile).toHaveBeenCalledWith(
-        "/mock/home/.aider.conf.yml",
-        expect.stringContaining("mcp-servers-file:"),
-      );
     });
   });
 

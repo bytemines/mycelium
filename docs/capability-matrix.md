@@ -11,7 +11,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | Gemini CLI | Symlink | Config (json) | - | - | Config | - | Write |
 | OpenCode | Symlink | Config (json) | Symlink | - | Config | Symlink | Write |
 | OpenClaw | Symlink | Config (json) | - | - | Copy | - | Write |
-| Aider | Symlink | Config (json) | - | Copy | - | - | Write |
 | Cursor | - | Config (json) | Symlink | Copy | Config | Symlink | Write |
 | VS Code | Symlink | Config (jsonc) | Symlink | Symlink | - | - | Write |
 | Antigravity | Symlink | Config (json) | Symlink | - | - | - | Write |
@@ -74,17 +73,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | Hooks | Copy | `~/.openclaw/hooks/` | - |
 | Memory | Write | `~/.openclaw/MEMORY.md` | - |
 
-### Aider
-
-| Item Type | Mechanism | Global Path | Project Path |
-|-----------|-----------|-------------|--------------|
-| Skills | Symlink | `~/.aider/plugins/` | - |
-| MCPs | Config (json) | `~/.aider/mcp-servers.json` (`mcpServers`) | - |
-| Rules | Copy | `CONVENTIONS.md` | - |
-| Memory | Write | `~/.aider/MEMORY.md` | - |
-
-**Note:** Aider uses a dual-file custom adapter for MCP configuration. Rules are stored in a single `CONVENTIONS.md` file (not a directory).
-
 ### Cursor
 
 | Item Type | Mechanism | Global Path | Project Path |
@@ -130,19 +118,19 @@ Different tools expect MCP server entries in different JSON structures:
 
 | Shape | Tools | Description |
 |-------|-------|-------------|
-| `standard` | Claude Code, Codex, Gemini CLI, Aider, Cursor, Antigravity | `{ command, args, env }` |
+| `standard` | Claude Code, Codex, Gemini CLI, Cursor, Antigravity | `{ command, args, env }` |
 | `openclaw` | OpenClaw | Array-based format under `plugins.entries` |
 | `opencode` | OpenCode | Nested under `mcp` key |
 | `vscode` | VS Code | Under `servers` key in JSONC format |
 
 ## Adding a New Tool
 
-To add tool #10 to Mycelium:
+To add tool #9 to Mycelium:
 
 1. Create a new `ToolDescriptor` file in `packages/core/src/tools/` (e.g., `new-tool.ts`)
 2. Add the import and registry entry in `packages/core/src/tools/_registry.ts`
 3. Add an SVG icon to the dashboard assets
 
-The auto-adapter (`packages/cli/src/core/auto-adapter.ts`) will handle sync automatically for tools using standard JSON/JSONC/TOML formats. Only create a custom adapter if the tool has a unique entry shape (like OpenClaw's array format or Aider's dual-file setup).
+The auto-adapter (`packages/cli/src/core/auto-adapter.ts`) will handle sync automatically for tools using standard JSON/JSONC/TOML formats. Only create a custom adapter if the tool has a unique entry shape (like OpenClaw's array format).
 
 See `packages/core/src/tools/_types.ts` for the full `ToolDescriptor` interface.

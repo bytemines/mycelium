@@ -29,7 +29,6 @@ describe("Disable Command", () => {
       "gemini-cli": { enabled: true },
       opencode: { enabled: true },
       openclaw: { enabled: true },
-      aider: { enabled: true },
     },
     skills: {
       superpowers: {

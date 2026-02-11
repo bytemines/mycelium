@@ -75,7 +75,7 @@ describe("state-verifier", () => {
       expect(result.drifted[0]).toContain("Claude Code");
     });
 
-    it("checks all 9 tools when no tool filter specified", async () => {
+    it("checks all 8 tools when no tool filter specified", async () => {
       vi.mocked(fs.readFile).mockImplementation(async (p) => {
         const path = String(p);
         if (path.includes("manifest.yaml")) {
@@ -88,7 +88,7 @@ describe("state-verifier", () => {
       const { verifyItemState } = await import("./state-verifier.js");
       const result = await verifyItemState("my-agent", { type: "agent" });
 
-      expect(result.toolPresence.length).toBe(9);
+      expect(result.toolPresence.length).toBe(8);
       expect(result.toolPresence.every(tp => tp.presentInConfig === false)).toBe(true);
     });
 
