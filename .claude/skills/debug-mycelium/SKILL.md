@@ -217,6 +217,17 @@ mycelium report --item superpowers@skillsmp --since 1d --format table
 2. Check traces: `mycelium report --op release --since 1h`
 3. Check if all components were re-enabled: `mycelium report --scope manifest --item <plugin-component>`
 
+## Dashboard Debug Logging
+
+For UI issues (sidebar flicker, toggle state, graph reloads), enable browser-side debug logging. Run in the browser console on `localhost:3378`:
+
+```js
+localStorage.setItem("mycelium:debug:panel", "1")  // [panel] animation lifecycle
+localStorage.setItem("mycelium:debug:store", "1")  // [store] state operations
+```
+
+Refresh, reproduce the issue, then read `[panel]`/`[store]` logs in the console. Remove keys and refresh to disable.
+
 ## Dimension Reference
 
 These are the filterable dimensions in `mycelium report`:

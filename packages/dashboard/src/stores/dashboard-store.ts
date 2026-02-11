@@ -2,6 +2,11 @@ import { create } from "zustand";
 import { fetchDashboardState, sendToggle, fetchPlugins, togglePlugin as apiTogglePlugin, togglePluginItem as apiTogglePluginItem, removeSkill, removeMcp, removePlugin } from "@/lib/api";
 import type { PluginInfo } from "@mycelish/core";
 import type { Status } from "@/types";
+
+let DEBUG_STORE = false;
+try { DEBUG_STORE = globalThis.localStorage?.getItem("mycelium:debug:store") === "1"; } catch { /* SSR/test */ }
+const debugStore = (...args: unknown[]) => { if (DEBUG_STORE) console.log("[store]", ...args); };
+
 type ApiStatus = "checking" | "connected" | "disconnected";
 
 interface GraphData {
@@ -91,14 +96,18 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({ loading: false, error: apiStatus === "disconnected" });
       return;
     }
-    set({ loading: true });
+    const isInitialLoad = !get().graphData;
+    debugStore("fetchState", { isInitialLoad });
+
+    if (isInitialLoad) set({ loading: true });
     try {
       const state = await fetchDashboardState();
-      set({ graphData: parseState(state), error: false });
-    } catch {
-      set({ error: true });
-    } finally {
-      set({ loading: false });
+      const parsed = parseState(state);
+
+      set({ graphData: parsed, error: false, loading: false });
+    } catch (err) {
+
+      if (isInitialLoad) set({ error: true, loading: false });
     }
   },
 
@@ -129,20 +138,43 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   togglePlugin: async (name, enabled) => {
-    await apiTogglePlugin(name, enabled).catch((err) => { console.error("togglePlugin failed:", err); });
-    set((s) => ({
-      selectedPlugin: s.selectedPlugin ? { ...s.selectedPlugin, enabled } : null,
-      hasPendingChanges: true,
-    }));
-    get().fetchState();
+    debugStore("togglePlugin", { name, enabled });
+    // Optimistic update: find plugin from graphData (not selectedPlugin) for correct allItems
+    set((s) => {
+      const graphPlugin = s.graphData?.plugins.find(p => p.name === name);
+      const allItems = graphPlugin
+        ? [...graphPlugin.skills, ...(graphPlugin.agents ?? []), ...(graphPlugin.commands ?? []), ...(graphPlugin.hooks ?? []), ...(graphPlugin.libs ?? [])]
+        : [];
+      const newDisabledItems = enabled ? [] : allItems;
+
+      return {
+        graphData: s.graphData ? {
+          ...s.graphData,
+          plugins: s.graphData.plugins.map(p =>
+            p.name === name ? { ...p, enabled, disabledItems: newDisabledItems } : p
+          ),
+        } : s.graphData,
+        selectedPlugin: s.selectedPlugin?.name === name
+          ? { ...s.selectedPlugin, enabled, disabledItems: newDisabledItems }
+          : s.selectedPlugin,
+        hasPendingChanges: true,
+      };
+    });
+    try {
+      await apiTogglePlugin(name, enabled);
+    } catch (err) {
+      console.error("togglePlugin failed:", err);
+    }
+    await get().fetchState();
   },
 
   togglePluginItem: async (pluginName, itemName, enabled) => {
+    debugStore("togglePluginItem", { pluginName, itemName, enabled });
     try {
       const result = await apiTogglePluginItem(pluginName, itemName, enabled);
       if (result.success) {
         set({ hasPendingChanges: true });
-        get().fetchState();
+        await get().fetchState();
       } else {
         set({ syncBanner: { type: "error", message: `Failed to ${enabled ? "enable" : "disable"} ${itemName}: ${result.error}` } });
         setTimeout(() => set({ syncBanner: null }), 5000);
@@ -191,6 +223,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       },
     });
     fetchPlugins().then((plugins) => {
+      if (get().selectedPlugin?.name !== pluginName) return; // panel closed or switched, discard stale result
       const found = plugins.find((p) => p.name === pluginName);
       if (found) set({ selectedPlugin: found });
     }).catch((err) => { console.error("openPluginPanel fetch failed:", err); });
@@ -208,6 +241,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
   openSkillPanel: (skillName) => {
     fetchDashboardState().then((state) => {
+      if (get().selectedPlugin?.name !== skillName) return; // panel closed or switched, discard stale result
       const ownerPlugin = ((state as any).plugins ?? []).find((p: any) => (p.skills ?? []).includes(skillName));
       if (ownerPlugin) {
         get().openPluginPanel(ownerPlugin.name);

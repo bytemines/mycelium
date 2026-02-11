@@ -633,14 +633,18 @@ export function Graph({
     });
   }, [edges, effectiveDisabled, edgeType]);
 
-  // Apply layout when data or mode changes
+  // Apply layout when data or mode changes — only fitView on first render
+  const hasInitialFit = useRef(false);
   useEffect(() => {
     if (initialNodes.length > 0) {
       getLayoutedElements(initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
           setNodes(layoutedNodes);
           setEdges(layoutedEdges);
-          setTimeout(() => fitViewRef.current?.(), 50);
+          if (!hasInitialFit.current) {
+            hasInitialFit.current = true;
+            setTimeout(() => fitViewRef.current?.(), 50);
+          }
         }
       );
     }
