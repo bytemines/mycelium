@@ -484,12 +484,16 @@ export async function autoSetup(options: {
     console.warn("Self-registration failed:", err instanceof Error ? err.message : String(err));
   }
 
-  console.log("\nSetup complete. Next steps:");
-  console.log("  mycelium sync          # Push config to all installed tools");
-  console.log(`  mycelium serve         # Start dashboard at http://localhost:${DEFAULT_PORT}`);
   if (!hasGitRemote()) {
-    console.log("  mycelium push          # Push config to remote (after setting up git)");
+    console.log("\nTip: run `mycelium push` to sync config to a remote git repo.");
   }
+
+  // Auto-launch dashboard
+  console.log(`\nStarting dashboard at http://localhost:${DEFAULT_PORT} ...`);
+  const { startServer } = await import("../server.js");
+  const server = startServer(DEFAULT_PORT);
+  process.on("SIGINT", () => { server.close(); process.exit(0); });
+  process.on("SIGTERM", () => { server.close(); process.exit(0); });
 }
 
 // ============================================================================
