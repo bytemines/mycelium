@@ -381,18 +381,6 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
       raw = raw.replace(/^\s*\/\/.*$/gm, "");
       const config = JSON.parse(raw);
 
-      // Skills from skills.entries[]
-      if (config.skills?.entries) {
-        for (const entry of config.skills.entries) {
-          result.skills.push({
-            name: entry.name,
-            path: entry.path ?? "",
-            source: "openclaw",
-            metadata: { enabled: String(entry.enabled ?? true) },
-          });
-        }
-      }
-
       // MCPs from plugins.entries[] where type === "mcp-adapter"
       if (config.plugins?.entries) {
         for (const entry of config.plugins.entries) {
@@ -400,10 +388,28 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
             result.mcps.push({
               name: entry.name,
               config: {
-                command: entry.config?.serverUrl ?? "",
-                args: entry.config?.transport ? [entry.config.transport] : [],
+                command: entry.command ?? "",
+                args: entry.args ?? [],
+                env: entry.env,
               },
               source: "openclaw",
+            });
+          }
+        }
+      }
+
+      // Agents from agents.list[]
+      if (Array.isArray(config.agents?.list)) {
+        for (const agent of config.agents.list) {
+          if (agent.id) {
+            result.components.push({
+              type: "agent",
+              name: agent.id,
+              path: path.join(home, ".openclaw", "openclaw.json"),
+              metadata: {
+                isDefault: String(agent.default ?? false),
+                workspace: agent.workspace ?? "",
+              },
             });
           }
         }
@@ -414,17 +420,83 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
   }
 
   try {
-    // Memory: workspace MEMORY.md files
-    const memoryDir = path.join(home, ".openclaw");
-    const memFiles = await globDir(memoryDir, /MEMORY\.md$/);
-    for (const memPath of memFiles) {
+    // Skills: ~/.openclaw/skills (managed) + ~/.openclaw/workspace/skills (workspace)
+    // Precedence: workspace > managed > bundled (we skip bundled)
+    const seen = new Set<string>();
+    for (const skillsDir of [
+      path.join(home, ".openclaw", "workspace", "skills"),
+      path.join(home, ".openclaw", "skills"),
+    ]) {
+    const skillFiles = await globDir(skillsDir, /SKILL\.md$/);
+    for (const skillPath of skillFiles) {
+      const content = await readFileIfExists(skillPath);
+      if (content) {
+        const parsed = parseSkillMd(content);
+        const name = parsed.name || path.basename(path.dirname(skillPath));
+        if (seen.has(name)) continue; // workspace wins over managed
+        seen.add(name);
+        result.skills.push({
+          name,
+          path: skillPath,
+          source: "openclaw",
+          metadata: { description: parsed.description },
+        });
+      }
+    }
+    } // end for skillsDir
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Skills in project subdirs: ~/.openclaw/workspace/projects/**/SKILL.md
+    const projectsDir = path.join(home, ".openclaw", "workspace", "projects");
+    const projectSkillFiles = await globDir(projectsDir, /SKILL\.md$/);
+    for (const skillPath of projectSkillFiles) {
+      const content = await readFileIfExists(skillPath);
+      if (content) {
+        const parsed = parseSkillMd(content);
+        result.skills.push({
+          name: parsed.name || path.basename(path.dirname(skillPath)),
+          path: skillPath,
+          source: "openclaw",
+          metadata: { description: parsed.description },
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Memory: workspace MEMORY.md + AGENTS.md
+    const workspaceDir = path.join(home, ".openclaw", "workspace");
+    for (const memFile of ["MEMORY.md", "AGENTS.md"]) {
+      const memPath = path.join(workspaceDir, memFile);
       const content = await readFileIfExists(memPath);
-      result.memory.push({
-        name: path.basename(path.dirname(memPath)),
-        path: memPath,
-        source: "openclaw",
-        scope: "shared",
-        content: content ?? undefined,
+      if (content) {
+        result.memory.push({
+          name: memFile.replace(/\.md$/, ""),
+          path: memPath,
+          source: "openclaw",
+          scope: "shared",
+          content,
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Workspace agents: ~/.openclaw/workspace/agents/*.md
+    const agentsDir = path.join(home, ".openclaw", "workspace", "agents");
+    const agentFiles = await globDir(agentsDir, /\.md$/);
+    for (const agentPath of agentFiles) {
+      result.components.push({
+        type: "agent",
+        name: path.basename(agentPath, ".md"),
+        path: agentPath,
       });
     }
   } catch {
