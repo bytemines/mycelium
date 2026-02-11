@@ -1,5 +1,19 @@
 # @mycelish/core
 
+## 0.2.5
+
+### Patch Changes
+
+- # v0.2.5
+
+  ## Improvements
+  - **Smarter tool detection** — Improved auto-detection logic for installed AI tools, reducing false positives and ensuring only reachable tools are synced
+  - **Removed Aider support** — Aider dropped from tool registry (dual-file config was fragile, low adoption)
+  - **MigrateWizard fixes** — Dashboard migration wizard now correctly handles edge cases and displays accurate tool state
+
+  ## Internal
+  - AI-driven release pipeline for consistent changelogs and versioning
+
 ## 0.2.4
 
 ### Patch Changes
