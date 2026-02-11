@@ -10,7 +10,7 @@ import { disableSkillOrMcp } from "../commands/disable.js";
 import { MYCELIUM_HOME } from "../core/fs-helpers.js";
 import { getDisabledItems, ALL_ITEM_TYPES } from "../core/manifest-state.js";
 import { verifyItemState } from "../core/state-verifier.js";
-import { buildPluginMap } from "./plugin-map.js";
+import { getLivePluginState } from "../core/plugin-state.js";
 import { asyncHandler } from "./async-handler.js";
 
 import type { ToolId } from "@mycelish/core";
@@ -86,15 +86,7 @@ export function registerStateRoutes(app: Express): void {
     const manifest = await loadManifest();
     const migrated = manifest.entries.length > 0;
 
-    const pluginMap = buildPluginMap(manifest);
-    const plugins = Array.from(pluginMap.entries()).map(([name, data]) => ({
-      name,
-      skills: data.skills,
-      agents: data.agents,
-      commands: data.commands,
-      hooks: data.hooks,
-      libs: data.libs,
-    }));
+    const plugins = await getLivePluginState(process.cwd());
 
     res.json({ tools, skills, mcps, memory, migrated, plugins });
   }));

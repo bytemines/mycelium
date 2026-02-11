@@ -111,6 +111,25 @@ mycelium report --item superpowers@skillsmp --since 1d
 
 Run `mycelium doctor` to check 8 plugin invariants: symlink validity, disabled/enabled state, settings.json consistency, cache matching, phantom entries, and orphaned symlinks.
 
+## Dashboard Debug Logging
+
+The dashboard has opt-in debug logging gated behind localStorage flags. Set in the browser console, then refresh:
+
+```js
+// Panel animation lifecycle (open/close state machine, animationEnd events)
+localStorage.setItem("mycelium:debug:panel", "1")
+
+// Store operations (fetchState, togglePlugin, togglePluginItem)
+localStorage.setItem("mycelium:debug:store", "1")
+```
+
+Logs appear prefixed with `[panel]` and `[store]` in the browser console. To disable, remove the keys and refresh:
+
+```js
+localStorage.removeItem("mycelium:debug:panel")
+localStorage.removeItem("mycelium:debug:store")
+```
+
 ## Trace Snapshots
 
 When an error occurs, Mycelium automatically saves a trace snapshot to:
