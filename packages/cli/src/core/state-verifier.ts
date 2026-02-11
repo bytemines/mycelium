@@ -66,11 +66,11 @@ async function checkMcpInTool(name: string, toolId: ToolId): Promise<{ present: 
       return { present: false, configPath, details: `no ${desc.mcp.key} section` };
     }
 
-    // OpenClaw uses array format
+    // OpenClaw uses object format: plugins.entries.{name}
     if (desc.mcp.entryShape === "openclaw") {
       const entries = (mcpSection as Record<string, unknown>).entries;
-      if (Array.isArray(entries)) {
-        const found = entries.some((e: Record<string, unknown>) => e.name === name && e.type === "mcp-adapter");
+      if (entries && typeof entries === "object" && !Array.isArray(entries)) {
+        const found = name in (entries as Record<string, unknown>);
         return { present: found, configPath };
       }
       return { present: false, configPath };
