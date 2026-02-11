@@ -347,7 +347,7 @@ describe("DEFAULT_MANIFEST_CONFIG", () => {
     expect(DEFAULT_MANIFEST_CONFIG.tools["gemini-cli"]).toEqual({ enabled: true });
     expect(DEFAULT_MANIFEST_CONFIG.tools["opencode"]).toEqual({ enabled: true });
     expect(DEFAULT_MANIFEST_CONFIG.tools["openclaw"]).toEqual({ enabled: true });
-    expect(DEFAULT_MANIFEST_CONFIG.tools["aider"]).toEqual({ enabled: true });
+
   });
 
   it("has correct memory scopes", async () => {

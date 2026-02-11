@@ -4,13 +4,21 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "child_process";
+import { existsSync } from "node:fs";
 
 // Mock child_process
 vi.mock("child_process", () => ({
   execFileSync: vi.fn(),
 }));
 
+// Mock fs.existsSync for config-path fallback detection
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, existsSync: vi.fn(() => false) };
+});
+
 const mockExecFileSync = vi.mocked(execFileSync);
+const mockExistsSync = vi.mocked(existsSync);
 
 describe("ToolDetector", () => {
   beforeEach(() => {
@@ -70,17 +78,32 @@ describe("ToolDetector", () => {
       expect(gemini?.installed).toBe(true);
     });
 
-    it("marks tool as not installed when command not found", async () => {
+    it("marks tool as not installed when command not found and no config", async () => {
       const { detectInstalledTools } = await import("./tool-detector");
       mockExecFileSync.mockImplementation(() => {
         throw new Error("Command not found");
       });
+      mockExistsSync.mockReturnValue(false);
 
       const tools = await detectInstalledTools();
-      const aider = tools.find((t) => t.id === "aider");
+      const opencode = tools.find((t) => t.id === "opencode");
 
-      expect(aider).toBeDefined();
-      expect(aider?.installed).toBe(false);
+      expect(opencode).toBeDefined();
+      expect(opencode?.installed).toBe(false);
+    });
+
+    it("detects tools with cli:null via detectPath existence", async () => {
+      const { detectInstalledTools } = await import("./tool-detector");
+      mockExecFileSync.mockImplementation(() => {
+        throw new Error("Command not found");
+      });
+      // OpenCode has cli:null + detectPath — detect via config file
+      mockExistsSync.mockReturnValue(true);
+
+      const tools = await detectInstalledTools();
+      const opencode = tools.find((t) => t.id === "opencode");
+
+      expect(opencode?.installed).toBe(true);
     });
 
     it("returns all supported tools with their installation status", async () => {
@@ -94,14 +117,13 @@ describe("ToolDetector", () => {
 
       const tools = await detectInstalledTools();
 
-      expect(tools).toHaveLength(9);
+      expect(tools).toHaveLength(8);
       expect(tools.map((t) => t.id)).toEqual([
         "claude-code",
         "codex",
         "gemini-cli",
         "opencode",
         "openclaw",
-        "aider",
         "cursor",
         "vscode",
         "antigravity",
@@ -118,13 +140,14 @@ describe("ToolDetector", () => {
       expect(result).toBe(true);
     });
 
-    it("returns false when tool command not found", async () => {
+    it("returns false when tool command not found and no config", async () => {
       const { isToolInstalled } = await import("./tool-detector");
       mockExecFileSync.mockImplementation(() => {
         throw new Error("Command not found");
       });
+      mockExistsSync.mockReturnValue(false);
 
-      const result = await isToolInstalled("aider");
+      const result = await isToolInstalled("opencode");
       expect(result).toBe(false);
     });
   });
@@ -139,6 +162,7 @@ describe("ToolDetector", () => {
         name: "Claude Code",
         command: "claude",
         configPath: expect.stringContaining(".claude"),
+        detectPath: "",
       });
     });
 

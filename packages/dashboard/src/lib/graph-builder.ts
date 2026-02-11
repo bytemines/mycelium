@@ -5,9 +5,10 @@ export interface ScanData {
   toolId: string;
   toolName: string;
   installed: boolean;
-  skills: Array<{ name: string; source: string; marketplace?: string; pluginName?: string }>;
-  mcps: Array<{ name: string; source: string; config: { command: string } }>;
-  memory: Array<{ name: string; source: string }>;
+  skills: Array<{ name: string; path: string; source: string; metadata?: Record<string, string>; marketplace?: string; pluginName?: string }>;
+  mcps: Array<{ name: string; source: string; config: { command: string; args?: string[]; env?: Record<string, string> } }>;
+  memory: Array<{ name: string; path: string; source: string; content?: string }>;
+  components: Array<{ type: string; name: string; path: string; marketplace?: string; pluginName?: string }>;
 }
 
 export interface MigrateToggleState {

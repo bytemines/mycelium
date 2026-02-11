@@ -4,6 +4,7 @@ export const codex: ToolDescriptor = {
   id: "codex",
   display: { name: "Codex CLI", icon: "openai", color: "#10A37F" },
   cli: { command: "codex", mcp: { add: ["mcp", "add"], remove: ["mcp", "remove"] } },
+  detectPath: null,
   paths: {
     mcp: "~/.codex/config.toml",
     projectMcp: null,

@@ -81,7 +81,7 @@ export function registerStateRoutes(app: Express): void {
       memory = memEntries
         .filter((f) => f.endsWith(".md"))
         .map((f) => ({
-          name: f.replace(/\.md$/, "").replace(/^(?:claude-code|codex|gemini|opencode|openclaw|aider)-/, ""),
+          name: f.replace(/\.md$/, "").replace(/^(?:claude-code|codex|gemini|opencode|openclaw)-/, ""),
           scope: "global" as const,
           status: "synced" as const,
         }));

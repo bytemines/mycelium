@@ -12,7 +12,7 @@ vi.mock("node:fs/promises");
 const mockSyncAll = vi.fn().mockResolvedValue({ success: true });
 vi.mock("./tool-adapter.js", () => ({
   getAdapter: vi.fn((toolId: string) => {
-    const known = ["claude-code", "codex", "gemini-cli", "opencode", "openclaw", "aider"];
+    const known = ["claude-code", "codex", "gemini-cli", "opencode", "openclaw"];
     if (!known.includes(toolId)) throw new Error(`No adapter for tool: ${toolId}`);
     return {
       syncAll: mockSyncAll,

@@ -8,7 +8,6 @@ import openaiSvg from "./svg/openai.svg?raw";
 import geminiSvg from "./svg/gemini.svg?raw";
 import opencodeSvg from "./svg/opencode.svg?raw";
 import openclawSvg from "./svg/openclaw.svg?raw";
-import aiderSvg from "./svg/aider.svg?raw";
 import cursorSvg from "./svg/cursor.svg?raw";
 import vscodeSvg from "./svg/vscode.svg?raw";
 import antigravitySvg from "./svg/antigravity.svg?raw";
@@ -48,10 +47,6 @@ export function OpenClawIcon({ size = 16 }: IconProps) {
   return <SvgIcon svg={openclawSvg} size={size} />;
 }
 
-export function AiderIcon({ size = 16 }: IconProps) {
-  return <SvgIcon svg={aiderSvg} size={size} />;
-}
-
 export function CursorIcon({ size = 16 }: IconProps) {
   return <SvgIcon svg={cursorSvg} size={size} />;
 }
@@ -70,7 +65,6 @@ const SVG_MAP: Record<string, string> = {
   gemini: geminiSvg,
   opencode: opencodeSvg,
   openclaw: openclawSvg,
-  aider: aiderSvg,
   cursor: cursorSvg,
   vscode: vscodeSvg,
   antigravity: antigravitySvg,

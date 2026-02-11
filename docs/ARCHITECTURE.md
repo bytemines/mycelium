@@ -1,6 +1,6 @@
 # Mycelium Architecture
 
-> Universal AI Tool Orchestrator — syncs skills, MCPs, and memory across 9 AI coding tools.
+> Universal AI Tool Orchestrator — syncs skills, MCPs, and memory across 8 AI coding tools.
 
 ## Design Philosophy
 
@@ -33,7 +33,6 @@ Dependencies flow one way: `core` <- `cli`, `core` <- `dashboard`. The CLI and d
   global/skills/                         ~/.gemini/settings.json
   global/memory/                         ~/.config/opencode/opencode.json
   machines/{hostname}/overrides.yaml     ~/.openclaw/openclaw.json
-  .env.local (gitignored)               ~/.aider/mcp-servers.json
 ```
 
 Configuration merges three levels with clear precedence: **Project > Machine > Global**. Project configs add to or override globals; they never replace the entire global set. All manifest items (skills, MCPs, plugins) have unified `state: ItemState` ("enabled"|"disabled"|"deleted") and `source: string` fields. State merges follow priority rules, with higher-priority configs overriding lower ones.
@@ -59,10 +58,10 @@ packages/core/src/tools/
   _types.ts       ToolDescriptor interface
   _registry.ts    TOOL_REGISTRY + helper functions
   claude-code.ts  codex.ts  gemini-cli.ts  opencode.ts
-  openclaw.ts     aider.ts  cursor.ts      vscode.ts  antigravity.ts
+  openclaw.ts     cursor.ts  vscode.ts  antigravity.ts
 ```
 
-The **auto-adapter factory** (`packages/cli/src/core/auto-adapter.ts`) generates a `GenericAdapter` from any descriptor, handling JSON/JSONC/TOML formats and all MCP entry shapes automatically. Tools with non-standard formats (OpenClaw's array-based plugins, Aider's dual-file write) provide custom adapters.
+The **auto-adapter factory** (`packages/cli/src/core/auto-adapter.ts`) generates a `GenericAdapter` from any descriptor, handling JSON/JSONC/TOML formats and all MCP entry shapes automatically. Tools with non-standard formats (OpenClaw's array-based plugins) provide custom adapters.
 
 **Adding a new tool requires:**
 1. One descriptor file in `packages/core/src/tools/` (~30 lines)

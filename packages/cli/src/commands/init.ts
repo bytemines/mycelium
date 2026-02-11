@@ -58,24 +58,23 @@ export const DEFAULT_MANIFEST_CONFIG = {
     "gemini-cli": { enabled: true },
     "opencode": { enabled: true },
     "openclaw": { enabled: true },
-    "aider": { enabled: true },
   },
   memory: {
     scopes: {
       shared: {
-        sync_to: ["claude-code", "codex", "gemini-cli", "opencode", "openclaw", "aider"],
+        sync_to: ["claude-code", "codex", "gemini-cli", "opencode", "openclaw"],
         path: "global/memory/shared/",
         files: [],
       },
       coding: {
-        sync_to: ["claude-code", "codex", "gemini-cli", "opencode", "aider"],
+        sync_to: ["claude-code", "codex", "gemini-cli", "opencode"],
         exclude_from: ["openclaw"],
         path: "global/memory/coding/",
         files: [],
       },
       personal: {
         sync_to: ["openclaw"],
-        exclude_from: ["claude-code", "codex", "gemini-cli", "opencode", "aider"],
+        exclude_from: ["claude-code", "codex", "gemini-cli", "opencode"],
         path: "global/memory/personal/",
         files: [],
       },

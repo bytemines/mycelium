@@ -86,7 +86,6 @@ Read the tool's native config file to verify the sync result:
 | Gemini CLI | `~/.gemini/settings.json` |
 | OpenCode | `~/.opencode/config.json` |
 | OpenClaw | `~/.openclaw/plugins.json` |
-| Aider | `~/.aider/mcp-servers.json` |
 
 Verify the MCP entry exists and has correct structure for that tool's format.
 
@@ -237,7 +236,7 @@ These are the filterable dimensions in `mycelium report`:
 | `--cmd` | CLI command | sync, enable, disable, add, remove, migrate, doctor, plugin-sync, mcp |
 | `--scope` | What type | mcp, skill, config, memory, hook, plugin, manifest |
 | `--op` | Operation | takeover, release, symlink-create, symlink-remove, health-check, inject, sync, disable, enable |
-| `--tool` | Which tool | claude-code, cursor, vscode, codex, gemini, opencode, openclaw, aider, antigravity |
+| `--tool` | Which tool | claude-code, cursor, vscode, codex, gemini, opencode, openclaw, antigravity |
 | `--item` | Item name | any MCP/skill/hook/plugin name |
 | `--level` | Severity | debug, info, warn, error |
 | `--state` | Manifest state | enabled, disabled, deleted |

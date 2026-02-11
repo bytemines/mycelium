@@ -146,7 +146,6 @@ describe("Sync Command", () => {
         "gemini-cli": { enabled: false },
         opencode: { enabled: false },
         openclaw: { enabled: false },
-        aider: { enabled: false },
       };
 
       const result = await syncAll("/test/project", enabledTools);
@@ -165,7 +164,6 @@ describe("Sync Command", () => {
         "gemini-cli": { enabled: false },
         opencode: { enabled: false },
         openclaw: { enabled: false },
-        aider: { enabled: false },
       };
 
       const result = await syncAll("/test/project", enabledTools);
@@ -183,7 +181,6 @@ describe("Sync Command", () => {
         "gemini-cli": { enabled: false },
         opencode: { enabled: false },
         openclaw: { enabled: false },
-        aider: { enabled: false },
       };
 
       const result = await syncAll("/test/project", enabledTools);
@@ -209,7 +206,6 @@ describe("Sync Command", () => {
         "gemini-cli": { enabled: false },
         opencode: { enabled: false },
         openclaw: { enabled: false },
-        aider: { enabled: false },
       };
 
       // Make claude-code fail but codex succeed
@@ -257,7 +253,6 @@ describe("Sync Command", () => {
         "gemini-cli": { enabled: false },
         opencode: { enabled: false },
         openclaw: { enabled: false },
-        aider: { enabled: false },
       };
 
       const mockEnvVars = { WHARK_API_KEY: "test-key-123" };

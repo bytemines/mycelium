@@ -4,6 +4,7 @@ export const vscode: ToolDescriptor = {
   id: "vscode",
   display: { name: "VS Code", icon: "vscode", color: "#007ACC" },
   cli: { command: "code" },
+  detectPath: null,
   paths: {
     mcp: {
       darwin: "~/Library/Application Support/Code/User/mcp.json",

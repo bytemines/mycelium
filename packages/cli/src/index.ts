@@ -3,7 +3,7 @@
  * Mycelium CLI - Universal AI Tool Orchestrator
  *
  * Sync skills, MCPs, and memory across AI coding tools:
- * Claude Code, Codex CLI, Gemini CLI, OpenCode, OpenClaw, Aider
+ * Claude Code, Codex CLI, Gemini CLI, OpenCode, OpenClaw, Cursor, VS Code, Antigravity
  */
 
 import { Command } from "commander";

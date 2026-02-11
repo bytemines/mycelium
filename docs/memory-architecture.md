@@ -2,7 +2,7 @@
 
 ## Overview
 
-Mycelium manages memory across 9 AI coding tools using a scope-based routing system.
+Mycelium manages memory across 8 AI coding tools using a scope-based routing system.
 Memory files (Markdown) are stored centrally and distributed to each tool during sync.
 
 ## How It Works
@@ -11,9 +11,9 @@ Memory files (Markdown) are stored centrally and distributed to each tool during
 
 ```
 ~/.mycelium/global/memory/
-├── shared/      # Synced to ALL 9 tools
+├── shared/      # Synced to ALL 8 tools
 │   └── *.md
-├── coding/      # Synced to 8 tools (excludes OpenClaw)
+├── coding/      # Synced to 7 tools (excludes OpenClaw)
 │   └── *.md
 └── personal/    # Synced to OpenClaw only
     └── *.md
@@ -37,7 +37,6 @@ Memory files (Markdown) are stored centrally and distributed to each tool during
 | Gemini CLI | `~/.gemini/GEMINI.md` | shared, coding | — |
 | OpenClaw | `~/.openclaw/MEMORY.md` | shared, personal | — |
 | OpenCode | `~/.opencode/context.md` | shared, coding | — |
-| Aider | `~/.aider/MEMORY.md` | shared, coding | — |
 | Cursor | _(no global memory)_ | shared, coding | — |
 | VS Code | _(no global memory)_ | shared, coding | — |
 | Antigravity | `~/.gemini/antigravity/rules.md` | shared, coding | — |
@@ -82,6 +81,6 @@ your application executes them locally.
 When Mycelium is exposed as an MCP server (planned feature A4), it can implement
 this protocol to serve as the memory backend for any Claude-powered agent. This
 bridges native tool memory with the Anthropic API's memory system — the same
-scoped memory files that sync to 9 tools can also serve Claude API agents.
+scoped memory files that sync to 8 tools can also serve Claude API agents.
 
 See: https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool
