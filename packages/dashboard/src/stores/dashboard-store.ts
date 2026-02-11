@@ -25,6 +25,7 @@ interface DashboardStore {
   activeTab: "graph" | "migrate" | "marketplace";
   selectedPlugin: PluginInfo | null;
   apiStatus: ApiStatus;
+  version: string | null;
   hasPendingChanges: boolean;
   syncBanner: { type: "success" | "pending" | "error"; message: string } | null;
 
@@ -78,6 +79,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   activeTab: "graph",
   selectedPlugin: null,
   apiStatus: "checking",
+  version: null,
   hasPendingChanges: false,
   syncBanner: null,
 
@@ -104,7 +106,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       const state = await fetchDashboardState();
       const parsed = parseState(state);
 
-      set({ graphData: parsed, error: false, loading: false });
+      set({ graphData: parsed, error: false, loading: false, version: (state as { version?: string }).version ?? null });
     } catch (err) {
 
       if (isInitialLoad) set({ error: true, loading: false });

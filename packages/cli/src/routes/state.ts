@@ -2,6 +2,10 @@ import { Router } from "express";
 import fs from "fs/promises";
 import path from "path";
 import { parse as parseYaml } from "yaml";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const CLI_VERSION: string = (require("../../package.json") as { version: string }).version;
 
 import { loadManifest } from "../core/migrator/index.js";
 import { detectInstalledTools } from "../core/tool-detector.js";
@@ -88,7 +92,7 @@ export function registerStateRoutes(app: Express): void {
 
     const plugins = await getLivePluginState(process.cwd());
 
-    res.json({ tools, skills, mcps, memory, migrated, plugins });
+    res.json({ tools, skills, mcps, memory, migrated, plugins, version: CLI_VERSION });
   }));
 
   // GET /api/state/status
