@@ -413,4 +413,5 @@ export interface DashboardState {
   skills: DashboardSkill[];
   mcps: DashboardMcp[];
   memory: DashboardMemory[];
+  version?: string;
 }

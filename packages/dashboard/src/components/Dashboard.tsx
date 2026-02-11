@@ -111,6 +111,7 @@ export function Dashboard() {
     apiStatus, checkApiStatus,
     hasPendingChanges, syncBanner, triggerSync,
     togglePlugin, togglePluginItem, removeItem,
+    version,
   } = useDashboardStore();
 
 useEffect(() => {
@@ -127,6 +128,7 @@ useEffect(() => {
             <span>🍄</span>
             <span>MYCELIUM</span>
             <span className="ml-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-purple-400 border border-purple-500/30">Beta</span>
+            {version && <span className="text-[10px] text-muted-foreground font-mono">v{version}</span>}
           </h1>
           <StatusIndicator status={apiStatus === "connected" ? "synced" : apiStatus === "checking" ? "pending" : "error"} />
         </div>
