@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r ../dashboard/dist dist/dashboard 2>/dev/null || true",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
