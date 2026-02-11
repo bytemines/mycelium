@@ -1,17 +1,21 @@
 .PHONY: dev stop restart build test typecheck prod clean
 
-# ── Development (Vite HMR + API backend) ──
+# ── Development (full HMR: tsx watch for API, Vite HMR for dashboard) ──
 
-dev: stop ## Start dev servers (Vite HMR on :3377, API on :3378)
-	@node packages/cli/dist/index.js serve &>/dev/null &
+dev: stop ## Start dev servers with auto-reload
+	@pnpm build --filter=@mycelish/core 2>/dev/null
+	@npx tsx watch packages/cli/src/commands/serve-entry.ts &>/dev/null &
 	@cd packages/dashboard && pnpm dev &>/dev/null &
+	@cd packages/core && pnpm tsc --watch --preserveWatchOutput &>/dev/null &
 	@sleep 2
-	@echo "  API:  http://localhost:3378"
+	@echo "  API:  http://localhost:3378  (auto-restart on changes)"
 	@echo "  UI:   http://localhost:3377  (HMR)"
 
 stop: ## Stop all dev servers
 	@-lsof -ti:3377 | xargs kill 2>/dev/null
 	@-lsof -ti:3378 | xargs kill 2>/dev/null
+	@-pkill -f "tsx watch.*serve-entry" 2>/dev/null
+	@-pkill -f "tsc --watch.*core" 2>/dev/null
 	@echo "  Stopped."
 
 restart: stop dev ## Restart dev servers
