@@ -43,16 +43,17 @@ export class OpenClawAdapter extends BaseToolAdapter {
       const existing = await readFileIfExists(configPath);
       const config: Record<string, unknown> = existing ? JSON.parse(existing) : {};
 
-      // Build lookup of existing MCP entries by name (to preserve extra props)
-      const existingMcpEntries = new Map<string, Record<string, unknown>>();
-      const entries: unknown[] = [];
-      if (Array.isArray((config as { plugins?: { entries?: unknown[] } }).plugins?.entries)) {
-        for (const entry of (config as { plugins: { entries: Array<Record<string, unknown>> } }).plugins.entries) {
-          if (entry.type === "mcp-adapter" && typeof entry.name === "string") {
-            existingMcpEntries.set(entry.name, entry);
-          } else {
-            entries.push(entry);
-          }
+      // OpenClaw expects plugins.entries as an object keyed by plugin name
+      const plugins = (config.plugins ?? {}) as Record<string, unknown>;
+      const existingEntries = (
+        plugins.entries && typeof plugins.entries === "object" && !Array.isArray(plugins.entries)
+      ) ? { ...(plugins.entries as Record<string, Record<string, unknown>>) } : {};
+
+      // Preserve non-MCP entries, replace MCP entries
+      const entries: Record<string, Record<string, unknown>> = {};
+      for (const [name, entry] of Object.entries(existingEntries)) {
+        if (entry.type !== "mcp-adapter") {
+          entries[name] = entry;
         }
       }
 
@@ -60,13 +61,12 @@ export class OpenClawAdapter extends BaseToolAdapter {
         if (mcp.state && mcp.state !== "enabled") continue;
         const shaped: Record<string, unknown> = {
           type: "mcp-adapter",
-          name,
           command: mcp.command,
           args: mcp.args || [],
           ...(mcp.env && Object.keys(mcp.env).length > 0 ? { env: mcp.env } : {}),
         };
-        const prev = existingMcpEntries.get(name);
-        entries.push(prev ? { ...prev, ...shaped } : shaped);
+        const prev = existingEntries[name];
+        entries[name] = prev ? { ...prev, ...shaped } : shaped;
       }
 
       if (!config.plugins) config.plugins = {};
@@ -92,12 +92,13 @@ export class OpenClawAdapter extends BaseToolAdapter {
       if (!existing) return { success: false, method: "file", error: "Config not found" };
       const config = JSON.parse(existing);
 
-      if (Array.isArray(config.plugins?.entries)) {
-        config.plugins.entries = config.plugins.entries.filter(
-          (e: { type?: string; name?: string }) => !(e.type === "mcp-adapter" && e.name === name),
-        );
-        await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
-        return { success: true, method: "file" };
+      const entries = config.plugins?.entries;
+      if (entries && typeof entries === "object" && !Array.isArray(entries)) {
+        if (name in entries) {
+          delete entries[name];
+          await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+          return { success: true, method: "file" };
+        }
       }
       return { success: false, method: "file", error: `${name} not found` };
     } catch (err) {

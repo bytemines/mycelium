@@ -238,10 +238,10 @@ describe("OpenClawAdapter writeToFile — preserves existing entry properties", 
   it("preserves extra properties on existing mcp-adapter entries", async () => {
     mockReadFileIfExists.mockResolvedValue(JSON.stringify({
       plugins: {
-        entries: [
-          { type: "other-plugin", name: "keep-me" },
-          { type: "mcp-adapter", name: "my-server", command: "npx", args: ["-y", "my-server"], disabled: true, customProp: "preserve" },
-        ],
+        entries: {
+          "keep-me": { type: "other-plugin", enabled: true },
+          "my-server": { type: "mcp-adapter", command: "npx", args: ["-y", "my-server"], disabled: true, customProp: "preserve" },
+        },
       },
     }));
     const adapter = new OpenClawAdapter();
@@ -249,24 +249,22 @@ describe("OpenClawAdapter writeToFile — preserves existing entry properties", 
     await adapter.writeToFile(mcps);
     const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
     const entries = written.plugins.entries;
-    expect(entries[0]).toEqual({ type: "other-plugin", name: "keep-me" });
-    const mcpEntry = entries[1];
+    expect(entries["keep-me"]).toEqual({ type: "other-plugin", enabled: true });
+    const mcpEntry = entries["my-server"];
     expect(mcpEntry.type).toBe("mcp-adapter");
-    expect(mcpEntry.name).toBe("my-server");
     expect(mcpEntry.args).toEqual(["-y", "my-server-v2"]);
     expect(mcpEntry.disabled).toBe(true);
     expect(mcpEntry.customProp).toBe("preserve");
   });
 
   it("adds new MCP entries without extra props", async () => {
-    mockReadFileIfExists.mockResolvedValue(JSON.stringify({ plugins: { entries: [] } }));
+    mockReadFileIfExists.mockResolvedValue(JSON.stringify({ plugins: { entries: {} } }));
     const adapter = new OpenClawAdapter();
     const mcps = { "brand-new": { command: "npx", args: ["-y", "brand-new"] } };
     await adapter.writeToFile(mcps);
     const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
-    const entry = written.plugins.entries[0];
+    const entry = written.plugins.entries["brand-new"];
     expect(entry.type).toBe("mcp-adapter");
-    expect(entry.name).toBe("brand-new");
     expect(entry.disabled).toBeUndefined();
   });
 });

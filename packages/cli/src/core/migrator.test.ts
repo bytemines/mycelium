@@ -293,10 +293,10 @@ describe("scanners", () => {
     it("parses MCP adapters with correct field mapping", async () => {
       const config = {
         plugins: {
-          entries: [
-            { name: "oc-mcp", type: "mcp-adapter", command: "npx", args: ["-y", "some-mcp"], env: { KEY: "val" } },
-            { name: "not-mcp", type: "other" },
-          ],
+          entries: {
+            "oc-mcp": { type: "mcp-adapter", command: "npx", args: ["-y", "some-mcp"], env: { KEY: "val" } },
+            "not-mcp": { type: "other", enabled: true },
+          },
         },
         agents: {
           list: [{ id: "main", default: true, workspace: "~/.openclaw/workspace" }],

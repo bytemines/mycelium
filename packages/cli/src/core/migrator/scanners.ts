@@ -381,16 +381,18 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
       raw = raw.replace(/^\s*\/\/.*$/gm, "");
       const config = JSON.parse(raw);
 
-      // MCPs from plugins.entries[] where type === "mcp-adapter"
-      if (config.plugins?.entries) {
-        for (const entry of config.plugins.entries) {
-          if (entry.type === "mcp-adapter") {
+      // MCPs from plugins.entries{} where type === "mcp-adapter"
+      const entries = config.plugins?.entries;
+      if (entries && typeof entries === "object" && !Array.isArray(entries)) {
+        for (const [name, entry] of Object.entries(entries)) {
+          const e = entry as Record<string, unknown>;
+          if (e.type === "mcp-adapter") {
             result.mcps.push({
-              name: entry.name,
+              name,
               config: {
-                command: entry.command ?? "",
-                args: entry.args ?? [],
-                env: entry.env,
+                command: (e.command as string) ?? "",
+                args: (e.args as string[]) ?? [],
+                env: e.env as Record<string, string> | undefined,
               },
               source: "openclaw",
             });
