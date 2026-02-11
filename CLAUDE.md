@@ -41,6 +41,26 @@ cd packages/core && pnpm test         # 42 tests
 cd packages/dashboard && pnpm test    # 17 tests
 ```
 
+## Release Process
+
+```bash
+make release         # patch bump (default)
+make release-minor   # minor bump
+make release-major   # major bump
+```
+
+**How it works (AI-driven):**
+
+1. AI runs `git log <last-tag>..HEAD --oneline` to see all changes since last release
+2. AI writes a quality changelog to `/tmp/mycelium-changelog.md`
+3. AI runs `make release` (or `make release-minor` / `make release-major`)
+4. Script creates changeset → versions → builds → commits → pushes
+5. GitHub Actions publishes to npm + creates GitHub release with that version's notes
+
+**Changelog guidelines** — write for `/tmp/mycelium-changelog.md`:
+
+Concise, user-focused. Emojis and any markdown welcome. Link PRs/issues, credit contributors. Keep it short.
+
 ## CLI Commands
 
 Binary: `mycelium` (alias `myc`). Key commands:
