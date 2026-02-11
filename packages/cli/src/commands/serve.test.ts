@@ -1,11 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockExecFileSync = vi.fn();
 const mockStartServer = vi.fn().mockReturnValue({ close: vi.fn() });
-
-vi.mock("node:child_process", () => ({
-  execFileSync: mockExecFileSync,
-}));
 
 vi.mock("../server.js", () => ({
   startServer: mockStartServer,
@@ -27,31 +22,16 @@ describe("serveCommand", () => {
     expect(serveCommand.name()).toBe("serve");
   });
 
-  it("has --port and --build options", async () => {
+  it("has --port option", async () => {
     const { serveCommand } = await import("./serve.js");
     const portOpt = serveCommand.options.find((o) => o.long === "--port");
-    const buildOpt = serveCommand.options.find((o) => o.long === "--build");
     expect(portOpt).toBeDefined();
-    expect(buildOpt).toBeDefined();
   });
 
-  it("starts server on default port without building by default", async () => {
+  it("starts server on default port", async () => {
     const { serveCommand } = await import("./serve.js");
     await serveCommand.parseAsync([], { from: "user" });
 
-    expect(mockExecFileSync).not.toHaveBeenCalled();
-    expect(mockStartServer).toHaveBeenCalledWith(3378);
-  });
-
-  it("runs build when --build is passed", async () => {
-    const { serveCommand } = await import("./serve.js");
-    await serveCommand.parseAsync(["--build"], { from: "user" });
-
-    expect(mockExecFileSync).toHaveBeenCalledWith(
-      "pnpm",
-      ["run", "build"],
-      expect.objectContaining({ stdio: "inherit" }),
-    );
     expect(mockStartServer).toHaveBeenCalledWith(3378);
   });
 
@@ -60,14 +40,6 @@ describe("serveCommand", () => {
     await serveCommand.parseAsync(["--port", "4000"], { from: "user" });
 
     expect(mockStartServer).toHaveBeenCalledWith(4000);
-  });
-
-  it("starts server even if build fails", async () => {
-    mockExecFileSync.mockImplementation(() => { throw new Error("build failed"); });
-    const { serveCommand } = await import("./serve.js");
-    await serveCommand.parseAsync(["--build"], { from: "user" });
-
-    expect(mockStartServer).toHaveBeenCalledWith(3378);
   });
 });
 
