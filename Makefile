@@ -4,12 +4,22 @@
 
 dev: stop ## Start dev servers with auto-reload
 	@pnpm build --filter=@mycelish/core 2>/dev/null
-	@npx tsx watch packages/cli/src/commands/serve-entry.ts &>/dev/null &
-	@cd packages/dashboard && pnpm dev &>/dev/null &
-	@cd packages/core && pnpm tsc --watch --preserveWatchOutput &>/dev/null &
-	@sleep 2
-	@echo "  API:  http://localhost:3378  (auto-restart on changes)"
-	@echo "  UI:   http://localhost:3377  (HMR)"
+	@npx tsx watch packages/cli/src/commands/serve-entry.ts > /tmp/mycelium-api.log 2>&1 &
+	@cd packages/dashboard && pnpm dev > /tmp/mycelium-ui.log 2>&1 &
+	@cd packages/core && pnpm tsc --watch --preserveWatchOutput > /tmp/mycelium-tsc.log 2>&1 &
+	@for i in 1 2 3 4 5; do lsof -ti:3378 >/dev/null 2>&1 && break || sleep 1; done
+	@if lsof -ti:3378 >/dev/null 2>&1; then \
+		echo "  API:  http://localhost:3378  (auto-restart on changes)"; \
+	else \
+		echo "  API:  FAILED — check /tmp/mycelium-api.log"; \
+		cat /tmp/mycelium-api.log | tail -20; \
+	fi
+	@if lsof -ti:3377 >/dev/null 2>&1; then \
+		echo "  UI:   http://localhost:3377  (HMR)"; \
+	else \
+		echo "  UI:   FAILED — check /tmp/mycelium-ui.log"; \
+		cat /tmp/mycelium-ui.log | tail -20; \
+	fi
 
 stop: ## Stop all dev servers
 	@-lsof -ti:3377 | xargs kill 2>/dev/null

@@ -225,17 +225,24 @@ export async function dryRunSync(
     newContent = lines.join("\n");
   } else if (desc?.mcp.entryShape === "openclaw") {
     const config: Record<string, unknown> = currentContent ? JSON.parse(currentContent) : {};
-    const plugins = (config.plugins as Record<string, unknown>) ?? {};
-    const existingEntries = (plugins.entries as Array<Record<string, unknown>>) ?? [];
-    const nonMcpEntries = existingEntries.filter((e) => e.type !== "mcp-adapter");
-    const mcpEntries = Object.entries(mcps).map(([name, mcp]) => ({
-      type: "mcp-adapter",
-      name,
-      command: mcp.command,
-      args: mcp.args || [],
-      ...(mcp.env && Object.keys(mcp.env).length > 0 ? { env: mcp.env } : {}),
-    }));
-    config.plugins = { ...plugins, entries: [...nonMcpEntries, ...mcpEntries] };
+    const plugins = (config.plugins ?? {}) as Record<string, unknown>;
+    const existingEntries = (
+      plugins.entries && typeof plugins.entries === "object" && !Array.isArray(plugins.entries)
+    ) ? { ...(plugins.entries as Record<string, Record<string, unknown>>) } : {};
+    // Preserve non-MCP entries, replace MCP entries
+    const entries: Record<string, Record<string, unknown>> = {};
+    for (const [k, v] of Object.entries(existingEntries)) {
+      if (v.type !== "mcp-adapter") entries[k] = v;
+    }
+    for (const [name, mcp] of Object.entries(mcps)) {
+      entries[name] = {
+        type: "mcp-adapter",
+        command: mcp.command,
+        args: mcp.args || [],
+        ...(mcp.env && Object.keys(mcp.env).length > 0 ? { env: mcp.env } : {}),
+      };
+    }
+    config.plugins = { ...plugins, entries };
     newContent = JSON.stringify(config, null, 2);
   } else {
     // JSON tools
