@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "node:fs";
 import path from "path";
 import { fileURLToPath } from "node:url";
 
@@ -42,10 +43,12 @@ export function createServer(port = DEFAULT_PORT): Express {
 export function startServer(port = DEFAULT_PORT) {
   const app = createServer(port);
 
-  // Serve dashboard static files
+  // Serve dashboard static files — check bundled location first, then monorepo fallback
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  const dashboardDist = path.resolve(__dirname, "..", "..", "dashboard", "dist");
+  const bundledDashboard = path.resolve(__dirname, "dashboard");
+  const monorepoDashboard = path.resolve(__dirname, "..", "..", "dashboard", "dist");
+  const dashboardDist = fs.existsSync(path.join(bundledDashboard, "index.html")) ? bundledDashboard : monorepoDashboard;
 
   app.use(express.static(dashboardDist));
 
