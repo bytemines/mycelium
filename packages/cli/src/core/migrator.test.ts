@@ -290,14 +290,16 @@ describe("scanners", () => {
   });
 
   describe("scanOpenClaw", () => {
-    it("parses skills and MCP adapters from openclaw.json", async () => {
+    it("parses MCP adapters with correct field mapping", async () => {
       const config = {
-        skills: { entries: [{ name: "oc-skill", path: "/p", enabled: true }] },
         plugins: {
           entries: [
-            { name: "oc-mcp", type: "mcp-adapter", config: { serverUrl: "http://localhost:3000", transport: "stdio" } },
+            { name: "oc-mcp", type: "mcp-adapter", command: "npx", args: ["-y", "some-mcp"], env: { KEY: "val" } },
             { name: "not-mcp", type: "other" },
           ],
+        },
+        agents: {
+          list: [{ id: "main", default: true, workspace: "~/.openclaw/workspace" }],
         },
       };
       mockDeps(makeFsMock({
@@ -308,14 +310,17 @@ describe("scanners", () => {
       }));
       const { scanOpenClaw } = await import("./migrator/index.js");
       const result = await scanOpenClaw();
-      expect(result.skills).toHaveLength(1);
-      expect(result.skills[0].name).toBe("oc-skill");
       expect(result.mcps).toHaveLength(1);
       expect(result.mcps[0].name).toBe("oc-mcp");
+      expect(result.mcps[0].config.command).toBe("npx");
+      expect(result.mcps[0].config.args).toEqual(["-y", "some-mcp"]);
+      expect(result.mcps[0].config.env).toEqual({ KEY: "val" });
+      expect(result.components).toHaveLength(1);
+      expect(result.components[0].name).toBe("main");
     });
 
     it("handles JSON with // comments", async () => {
-      const raw = `{\n// comment\n"skills": { "entries": [] },\n"plugins": { "entries": [] }\n}`;
+      const raw = `{\n// comment\n"plugins": { "entries": [] }\n}`;
       mockDeps(makeFsMock({
         readFile: vi.fn().mockImplementation(async (p: string) => {
           if (p.includes("openclaw.json")) return raw;
@@ -324,7 +329,7 @@ describe("scanners", () => {
       }));
       const { scanOpenClaw } = await import("./migrator/index.js");
       const result = await scanOpenClaw();
-      expect(result.skills).toEqual([]);
+      expect(result.mcps).toEqual([]);
     });
   });
 });
