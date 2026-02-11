@@ -94,8 +94,10 @@ export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
     }
 
     return [];
-  } catch (e) {
-    console.warn("Failed to read installed plugins:", e);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && (e as { code?: string }).code !== "ENOENT") {
+      console.warn("Failed to read installed plugins:", e);
+    }
     return [];
   }
 }
