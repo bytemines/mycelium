@@ -1,5 +1,14 @@
 # @mycelish/core
 
+## 0.2.0
+
+### Minor Changes
+
+- Tool Registry: ToolDescriptor per tool, auto-adapter factory, `resolvePath()`, `toolsWithCapability()`
+- Extended capabilities: agents, rules, commands, hooks across all tools
+- MCP Server types and memory tool types (`memory_20250818`)
+- MergedConfig extended with agents, rules, commands
+
 ## 0.1.0
 
 ### Minor Changes
