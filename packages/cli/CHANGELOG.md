@@ -1,5 +1,17 @@
 # @mycelish/cli
 
+## 0.2.4
+
+### Patch Changes
+
+- 🚀 **Release pipeline** — non-interactive, AI-friendly release flow via `make release`
+  - 📦 Added `scripts/release.sh` + Makefile targets (`release`, `release-minor`, `release-major`)
+  - 📝 AI writes the changelog, script handles versioning → build → push → GitHub Actions publishes
+  - 🧹 Cleaned up accidental `bin/` build artifacts, updated `.gitignore`
+
+- Updated dependencies []:
+  - @mycelish/core@0.2.4
+
 ## 0.2.0
 
 ### Minor Changes
