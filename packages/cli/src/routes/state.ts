@@ -2,10 +2,12 @@ import { Router } from "express";
 import fs from "fs/promises";
 import path from "path";
 import { parse as parseYaml } from "yaml";
-import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const require = createRequire(import.meta.url);
-const CLI_VERSION: string = (require("../../package.json") as { version: string }).version;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkgPath = path.resolve(__dirname, "..", "..", "package.json");
+const CLI_VERSION: string = (JSON.parse(readFileSync(pkgPath, "utf-8")) as { version: string }).version;
 
 import { loadManifest } from "../core/migrator/index.js";
 import { detectInstalledTools } from "../core/tool-detector.js";
