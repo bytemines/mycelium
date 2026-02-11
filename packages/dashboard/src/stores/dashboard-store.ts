@@ -215,18 +215,30 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   setSelectedPlugin: (plugin) => set({ selectedPlugin: plugin }),
 
   openPluginPanel: (pluginName) => {
-    set({
-      selectedPlugin: {
-        name: pluginName, marketplace: "", version: "",
-        description: `Plugin: ${pluginName}`, author: undefined, enabled: true,
-        skills: [], agents: [], commands: [], hooks: [], libs: [], installPath: "",
-      },
-    });
-    fetchPlugins().then((plugins) => {
-      if (get().selectedPlugin?.name !== pluginName) return; // panel closed or switched, discard stale result
-      const found = plugins.find((p) => p.name === pluginName);
-      if (found) set({ selectedPlugin: found });
-    }).catch((err) => { console.error("openPluginPanel fetch failed:", err); });
+    // Try to use graphData first to avoid placeholder flash
+    const graphPlugin = get().graphData?.plugins.find(p => p.name === pluginName);
+    if (graphPlugin) {
+      set({ selectedPlugin: { version: "", description: "", installPath: "", agents: [], commands: [], hooks: [], libs: [], ...graphPlugin } });
+    } else {
+      set({
+        selectedPlugin: {
+          name: pluginName, marketplace: "", version: "",
+          description: `Plugin: ${pluginName}`, author: undefined, enabled: true,
+          skills: [], agents: [], commands: [], hooks: [], libs: [], installPath: "",
+        },
+      });
+    }
+    // Only fetch if we didn't have graphData — avoids mid-animation re-render
+    if (!graphPlugin) {
+      fetchPlugins().then((plugins) => {
+        if (get().selectedPlugin?.name !== pluginName) return;
+        const found = plugins.find((p) => p.name === pluginName);
+        if (found) {
+          debugStore("openPluginPanel: updating from fetch", { pluginName });
+          set({ selectedPlugin: found });
+        }
+      }).catch((err) => { console.error("openPluginPanel fetch failed:", err); });
+    }
   },
 
   openMcpPanel: (mcpName) => {

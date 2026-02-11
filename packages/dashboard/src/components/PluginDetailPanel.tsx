@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Sparkles, Bot, Terminal, Webhook, Library } from "lucide-react";
 
@@ -37,30 +37,44 @@ const SECTION_META: Record<string, { label: string; color: string; icon: React.R
   lib:     { label: "Libraries", color: "text-pink-400", icon: <Library size={14} className="text-pink-400" /> },
 };
 
+function computeToggleStates(plugin: PluginData | null): Record<string, boolean> {
+  if (!plugin) return {};
+  const disabled = new Set(plugin.disabledItems ?? []);
+  const result: Record<string, boolean> = {};
+  const allItems = [
+    ...plugin.skills,
+    ...plugin.agents,
+    ...plugin.commands,
+    ...(plugin.hooks ?? []),
+    ...(plugin.libs ?? []),
+  ];
+  for (const item of allItems) result[item] = !disabled.has(item);
+  return result;
+}
+
 export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleItem, onRemoveItem }: PluginDetailPanelProps) {
-  const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
+  // Compute toggle states synchronously from plugin data — no flash
+  const derivedToggles = useMemo(() => computeToggleStates(plugin), [plugin]);
+  const [toggleOverrides, setToggleOverrides] = useState<Record<string, boolean> | null>(null);
+  const toggleStates = toggleOverrides ?? derivedToggles;
+
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   // Animation state machine: "closed" -> "opening" -> "open" -> "closing" -> "closed"
   const [animState, setAnimState] = useState<"closed" | "opening" | "open" | "closing">("closed");
   const displayPlugin = useRef<PluginData | null>(null);
+  const prevPluginRef = useRef<string | null>(null);
 
   useEffect(() => {
     debugPanel("useEffect", { animState, plugin: plugin?.name ?? null });
     if (plugin) {
       displayPlugin.current = plugin;
+      // Reset overrides when a different plugin opens
+      if (prevPluginRef.current !== plugin.name) {
+        setToggleOverrides(null);
+        prevPluginRef.current = plugin.name;
+      }
       setAnimState((prev) => prev === "closed" ? "opening" : prev);
-      const disabled = new Set(plugin.disabledItems ?? []);
-      const initial: Record<string, boolean> = {};
-      const allItems = [
-        ...plugin.skills,
-        ...plugin.agents,
-        ...plugin.commands,
-        ...(plugin.hooks ?? []),
-        ...(plugin.libs ?? []),
-      ];
-      for (const item of allItems) initial[item] = !disabled.has(item);
-      setToggleStates(initial);
     } else if (animState === "open" || animState === "opening") {
       setAnimState("closing");
     }
@@ -91,7 +105,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleIte
   const toggleAll = (enabled: boolean) => {
     const next: Record<string, boolean> = {};
     for (const key of Object.keys(toggleStates)) next[key] = enabled;
-    setToggleStates(next);
+    setToggleOverrides(next);
     onTogglePlugin(dp.name, enabled);
   };
 
@@ -158,13 +172,13 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleIte
           <p className="text-sm text-muted-foreground">{dp.description}</p>
         </div>
 
-        {/* Enable/Disable All */}
+        {/* Enable/Disable All — highlight when action is useful */}
         <div className="flex gap-2 border-b p-4">
           <button
             onClick={() => toggleAll(true)}
             className={cn(
-              "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-              Object.values(toggleStates).every(Boolean)
+              "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              Object.values(toggleStates).some(v => !v)
                 ? "bg-primary text-primary-foreground"
                 : "border bg-background text-foreground hover:bg-muted"
             )}
@@ -174,8 +188,8 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleIte
           <button
             onClick={() => toggleAll(false)}
             className={cn(
-              "flex-1 rounded-md px-3 py-1.5 text-sm font-medium",
-              Object.values(toggleStates).every(v => !v)
+              "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              Object.values(toggleStates).some(Boolean)
                 ? "bg-destructive text-destructive-foreground"
                 : "border bg-background text-foreground hover:bg-muted"
             )}
@@ -201,7 +215,7 @@ export function PluginDetailPanel({ plugin, onClose, onTogglePlugin, onToggleIte
                     <button
                       onClick={() => {
                         const next = !toggleStates[item];
-                        setToggleStates((prev) => ({ ...prev, [item]: next }));
+                        setToggleOverrides((prev) => ({ ...(prev ?? derivedToggles), [item]: next }));
                         onToggleItem?.(dp.name, item, next);
                       }}
                       className={cn(

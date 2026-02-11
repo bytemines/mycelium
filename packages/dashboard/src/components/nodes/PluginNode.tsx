@@ -34,7 +34,7 @@ function PluginNodeInner({ data, sourcePosition, targetPosition }: { data: Plugi
       <Handle type="target" position={targetPosition ?? Position.Top} className="!bg-muted !w-2 !h-2" />
       <div className="flex items-center gap-2">
         <StatusDot status={isEnabled ? "synced" : "disabled"} />
-        <span className="text-sm font-medium truncate max-w-[100px]">{data.name}</span>
+        <span className="text-sm font-medium truncate max-w-[120px]">{data.name}</span>
         <button
           role="switch"
           aria-checked={isEnabled}
@@ -56,15 +56,12 @@ function PluginNodeInner({ data, sourcePosition, targetPosition }: { data: Plugi
           />
         </button>
       </div>
-      <div className="flex items-center gap-2 mt-0.5">
-        <span className="rounded-full bg-teal-500/20 px-1.5 py-0 text-[9px] text-teal-400">{data.marketplace}</span>
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
           {data.skillCount > 0 && <span className="flex items-center gap-0.5" title="Skills"><Sparkles size={10} className="text-purple-400" />{data.skillCount}</span>}
           {data.agentCount > 0 && <span className="flex items-center gap-0.5" title="Agents"><Bot size={10} className="text-emerald-400" />{data.agentCount}</span>}
           {data.commandCount > 0 && <span className="flex items-center gap-0.5" title="Commands"><Terminal size={10} className="text-blue-400" />{data.commandCount}</span>}
           {data.hookCount > 0 && <span className="flex items-center gap-0.5" title="Hooks"><Webhook size={10} className="text-amber-400" />{data.hookCount}</span>}
           {data.libCount > 0 && <span className="flex items-center gap-0.5" title="Libraries"><Library size={10} className="text-pink-400" />{data.libCount}</span>}
-        </div>
       </div>
       <Handle type="source" position={sourcePosition ?? Position.Bottom} className="!bg-muted !w-2 !h-2" />
     </div>

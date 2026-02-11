@@ -15,6 +15,7 @@ import {
   Position,
   useNodesState,
   useEdgesState,
+  useNodesInitialized,
   Panel,
   addEdge,
   Connection,
@@ -93,13 +94,24 @@ function getLayeredLayout(
     groups.get("memory") ?? [],
   ].filter((r) => r.length > 0);
 
-  // For each row, calculate its "spread" along the cross axis (the axis nodes are laid out on)
-  // DOWN mode: spread = total width of row | RIGHT mode: spread = total height of row
-  const rowSpreads = rows.map((row) =>
+  // Get actual node size: prefer measured dimensions, fall back to NODE_SIZES config
+  const getSize = (n: Node) => {
+    const measured = n.measured;
+    if (measured?.width && measured?.height) return { width: measured.width, height: measured.height };
+    return NODE_SIZES[n.type || ""] || DEFAULT_SIZE;
+  };
+
+  // Calculate total cross-axis content size per row (sum of node widths/heights)
+  const rowContentSizes = rows.map((row) =>
     row.reduce((sum, n) => {
-      const size = NODE_SIZES[n.type || ""] || DEFAULT_SIZE;
-      return sum + (isHorizontal ? size.height : size.width) + nodeSpacing;
-    }, -nodeSpacing),
+      const size = getSize(n);
+      return sum + (isHorizontal ? size.height : size.width);
+    }, 0),
+  );
+
+  // Row spread = content + uniform gaps
+  const rowSpreads = rows.map((row, ri) =>
+    rowContentSizes[ri] + (row.length - 1) * nodeSpacing,
   );
   const maxSpread = Math.max(...rowSpreads);
 
@@ -115,7 +127,7 @@ function getLayeredLayout(
     let crossOffset = startOffset;
 
     for (const node of row) {
-      const size = NODE_SIZES[node.type || ""] || DEFAULT_SIZE;
+      const size = getSize(node);
       const thickness = isHorizontal ? size.width : size.height;
       const crossSize = isHorizontal ? size.height : size.width;
       maxLayerThickness = Math.max(maxLayerThickness, thickness);
@@ -635,8 +647,10 @@ export function Graph({
 
   // Apply layout when data or mode changes — only fitView on first render
   const hasInitialFit = useRef(false);
+  const hasMeasuredLayout = useRef(false);
   useEffect(() => {
     if (initialNodes.length > 0) {
+      hasMeasuredLayout.current = false; // reset on data change
       getLayoutedElements(initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
           setNodes(layoutedNodes);
@@ -649,6 +663,23 @@ export function Graph({
       );
     }
   }, [initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity, setNodes, setEdges]);
+
+  // Second layout pass: re-layout using actual measured node dimensions for uniform spacing.
+  // React Flow measures nodes after first render (node.measured.width/height).
+  // This is the recommended pattern per React Flow docs for layout with real dimensions.
+  const nodesInitialized = useNodesInitialized();
+  useEffect(() => {
+    if (nodesInitialized && nodes.length > 0 && !hasMeasuredLayout.current) {
+      hasMeasuredLayout.current = true;
+      getLayoutedElements(nodes, edges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
+        ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
+          setNodes(layoutedNodes);
+          setEdges(layoutedEdges);
+        }
+      );
+    }
+    // Only re-run when nodesInitialized flips true — other deps are stable refs or unchanged
+  }, [nodesInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-layout handler
   const onLayout = useCallback(
