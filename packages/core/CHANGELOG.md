@@ -1,5 +1,34 @@
 # @mycelish/core
 
+## 0.2.8
+
+### Patch Changes
+
+- ## v0.2.8
+
+  ### Generic GitHub Marketplace
+
+  Any GitHub repo added as a marketplace source now **automatically becomes searchable and installable** — no hardcoded searchers needed.
+  - Add a GitHub repo URL via dashboard or CLI → Mycelium scans it for skills, agents, and commands
+  - Install items directly from any GitHub marketplace (downloads from `raw.githubusercontent.com`)
+  - **Auto-sync after install**: items are immediately symlinked to Claude Code, Codex, and all other enabled tools
+  - Dynamic GitHub marketplaces appear in popular/browse alongside built-in sources
+
+  ### Purge Command
+
+  New `--purge` flag for `mycelium remove` that **permanently deletes files** instead of just marking as deleted:
+  - Removes source files from `~/.mycelium/global/`
+  - Cleans up symlinks from all tool directories
+  - Dashboard: one-click purge with confirmation dialog
+  - Deleted items are now fully hidden from the dashboard graph
+
+  ### Bug Fixes
+  - **Fix skill directory scanning** — `loadSkillItems` now correctly scans `skills/name/SKILL.md` directories (was only scanning files)
+  - **Fix dashboard source filtering** — marketplace pills, dropdown, and results grid all filter correctly by source
+  - **Fix auto-sync pipeline** — installing from marketplace now triggers sync to all tools automatically
+  - **Clean up memory system remnants** — removed `memory` from `ItemType`, `ITEM_SECTIONS`, and `state-verifier`
+  - **Fix test mock leakage** — config-merger tests properly isolate between test cases
+
 ## 0.2.7
 
 ### Patch Changes
