@@ -1,5 +1,13 @@
 # @mycelish/core
 
+## 0.2.6
+
+### Patch Changes
+
+- ## v0.2.6
+  - Dropped memory support — every AI tool handles memory natively now
+  - General cleanup and maintenance
+
 ## 0.2.5
 
 ### Patch Changes
