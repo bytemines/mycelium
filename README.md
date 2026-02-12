@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="docs/assets/mycelium-logo.svg" width="80" alt="Mycelium" />
-  <h1 align="center">Mycelium</h1>
+  <h1 align="center">🍄 Mycelium</h1>
   <p align="center"><strong>One config. Every AI tool. Every machine.</strong></p>
   <p align="center">The universal config orchestrator for AI coding tools.<br/>Define your skills, MCPs, agents, rules, and hooks once — sync everywhere.</p>
 </p>
