@@ -14,12 +14,17 @@ export interface PluginNodeData {
   hookCount: number;
   libCount: number;
   enabled: boolean;
+  partial?: boolean;
+  disabledCount?: number;
   onToggle?: (name: string, enabled: boolean) => void;
   onClick?: (name: string) => void;
 }
 
 function PluginNodeInner({ data, sourcePosition, targetPosition }: { data: PluginNodeData; sourcePosition?: Position; targetPosition?: Position }) {
   const isEnabled = data.enabled !== false;
+  const isPartial = data.partial === true;
+  // Toggle appears "on" when any item is enabled (partial or full)
+  const toggleOn = isEnabled || isPartial;
 
   return (
     <div
@@ -27,31 +32,36 @@ function PluginNodeInner({ data, sourcePosition, targetPosition }: { data: Plugi
         "px-3 py-2 rounded-md border shadow-md min-w-[110px] transition-colors hover:border-white/40 cursor-pointer",
         "border-teal-500/60",
         "bg-[#081a1a]",
-        !isEnabled && "opacity-50"
+        !toggleOn && "opacity-50"
       )}
       onClick={() => data.onClick?.(data.name)}
     >
       <Handle type="target" position={targetPosition ?? Position.Top} className="!bg-muted !w-2 !h-2" />
       <div className="flex items-center gap-2">
-        <StatusDot status={isEnabled ? "synced" : "disabled"} />
+        <StatusDot status={isEnabled ? "synced" : isPartial ? "pending" : "disabled"} />
         <span className="text-sm font-medium truncate max-w-[120px]">{data.name}</span>
+        {isPartial && data.disabledCount != null && (
+          <span className="text-[9px] text-amber-400 font-medium" title={`${data.disabledCount} of ${data.componentCount} disabled`}>
+            {data.componentCount - data.disabledCount}/{data.componentCount}
+          </span>
+        )}
         <button
           role="switch"
-          aria-checked={isEnabled}
+          aria-checked={toggleOn}
           aria-label={`Toggle ${data.name}`}
           onClick={(e) => {
             e.stopPropagation();
-            data.onToggle?.(data.name, !isEnabled);
+            data.onToggle?.(data.name, !toggleOn);
           }}
           className={cn(
             "ml-auto relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-            isEnabled ? "bg-primary" : "bg-muted"
+            isEnabled ? "bg-primary" : isPartial ? "bg-amber-500" : "bg-muted"
           )}
         >
           <span
             className={cn(
               "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-              isEnabled ? "translate-x-3" : "translate-x-0"
+              toggleOn ? "translate-x-3" : "translate-x-0"
             )}
           />
         </button>

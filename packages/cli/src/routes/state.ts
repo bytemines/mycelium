@@ -44,12 +44,10 @@ export function registerStateRoutes(app: Express): void {
     let skills: Array<{ name: string; status: "synced" | "disabled"; enabled: boolean; connectedTools: ToolId[] }> = [];
     try {
       const entries = await fs.readdir(skillsDir);
-      skills = entries
-        .filter((name) => !disabledItems.has(name))
-        .map((name) => ({
+      skills = entries.map((name) => ({
           name,
-          status: "synced" as const,
-          enabled: true,
+          status: disabledItems.has(name) ? "disabled" as const : "synced" as const,
+          enabled: !disabledItems.has(name),
           connectedTools: installedToolIds,
         }));
     } catch {

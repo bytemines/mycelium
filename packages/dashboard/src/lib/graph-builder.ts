@@ -128,6 +128,7 @@ interface PluginDataDash {
   commands?: string[];
   hooks?: string[];
   libs?: string[];
+  disabledItems?: string[];
 }
 
 export interface DashboardGraphData {
@@ -193,6 +194,8 @@ export function buildDashboardGraph(
   // Plugin nodes — top layer (FIRST)
   data?.plugins?.forEach((plugin, index) => {
     const nodeId = `plugin-${plugin.name}`;
+    const disabledCount = plugin.disabledItems?.length ?? 0;
+    const hasAnyEnabled = disabledCount < plugin.componentCount;
     nodes.push({
       id: nodeId,
       type: "plugin",
@@ -207,7 +210,9 @@ export function buildDashboardGraph(
         commandCount: plugin.commands?.length ?? 0,
         hookCount: plugin.hooks?.length ?? 0,
         libCount: plugin.libs?.length ?? 0,
-        enabled: plugin.enabled,
+        enabled: disabledCount === 0,
+        partial: disabledCount > 0 && disabledCount < plugin.componentCount,
+        disabledCount,
         onToggle: (name: string, enabled: boolean) => handlers.onPluginToggle?.(name, enabled),
         onClick: (name: string) => handlers.onPluginClick?.(name),
       },
@@ -218,8 +223,8 @@ export function buildDashboardGraph(
         id: `${nodeId}-to-tool-${tool.id}`,
         source: nodeId,
         target: `tool-${tool.id}`,
-        animated: plugin.enabled,
-        style: edgeStyle(EDGE_COLORS.plugin, plugin.enabled),
+        animated: hasAnyEnabled,
+        style: edgeStyle(EDGE_COLORS.plugin, hasAnyEnabled),
       });
     });
   });

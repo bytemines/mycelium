@@ -640,15 +640,38 @@ export function Graph({
     });
   }, [edges, effectiveDisabled, edgeType]);
 
+  // Track previous node IDs to detect structural vs data-only changes
+  const prevNodeIdsRef = useRef<string>("");
+
   // Apply layout when data or mode changes — only fitView on first render
   const hasInitialFit = useRef(false);
   const hasMeasuredLayout = useRef(false);
   useEffect(() => {
     if (initialNodes.length > 0) {
-      hasMeasuredLayout.current = false; // reset on data change
+      const newNodeIds = initialNodes.map(n => n.id).sort().join(",");
+      const isStructuralChange = newNodeIds !== prevNodeIdsRef.current;
+      prevNodeIdsRef.current = newNodeIds;
+
+      if (isStructuralChange) {
+        hasMeasuredLayout.current = false; // reset on structural change
+      }
+
       getLayoutedElements(initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-          setNodes(layoutedNodes);
+          // Preserve node references when only data changed (prevents flicker)
+          setNodes((currentNodes) => {
+            if (currentNodes.length !== layoutedNodes.length || isStructuralChange) return layoutedNodes;
+            return layoutedNodes.map((newNode) => {
+              const existing = currentNodes.find(n => n.id === newNode.id);
+              if (!existing) return newNode;
+              if (existing.position.x === newNode.position.x &&
+                  existing.position.y === newNode.position.y &&
+                  JSON.stringify(existing.data) === JSON.stringify(newNode.data)) {
+                return existing;
+              }
+              return newNode;
+            });
+          });
           setEdges(layoutedEdges);
           if (!hasInitialFit.current) {
             hasInitialFit.current = true;
@@ -661,7 +684,7 @@ export function Graph({
 
   // Second layout pass: re-layout using actual measured node dimensions for uniform spacing.
   // React Flow measures nodes after first render (node.measured.width/height).
-  // This is the recommended pattern per React Flow docs for layout with real dimensions.
+  // Only runs on structural changes (new/removed nodes), not data-only updates.
   const nodesInitialized = useNodesInitialized();
   useEffect(() => {
     if (nodesInitialized && nodes.length > 0 && !hasMeasuredLayout.current) {

@@ -169,11 +169,37 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
   togglePluginItem: async (pluginName, itemName, enabled) => {
     debugStore("togglePluginItem", { pluginName, itemName, enabled });
+    // Optimistic update — update plugin's disabledItems immediately
+    set((s) => {
+      if (!s.graphData) return s;
+      const plugins = s.graphData.plugins.map(p => {
+        if (p.name !== pluginName) return p;
+        const newDisabled = enabled
+          ? (p.disabledItems ?? []).filter(i => i !== itemName)
+          : [...(p.disabledItems ?? []), itemName];
+        return { ...p, disabledItems: newDisabled, enabled: newDisabled.length === 0 };
+      });
+      // Also update skill enabled state if the item is a skill
+      const skills = s.graphData.skills.map(sk =>
+        sk.name === itemName ? { ...sk, enabled, status: (enabled ? "synced" : "disabled") as Status } : sk
+      );
+      return {
+        graphData: { ...s.graphData, plugins, skills },
+        selectedPlugin: s.selectedPlugin?.name === pluginName
+          ? {
+              ...s.selectedPlugin,
+              disabledItems: plugins.find(p => p.name === pluginName)?.disabledItems ?? s.selectedPlugin.disabledItems,
+              enabled: plugins.find(p => p.name === pluginName)?.enabled ?? s.selectedPlugin.enabled,
+            }
+          : s.selectedPlugin,
+        hasPendingChanges: true,
+      };
+    });
     try {
       const result = await apiTogglePluginItem(pluginName, itemName, enabled);
       if (result.success) {
-        set({ hasPendingChanges: true });
-        await get().fetchState();
+        // Background refresh to sync with server truth (no loading state)
+        get().fetchState();
       } else {
         set({ syncBanner: { type: "error", message: `Failed to ${enabled ? "enable" : "disable"} ${itemName}: ${result.error}` } });
         setTimeout(() => set({ syncBanner: null }), 5000);
