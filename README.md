@@ -14,8 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> · <a href="#-why-mycelium">Why Mycelium</a> · <a href="#-features">Features</a> · <a href="#-dashboard">Dashboard</a> · <a href="docs/MCP-SERVER.md">MCP Server</a> · <a href="docs/competitive-analysis.md">Competitive Analysis</a>
-</p>
+  <a href="#-quick-start">Quick Start</a> · <a href="#-why-mycelium">Why Mycelium</a> · <a href="#-features">Features</a> · <a href="#-dashboard">Dashboard</a> · <a href="docs/MCP-SERVER.md">MCP Server</a></p>
 
 ---
 
@@ -257,7 +256,6 @@ See [Reporting Issues](docs/reporting-issues.md) for the full diagnostic workflo
 | [Plugin Takeover](docs/plugin-takeover.md) | Per-component plugin control — how it works |
 | [Multi-PC Sync](docs/MULTI-PC.md) | Git-based sync, machine overrides, env templates |
 | [Migration Guide](docs/MIGRATION.md) | Migration workflow, strategies, and cleanup |
-| [Competitive Analysis](docs/competitive-analysis.md) | How Mycelium compares to 30+ tools in the space |
 | [Reporting Issues](docs/reporting-issues.md) | Traces, diagnostics, and filing bug reports |
 | [Contributing](CLAUDE.md) | Developer guide: structure, conventions, testing |
 
