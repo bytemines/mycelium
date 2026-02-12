@@ -14,7 +14,7 @@ import { detectInstalledTools } from "../core/tool-detector.js";
 import { enableSkillOrMcp } from "../commands/enable.js";
 import { disableSkillOrMcp } from "../commands/disable.js";
 import { MYCELIUM_HOME } from "../core/fs-helpers.js";
-import { getDisabledItems, ALL_ITEM_TYPES } from "../core/manifest-state.js";
+import { getDisabledItems, getDeletedItems, ALL_ITEM_TYPES } from "../core/manifest-state.js";
 import { verifyItemState } from "../core/state-verifier.js";
 import { getLivePluginState } from "../core/plugin-state.js";
 import { asyncHandler } from "./async-handler.js";
@@ -37,14 +37,17 @@ export function registerStateRoutes(app: Express): void {
       installed: t.installed,
     }));
 
-    // Load disabled items from manifest.yaml (single source of truth)
+    // Load disabled and deleted items from manifest.yaml (single source of truth)
     const disabledItems = await getDisabledItems(process.cwd());
+    const deletedItems = await getDeletedItems(process.cwd());
 
     const skillsDir = path.join(MYCELIUM_HOME, "global", "skills");
     let skills: Array<{ name: string; status: "synced" | "disabled"; enabled: boolean; connectedTools: ToolId[] }> = [];
     try {
       const entries = await fs.readdir(skillsDir);
-      skills = entries.map((name) => ({
+      skills = entries
+        .filter((name) => !deletedItems.has(name))
+        .map((name) => ({
           name,
           status: disabledItems.has(name) ? "disabled" as const : "synced" as const,
           enabled: !disabledItems.has(name),
@@ -59,15 +62,17 @@ export function registerStateRoutes(app: Express): void {
       const mcpContent = await fs.readFile(path.join(MYCELIUM_HOME, "global", "mcps.yaml"), "utf-8");
       const parsed = parseYaml(mcpContent) as Record<string, unknown> | null;
       if (parsed && typeof parsed === "object") {
-        mcps = Object.keys(parsed).map((name) => {
-          const enabled = !disabledItems.has(name);
-          return {
-            name,
-            status: enabled ? "synced" as const : "disabled" as const,
-            enabled,
-            connectedTools: installedToolIds,
-          };
-        });
+        mcps = Object.keys(parsed)
+          .filter((name) => !deletedItems.has(name))
+          .map((name) => {
+            const enabled = !disabledItems.has(name);
+            return {
+              name,
+              status: enabled ? "synced" as const : "disabled" as const,
+              enabled,
+              connectedTools: installedToolIds,
+            };
+          });
       }
     } catch {
       // file doesn't exist yet

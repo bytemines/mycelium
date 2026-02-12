@@ -7,9 +7,15 @@
  * - Sync status (synced, pending, error, disabled)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+
+// Mock resolvePath so tests don't scan real system directories (e.g. ~/.claude/agents/)
+vi.mock("@mycelish/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mycelish/core")>();
+  return { ...actual, resolvePath: () => null };
+});
 
 // Test directory for isolated tests
 const testDir = `/tmp/mycelium-status-test-${Date.now()}`;

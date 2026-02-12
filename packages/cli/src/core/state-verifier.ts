@@ -133,7 +133,6 @@ const TYPE_TO_CHECK: Record<ItemType, (name: string, toolId: ToolId) => Promise<
   agent: (name, toolId) => checkFileInToolDir(name, toolId, "agents"),
   command: (name, toolId) => checkFileInToolDir(name, toolId, "skills"), // commands live in skills dir
   hook: (name, toolId) => checkFileInToolDir(name, toolId, "hooks"),
-  memory: async () => ({ present: false, configPath: null }),
 };
 
 // ============================================================================

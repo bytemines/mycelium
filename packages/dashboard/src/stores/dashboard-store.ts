@@ -212,6 +212,19 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   removeItem: async (type, name) => {
+    // Optimistic update — remove from graphData immediately
+    set((s) => {
+      if (!s.graphData) return s;
+      return {
+        graphData: {
+          ...s.graphData,
+          skills: type === "skill" ? s.graphData.skills.filter(sk => sk.name !== name) : s.graphData.skills,
+          mcps: type === "mcp" ? s.graphData.mcps.filter(m => m.name !== name) : s.graphData.mcps,
+          plugins: type === "plugin" ? s.graphData.plugins.filter(p => p.name !== name) : s.graphData.plugins,
+        },
+        selectedPlugin: s.selectedPlugin?.name === name ? null : s.selectedPlugin,
+      };
+    });
     try {
       if (type === "skill") await removeSkill(name);
       else if (type === "mcp") await removeMcp(name);
@@ -221,6 +234,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       get().fetchState();
     } catch (err) {
       console.error("removeItem failed:", err);
+      set({ syncBanner: { type: "error", message: `Failed to remove ${type}: ${name}` } });
+      setTimeout(() => set({ syncBanner: null }), 5000);
+      get().fetchState(); // revert optimistic update on error
     }
   },
 
@@ -277,29 +293,23 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   openSkillPanel: (skillName) => {
+    // Show panel immediately as standalone skill
+    set({
+      selectedPlugin: {
+        name: skillName, marketplace: "standalone", version: "",
+        description: `Standalone skill: ${skillName}`, author: undefined, enabled: true,
+        skills: [skillName], agents: [], commands: [], hooks: [], libs: [], installPath: "",
+      },
+    });
+    // Then check if it belongs to a plugin and upgrade the panel
     fetchDashboardState().then((state) => {
-      if (get().selectedPlugin?.name !== skillName) return; // panel closed or switched, discard stale result
+      if (get().selectedPlugin?.name !== skillName) return; // panel closed or switched
       const ownerPlugin = ((state as any).plugins ?? []).find((p: any) => (p.skills ?? []).includes(skillName));
       if (ownerPlugin) {
         get().openPluginPanel(ownerPlugin.name);
-      } else {
-        set({
-          selectedPlugin: {
-            name: skillName, marketplace: "standalone", version: "",
-            description: `Standalone skill: ${skillName}`, author: undefined, enabled: true,
-            skills: [skillName], agents: [], commands: [], hooks: [], libs: [], installPath: "",
-          },
-        });
       }
     }).catch((err) => {
       console.error("openSkillPanel fetch failed:", err);
-      set({
-        selectedPlugin: {
-          name: skillName, marketplace: "standalone", version: "",
-          description: `Standalone skill: ${skillName}`, author: undefined, enabled: true,
-          skills: [skillName], agents: [], commands: [], hooks: [], libs: [], installPath: "",
-        },
-      });
     });
   },
 }));

@@ -57,11 +57,6 @@ describe("Enable Command", () => {
         state: "disabled",
       },
     },
-    memory: {
-      coding: {
-        state: "disabled",
-      },
-    },
   };
 
   beforeEach(async () => {
@@ -433,25 +428,6 @@ describe("Enable Command", () => {
         expect(updatedManifest.hooks["pre-commit"].state).toBe("enabled");
       });
 
-      it("enables a memory scope", async () => {
-        const options: EnableOptions = {
-          name: "coding",
-          global: true,
-          globalPath: globalMyceliumPath,
-        };
-
-        const result = await enableSkillOrMcp(options);
-
-        expect(result.success).toBe(true);
-        expect(result.type).toBe("memory");
-
-        const manifestContent = await fs.readFile(
-          path.join(globalMyceliumPath, "manifest.yaml"),
-          "utf-8"
-        );
-        const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.memory["coding"].state).toBe("enabled");
-      });
     });
 
     describe("project-level enabling", () => {

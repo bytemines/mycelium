@@ -37,19 +37,22 @@ function formatCount(n: number): string {
 }
 
 export function SkillCard({
-  item, installing, updating, expanded, onInstall, onUpdate, onToggleExpand,
+  item, installing, updating, removing, expanded, onInstall, onUpdate, onRemove, onToggleExpand,
 }: {
   item: MarketplaceItem;
   installing: string | null;
   updating: string | null;
+  removing?: string | null;
   expanded: boolean;
   onInstall: (item: MarketplaceItem) => void;
   onUpdate: (item: MarketplaceItem) => void;
+  onRemove?: (item: MarketplaceItem) => void;
   onToggleExpand: (key: string) => void;
 }) {
   const itemKey = `${item.source}-${item.name}`;
   const isInstalling = installing === itemKey;
   const isUpdating = updating === itemKey;
+  const isRemoving = removing === itemKey;
   const hasUpdate = item.installed && item.latestVersion && item.installedVersion && item.latestVersion !== item.installedVersion;
   const meta = getTypeMeta(item.type);
   const icon = TYPE_ICONS[item.type] || "\u25CF";
@@ -158,6 +161,15 @@ export function SkillCard({
             <div className="text-xs text-muted-foreground">Updated: {item.updatedAt}</div>
           )}
           <div className="flex items-center justify-end gap-2 pt-1">
+            {item.installed && onRemove && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRemove(item); }}
+                disabled={isRemoving}
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/15 disabled:opacity-50 transition-colors"
+              >
+                {isRemoving ? "Removing..." : "Remove"}
+              </button>
+            )}
             {hasUpdate && (
               <button
                 onClick={(e) => { e.stopPropagation(); onUpdate(item); }}

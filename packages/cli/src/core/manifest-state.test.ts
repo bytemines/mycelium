@@ -58,14 +58,13 @@ describe("manifest-state", () => {
   });
 
   describe("findItemType", () => {
-    it("finds items across all 6 section types", async () => {
+    it("finds items across all 5 section types", async () => {
       const { findItemType } = await import("./manifest-state.js");
       const manifest = {
         version: "1.0.0",
         skills: { "my-skill": { state: "enabled" as const } },
         mcps: { "my-mcp": { state: "enabled" as const } },
         hooks: { "my-hook": { state: "enabled" as const } },
-        memory: { "my-mem": { state: "enabled" as const } },
         agents: { "my-agent": { state: "enabled" as const } },
         commands: { "my-cmd": { state: "enabled" as const } },
       };
@@ -73,7 +72,6 @@ describe("manifest-state", () => {
       expect(findItemType(manifest, "my-skill")!.type).toBe("skill");
       expect(findItemType(manifest, "my-mcp")!.type).toBe("mcp");
       expect(findItemType(manifest, "my-hook")!.type).toBe("hook");
-      expect(findItemType(manifest, "my-mem")!.type).toBe("memory");
       expect(findItemType(manifest, "my-agent")!.type).toBe("agent");
       expect(findItemType(manifest, "my-cmd")!.type).toBe("command");
       expect(findItemType(manifest, "nonexistent")).toBeNull();
@@ -129,7 +127,6 @@ describe("manifest-state", () => {
       expect(sectionForType("skill")).toBe("skills");
       expect(sectionForType("mcp")).toBe("mcps");
       expect(sectionForType("hook")).toBe("hooks");
-      expect(sectionForType("memory")).toBe("memory");
       expect(sectionForType("agent")).toBe("agents");
       expect(sectionForType("command")).toBe("commands");
       expect(sectionForType("invalid")).toBeNull();
@@ -137,15 +134,14 @@ describe("manifest-state", () => {
   });
 
   describe("ITEM_SECTIONS extensibility", () => {
-    it("ALL_ITEM_TYPES includes all 6 types", async () => {
+    it("ALL_ITEM_TYPES includes all 5 types", async () => {
       const { ALL_ITEM_TYPES } = await import("./manifest-state.js");
       expect(ALL_ITEM_TYPES).toContain("skill");
       expect(ALL_ITEM_TYPES).toContain("mcp");
       expect(ALL_ITEM_TYPES).toContain("hook");
-      expect(ALL_ITEM_TYPES).toContain("memory");
       expect(ALL_ITEM_TYPES).toContain("agent");
       expect(ALL_ITEM_TYPES).toContain("command");
-      expect(ALL_ITEM_TYPES).toHaveLength(6);
+      expect(ALL_ITEM_TYPES).toHaveLength(5);
     });
   });
 });

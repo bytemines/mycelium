@@ -9,7 +9,8 @@ export function registerRemoveRoutes(app: Express): void {
   router.delete("/:name", asyncHandler(async (req, res) => {
     const { removeItem } = await import("../commands/remove.js");
     const type = req.query.type as string | undefined;
-    const result = await removeItem(req.params.name as string, { type });
+    const purge = req.query.purge === "true";
+    const result = await removeItem(req.params.name as string, { type, purge });
     res.json(result);
   }));
 

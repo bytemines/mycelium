@@ -59,7 +59,7 @@ export interface ManifestConfig {
 // Central Registry
 // ============================================================================
 
-export type ItemType = "skill" | "mcp" | "hook" | "memory" | "agent" | "command";
+export type ItemType = "skill" | "mcp" | "hook" | "agent" | "command";
 
 /**
  * Central registry of item sections. To add a new item type:
@@ -73,7 +73,6 @@ export const ITEM_SECTIONS: { key: keyof ManifestConfig; type: ItemType }[] = [
   { key: "hooks", type: "hook" },
   { key: "agents", type: "agent" },
   { key: "commands", type: "command" },
-  { key: "memory", type: "memory" },
 ];
 
 export const ALL_ITEM_TYPES: ItemType[] = ITEM_SECTIONS.map(s => s.type);
@@ -186,6 +185,40 @@ export async function getDisabledItems(projectRoot?: string): Promise<Set<string
   }
 
   return disabledItems;
+}
+
+/**
+ * Get items with state: "deleted" across all manifest levels.
+ * These should be completely hidden from UI, not just disabled.
+ */
+export async function getDeletedItems(projectRoot?: string): Promise<Set<string>> {
+  const deletedItems = new Set<string>();
+
+  const manifestPaths = [
+    path.join(expandPath("~/.mycelium"), "manifest.yaml"),
+  ];
+  if (projectRoot) {
+    manifestPaths.push(path.join(projectRoot, ".mycelium", "manifest.yaml"));
+  }
+
+  for (const manifestPath of manifestPaths) {
+    const content = await readFileIfExists(manifestPath);
+    if (!content) continue;
+    const manifest = yamlParse(content) as ManifestConfig | null;
+    if (!manifest) continue;
+
+    for (const { key: section } of ITEM_SECTIONS) {
+      const items = manifest[section];
+      if (!items || typeof items !== "object" || Array.isArray(items)) continue;
+      for (const [itemName, config] of Object.entries(items as Record<string, ItemConfig>)) {
+        if (config?.state === "deleted") {
+          deletedItems.add(itemName);
+        }
+      }
+    }
+  }
+
+  return deletedItems;
 }
 
 // ============================================================================

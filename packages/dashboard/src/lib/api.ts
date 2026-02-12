@@ -98,13 +98,20 @@ export async function fetchPopularSkills(): Promise<MarketplaceSearchResult[]> {
   return res.json();
 }
 
-export async function removeSkill(name: string): Promise<{ removed: boolean; error?: string }> {
-  const res = await fetch(`/api/remove/skill/${encodeURIComponent(name)}`, { method: "DELETE" });
+export async function removeSkill(name: string): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`/api/remove/${encodeURIComponent(name)}?type=skill`, { method: "DELETE" });
   return res.json();
 }
 
-export async function removeMcp(name: string): Promise<{ removed: boolean; error?: string }> {
-  const res = await fetch(`/api/remove/mcp/${encodeURIComponent(name)}`, { method: "DELETE" });
+export async function purgeItem(name: string, type?: string): Promise<{ success: boolean; name: string; message?: string; error?: string }> {
+  const params = new URLSearchParams({ purge: "true" });
+  if (type) params.set("type", type);
+  const res = await fetch(`/api/remove/${encodeURIComponent(name)}?${params}`, { method: "DELETE" });
+  return res.json();
+}
+
+export async function removeMcp(name: string): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`/api/remove/${encodeURIComponent(name)}?type=mcp`, { method: "DELETE" });
   return res.json();
 }
 

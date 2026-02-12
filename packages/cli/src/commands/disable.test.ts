@@ -64,12 +64,6 @@ describe("Disable Command", () => {
         source: "global",
       },
     },
-    memory: {
-      "shared-context": {
-        state: "enabled",
-        source: "global",
-      },
-    },
   };
 
   beforeEach(async () => {
@@ -386,26 +380,6 @@ describe("Disable Command", () => {
         expect(result.type).toBe("hook");
       });
 
-      it("disables a memory item globally", async () => {
-        const options: DisableOptions = {
-          name: "shared-context",
-          global: true,
-          globalPath: globalMyceliumPath,
-        };
-
-        const result = await disableSkillOrMcp(options);
-
-        expect(result.success).toBe(true);
-        expect(result.type).toBe("memory");
-
-        // Verify manifest was updated
-        const manifestContent = await fs.readFile(
-          path.join(globalMyceliumPath, "manifest.yaml"),
-          "utf-8"
-        );
-        const updatedManifest = yamlParse(manifestContent);
-        expect(updatedManifest.memory["shared-context"].state).toBe("disabled");
-      });
     });
 
     describe("error handling", () => {

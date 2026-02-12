@@ -7,6 +7,9 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(),
   access: vi.fn(),
   mkdir: vi.fn(),
+  rm: vi.fn().mockResolvedValue(undefined),
+  unlink: vi.fn().mockResolvedValue(undefined),
+  lstat: vi.fn().mockRejectedValue(new Error("ENOENT")),
 }));
 
 vi.mock("@mycelish/core", async (importOriginal) => {
@@ -141,6 +144,25 @@ describe("remove command", () => {
       expect(saved.mcps["shared-name"].state).toBe("deleted");
       // Skill should be untouched
       expect(saved.skills["shared-name"].state).toBeUndefined();
+    });
+
+    it("purges files and sets state: deleted with --purge", async () => {
+      const yaml = await import("yaml");
+      const manifest = {
+        version: "1",
+        skills: { "my-skill": { state: "enabled", source: "openskills" } },
+      };
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("my-skill", { manifestDir: MANIFEST_DIR, purge: true });
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain("purged");
+
+      // Verify fs.rm was called to delete source files
+      expect(fs.rm).toHaveBeenCalled();
     });
 
     it("returns error for invalid --type", async () => {
