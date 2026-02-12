@@ -1,5 +1,33 @@
 # @mycelish/core
 
+## 0.2.7
+
+### Patch Changes
+
+- ## What's New in v0.2.7
+
+  ### 🔌 Plugin Partial State — No More False Disables
+
+  Toggling a single skill OFF inside a plugin no longer disables the entire plugin node in the dashboard. Now shows a **partial state** with:
+  - **Amber toggle** — stays ON position, turns yellow to indicate mixed state
+  - **N/M counter** — shows how many components are still enabled (e.g., "2/3")
+  - **Animated edges** — stay active as long as any component is enabled
+
+  ### ⚡ Flicker-Free Toggles
+
+  Dashboard toggles are now instant with zero flicker:
+  - Optimistic updates for plugin item toggles
+  - Node reference stabilization prevents unnecessary React Flow re-renders
+  - Background server sync after optimistic update
+
+  ### 🧹 Memory System Removed
+
+  Every AI tool now handles memory natively — Mycelium's memory layer has been fully removed. This simplifies the codebase and eliminates redundant memory management (~50 tests removed, cleaner config).
+
+  ### 🐛 Fixes
+  - Fixed broken logo image in README
+  - Removed stale competitive analysis references from tracked files
+
 ## 0.2.6
 
 ### Patch Changes
