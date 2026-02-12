@@ -15,6 +15,14 @@ vi.mock("./marketplace-registry.js", () => ({
     clawhub: { type: "remote", enabled: true },
   }),
 }));
+vi.mock("./manifest-state.js", () => {
+  let stored: Record<string, any> | null = null;
+  return {
+    loadStateManifest: vi.fn(async () => stored),
+    saveStateManifest: vi.fn(async (_dir: string, manifest: Record<string, any>) => { stored = manifest; }),
+    __resetStore: () => { stored = null; },
+  };
+});
 vi.mock("./mcp-registry.js", () => ({
   searchRegistry: vi.fn().mockResolvedValue([
     { name: "test-mcp", command: "test-mcp", description: "A test MCP" },
@@ -158,6 +166,100 @@ describe("installFromMarketplace", () => {
       type: "skill",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("manifest registration on install", () => {
+  it("registers skill in manifest after successful install", async () => {
+    mockFs.mkdir.mockResolvedValue(undefined);
+    mockFs.writeFile.mockResolvedValue(undefined);
+    const { saveStateManifest } = await import("./manifest-state.js");
+
+    await installFromMarketplace({
+      name: "openskill-test",
+      description: "Open skill",
+      source: "openskills",
+      type: "skill",
+    });
+
+    expect(saveStateManifest).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        skills: expect.objectContaining({
+          "openskill-test": { state: "enabled", source: "openskills" },
+        }),
+      })
+    );
+  });
+
+  it("does not register MCP registry entries in skill manifest", async () => {
+    mockFs.appendFile.mockResolvedValue(undefined);
+    const { saveStateManifest } = await import("./manifest-state.js");
+    vi.mocked(saveStateManifest).mockClear();
+
+    await installFromMarketplace({
+      name: "test-mcp",
+      description: "A test MCP",
+      source: "mcp-registry",
+      type: "mcp",
+    });
+
+    expect(saveStateManifest).not.toHaveBeenCalled();
+  });
+});
+
+describe("dynamic GitHub marketplace", () => {
+  it("searches GitHub repo sources not in KNOWN_SEARCHERS", async () => {
+    const { loadMarketplaceRegistry } = await import("./marketplace-registry.js");
+    vi.mocked(loadMarketplaceRegistry).mockResolvedValueOnce({
+      "my-github-mp": {
+        type: "remote",
+        enabled: true,
+        url: "https://github.com/bytemines/sherpai",
+      },
+    });
+    // GitHub tree API response
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tree: [
+          { path: "skills/cool-skill/SKILL.md", type: "blob" },
+          { path: "agents/helper.md", type: "blob" },
+        ],
+      }),
+    });
+
+    const results = await searchMarketplace("cool");
+    expect(results.length).toBe(1);
+    expect(results[0].source).toBe("my-github-mp");
+    expect(results[0].entries[0].name).toBe("cool-skill");
+    expect(results[0].entries[0].type).toBe("skill");
+  });
+
+  it("installs from dynamic GitHub marketplace", async () => {
+    const { loadMarketplaceRegistry } = await import("./marketplace-registry.js");
+    vi.mocked(loadMarketplaceRegistry).mockResolvedValueOnce({
+      "my-github-mp": {
+        type: "remote",
+        enabled: true,
+        url: "https://github.com/bytemines/sherpai",
+      },
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => "# My Skill\n\nContent here",
+    });
+    mockFs.mkdir.mockResolvedValue(undefined);
+    mockFs.writeFile.mockResolvedValue(undefined);
+
+    const result = await installFromMarketplace({
+      name: "my-skill",
+      description: "A skill",
+      source: "my-github-mp",
+      type: "skill",
+    });
+    expect(result.success).toBe(true);
+    expect(result.path).toContain("my-skill");
   });
 });
 

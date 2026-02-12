@@ -16,6 +16,11 @@ import type { McpServerConfig, McpsConfig, MergedConfig, ConfigLevel, Skill } fr
 vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
   access: vi.fn(),
+  readdir: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("./item-loader.js", () => ({
+  loadItemsFromDir: vi.fn().mockResolvedValue([]),
 }));
 
 describe("mergeConfigs", () => {
@@ -351,6 +356,7 @@ describe("loadGlobalConfig", () => {
     const fs = await import("node:fs/promises");
     const { loadGlobalConfig } = await import("./config-merger.js");
 
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
     vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
     const result = await loadGlobalConfig();
@@ -390,6 +396,7 @@ describe("loadProjectConfig", () => {
     const fs = await import("node:fs/promises");
     const { loadProjectConfig } = await import("./config-merger.js");
 
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
     vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
     const result = await loadProjectConfig("/home/user/no-config-project");
@@ -436,6 +443,7 @@ describe("loadMachineConfig", () => {
     const fs = await import("node:fs/promises");
     const { loadMachineConfig } = await import("./config-merger.js");
 
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
     vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
 
     const result = await loadMachineConfig();
@@ -447,6 +455,31 @@ describe("loadMachineConfig", () => {
 describe("loadAndMergeAllConfigs", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+  });
+
+  it("loads skills from filesystem via directory scan", async () => {
+    const fs = await import("node:fs/promises");
+    const { loadGlobalConfig } = await import("./config-merger.js");
+
+    // mcps.yaml doesn't exist
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+
+    // fs.readdir returns directory entries for skills dir, empty for others
+    (vi.mocked(fs.readdir) as any).mockImplementation(async (dir: string, _opts?: any) => {
+      if (typeof dir === "string" && dir.endsWith("/skills")) {
+        return [{ name: "brand-guidelines", isDirectory: () => true, isSymbolicLink: () => false, isFile: () => false }] as any;
+      }
+      return [];
+    });
+
+    // SKILL.md exists in the brand-guidelines dir
+    vi.mocked(fs.access).mockImplementation(async (p: any) => {
+      if (typeof p === "string" && p.includes("brand-guidelines/SKILL.md")) return;
+      throw new Error("ENOENT");
+    });
+
+    const result = await loadGlobalConfig();
+    expect(result.skills).toHaveProperty("brand-guidelines");
   });
 
   it("loads and merges all config levels", async () => {

@@ -255,6 +255,127 @@ export async function searchSkillsmp(_query: string): Promise<MarketplaceSearchR
 }
 
 // ============================================================================
+// Generic GitHub Repo
+// ============================================================================
+
+export interface GitHubRepoItem {
+  name: string;
+  type: "skill" | "agent" | "command";
+  path: string;
+  description?: string;
+}
+
+/**
+ * Parse a github.com URL into owner/repo.
+ * Returns null if not a GitHub URL.
+ */
+export function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
+  const m = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (!m) return null;
+  return { owner: m[1], repo: m[2].replace(/\.git$/, "") };
+}
+
+/**
+ * Search a GitHub repo for skills, agents, and commands.
+ * Uses the recursive tree endpoint (same pattern as fetchAnthropicSkillsList).
+ */
+export async function searchGitHubRepo(
+  owner: string,
+  repo: string,
+  query: string,
+  sourceName: string
+): Promise<MarketplaceSearchResult> {
+  const items = await fetchGitHubRepoItems(owner, repo);
+  const q = query.toLowerCase();
+  const filtered = q
+    ? items.filter(i => i.name.toLowerCase().includes(q) || (i.description?.toLowerCase().includes(q) ?? false))
+    : items;
+  const entries: MarketplaceEntry[] = filtered.map(item => ({
+    name: item.name,
+    description: item.description || `${item.type} from ${owner}/${repo}`,
+    author: owner,
+    source: sourceName,
+    type: item.type,
+  }));
+  return { entries, total: entries.length, source: sourceName };
+}
+
+/**
+ * Fetch all items (skills, agents, commands) from a GitHub repo tree.
+ */
+export async function fetchGitHubRepoItems(owner: string, repo: string): Promise<GitHubRepoItem[]> {
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`,
+    { headers: { Accept: "application/vnd.github.v3+json" } }
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as { tree: { path: string; type: string }[] };
+  const items: GitHubRepoItem[] = [];
+  const dirMap: Record<string, "skill" | "agent" | "command"> = {
+    skills: "skill",
+    agents: "agent",
+    commands: "command",
+  };
+  for (const t of data.tree) {
+    if (t.type !== "blob") continue;
+    for (const [dir, itemType] of Object.entries(dirMap)) {
+      if (t.path.startsWith(`${dir}/`) && t.path.endsWith(".md")) {
+        const parts = t.path.split("/");
+        // skills/name/SKILL.md (depth 3) or agents/name.md (depth 2)
+        let name: string | undefined;
+        if (itemType === "skill" && parts.length === 3 && parts[2] === "SKILL.md") {
+          name = parts[1];
+        } else if (itemType !== "skill" && parts.length === 2) {
+          name = parts[1].replace(/\.md$/, "");
+        }
+        if (name) {
+          items.push({ name, type: itemType, path: t.path });
+        }
+      }
+    }
+  }
+  return items;
+}
+
+/**
+ * Install an item from a GitHub repo by downloading its raw content.
+ */
+export async function installGitHubRepoItem(
+  owner: string,
+  repo: string,
+  entry: MarketplaceEntry
+): Promise<{ success: boolean; path?: string; error?: string }> {
+  const itemType = entry.type as "skill" | "agent" | "command";
+  let remotePath: string;
+  let localDir: string;
+  let fileName: string;
+  const globalDir = path.join(os.homedir(), ".mycelium", "global");
+
+  if (itemType === "skill") {
+    remotePath = `skills/${encodeURIComponent(entry.name)}/SKILL.md`;
+    localDir = path.join(globalDir, "skills", entry.name);
+    fileName = "SKILL.md";
+  } else if (itemType === "agent") {
+    remotePath = `agents/${encodeURIComponent(entry.name)}.md`;
+    localDir = path.join(globalDir, "agents");
+    fileName = `${entry.name}.md`;
+  } else {
+    remotePath = `commands/${encodeURIComponent(entry.name)}.md`;
+    localDir = path.join(globalDir, "commands");
+    fileName = `${entry.name}.md`;
+  }
+
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${remotePath}`;
+  const ghRes = await fetch(rawUrl);
+  if (!ghRes.ok) throw new Error(`Download failed: ${ghRes.statusText}`);
+  const content = await ghRes.text();
+  await fs.mkdir(localDir, { recursive: true });
+  const filePath = path.join(localDir, fileName);
+  await fs.writeFile(filePath, content, "utf-8");
+  return { success: true, path: filePath };
+}
+
+// ============================================================================
 // Searcher map
 // ============================================================================
 

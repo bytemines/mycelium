@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   fetchMarketplaceRegistry, addMarketplaceToRegistry, removeMarketplaceFromRegistry,
   searchMarketplace as apiSearch, installMarketplaceEntry, fetchPopularSkills,
-  updateMarketplaceEntry,
+  updateMarketplaceEntry, purgeItem,
 } from "@/lib/api";
 import type { MarketplaceConfig } from "@mycelish/core";
 import { SkillCard } from "./SkillCard";
@@ -28,6 +28,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   const [searched, setSearched] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +39,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   const [newMpName, setNewMpName] = useState("");
   const [newMpUrl, setNewMpUrl] = useState("");
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [confirmRemoveItem, setConfirmRemoveItem] = useState<MarketplaceItem | null>(null);
 
   // Load registry + popular on mount
   useEffect(() => {
@@ -46,18 +48,14 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       const dynamic = Object.keys(reg).map(k => ({ value: k, label: k }));
       setMarketplaces([{ value: "all", label: "All" }, ...dynamic]);
     }).catch((err) => { console.warn("Failed to load marketplace registry:", err); });
-
-    setLoading(true);
-    fetchPopularSkills().then(results => {
-      const flat = results.flatMap(r => r.entries.map(e => ({ ...e, type: e.type as "skill" | "mcp" })));
-      setResults(flat);
-    }).catch((err) => { console.warn("Failed to load popular skills:", err); }).finally(() => setLoading(false));
+    // Initial results load is handled by the handleSearch effect
   }, []);
 
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError(null);
-    if (!query.trim()) {
+    // If no query AND no specific source filter, show popular
+    if (!query.trim() && source === "all") {
       setLoading(true);
       setSearched(false);
       fetchPopularSkills().then(results => {
@@ -66,6 +64,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       }).catch(() => setResults([])).finally(() => setLoading(false));
       return;
     }
+    // Search with query and/or source filter
     setLoading(true);
     setSearched(true);
     try {
@@ -78,6 +77,11 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       setLoading(false);
     }
   }, [query, source]);
+
+  // Re-search when source filter changes
+  useEffect(() => {
+    handleSearch();
+  }, [handleSearch]);
 
   async function handleInstall(item: MarketplaceItem) {
     const key = `${item.source}-${item.name}`;
@@ -119,6 +123,33 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     }
   }
 
+  function handleRemove(item: MarketplaceItem) {
+    setConfirmRemoveItem(item);
+  }
+
+  async function confirmRemoveItemAction() {
+    const item = confirmRemoveItem;
+    if (!item) return;
+    setConfirmRemoveItem(null);
+    const key = `${item.source}-${item.name}`;
+    setRemoving(key);
+    setError(null);
+    try {
+      const result = await purgeItem(item.name, item.type);
+      if (result.success) {
+        setResults(prev => prev.map(r =>
+          r.name === item.name && r.source === item.source ? { ...r, installed: false } : r
+        ));
+      } else {
+        setError(`Failed to remove ${item.name}: ${result.error || "Unknown error"}`);
+      }
+    } catch (e) {
+      setError(`Failed to remove ${item.name}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRemoving(null);
+    }
+  }
+
   async function handleRemoveMarketplace(name: string) {
     await removeMarketplaceFromRegistry(name);
     setRegistry(prev => { const next = { ...prev }; delete next[name]; return next; });
@@ -137,6 +168,9 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
 
   const displayResults = useMemo(() => {
     let filtered = results;
+    if (source !== "all") {
+      filtered = filtered.filter(item => item.source === source);
+    }
     if (category !== "All") {
       const cat = category.toLowerCase();
       filtered = filtered.filter(item =>
@@ -152,8 +186,14 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       case "recent": sorted.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")); break;
       case "az": sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
     }
+    // Installed items float to the top
+    sorted.sort((a, b) => {
+      if (a.installed && !b.installed) return -1;
+      if (!a.installed && b.installed) return 1;
+      return 0;
+    });
     return sorted;
-  }, [results, category, sortBy]);
+  }, [results, source, category, sortBy]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -164,7 +204,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
           <div className="flex flex-wrap gap-2">
             {Object.entries(registry).map(([name, config]) => (
               <button key={name}
-                onClick={() => { setSource(name); if (query.trim()) handleSearch(); }}
+                onClick={() => { setSource(name === source ? "all" : name); }}
                 className={cn(
                   "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm cursor-pointer transition-all hover:border-primary",
                   source === name ? "border-primary bg-primary/10 ring-1 ring-primary/30" :
@@ -207,6 +247,26 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
         </Dialog.Portal>
       </Dialog.Root>
 
+      {/* Remove Item Confirmation */}
+      <Dialog.Root open={!!confirmRemoveItem} onOpenChange={(open) => { if (!open) setConfirmRemoveItem(null); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-xl">
+            <Dialog.Title className="text-lg font-medium">Remove {confirmRemoveItem?.name}</Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm text-muted-foreground">
+              This will permanently delete the files and remove symlinks from all tools. This cannot be undone.
+            </Dialog.Description>
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cancel</button>
+              </Dialog.Close>
+              <button onClick={confirmRemoveItemAction}
+                className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90">Remove</button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
       {/* Add Marketplace Dialog */}
       <Dialog.Root open={showAddDialog} onOpenChange={setShowAddDialog}>
         <Dialog.Portal>
@@ -237,7 +297,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
           <input type="text" value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Search skills and MCPs..."
             className="flex-1 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
-          <select value={source} onChange={e => setSource(e.target.value)}
+          <select value={source} onChange={e => { setSource(e.target.value); }}
             className="rounded-md border bg-background px-3 py-2 text-sm">
             {marketplaces.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
@@ -306,9 +366,11 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
               item={item}
               installing={installing}
               updating={updating}
+              removing={removing}
               expanded={expandedCard === `${item.source}-${item.name}`}
               onInstall={handleInstall}
               onUpdate={handleUpdate}
+              onRemove={handleRemove}
               onToggleExpand={setExpandedCard}
             />
           ))}

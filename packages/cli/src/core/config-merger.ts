@@ -18,7 +18,9 @@ import type {
   ConfigLevel,
   Skill,
   FileItem,
+  SkillManifest,
 } from "@mycelish/core";
+import * as fs from "node:fs/promises";
 import { MYCELIUM_HOME, readFileIfExists } from "./fs-helpers.js";
 import { loadItemsFromDir } from "./item-loader.js";
 
@@ -102,10 +104,39 @@ function mergeMcpServerConfig(
 // ============================================================================
 
 async function loadFileItems(dir: string): Promise<Record<string, FileItem>> {
-  const items = await loadItemsFromDir(dir);
+  const items = await loadItemsFromDir(dir) || [];
   const result: Record<string, FileItem> = {};
   for (const item of items) {
     result[item.name] = item;
+  }
+  return result;
+}
+
+async function loadSkillItems(dir: string): Promise<Record<string, Skill>> {
+  const result: Record<string, Skill> = {};
+  let entries: import("node:fs").Dirent[] | undefined;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return result;
+  }
+  if (!entries) return result;
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const skillDir = path.join(dir, entry.name);
+    if (entry.isDirectory() || entry.isSymbolicLink()) {
+      // Skills are dirs containing SKILL.md
+      try {
+        await fs.access(path.join(skillDir, "SKILL.md"));
+        result[entry.name] = {
+          name: entry.name,
+          path: skillDir,
+          manifest: { name: entry.name },
+        };
+      } catch {
+        // No SKILL.md, skip
+      }
+    }
   }
   return result;
 }
@@ -159,7 +190,7 @@ export async function loadGlobalConfig(): Promise<Partial<MergedConfig>> {
   const globalDir = path.join(MYCELIUM_HOME, "global");
   return {
     mcps: await loadMcpsFromDir(globalDir),
-    skills: {},
+    skills: await loadSkillItems(path.join(globalDir, "skills")),
     agents: await loadFileItems(path.join(globalDir, "agents")),
     rules: await loadFileItems(path.join(globalDir, "rules")),
     commands: await loadFileItems(path.join(globalDir, "commands")),
@@ -176,7 +207,7 @@ export async function loadProjectConfig(
   const projDir = path.join(root, ".mycelium");
   return {
     mcps: await loadMcpsFromDir(projDir),
-    skills: {},
+    skills: await loadSkillItems(path.join(projDir, "skills")),
     agents: await loadFileItems(path.join(projDir, "agents")),
     rules: await loadFileItems(path.join(projDir, "rules")),
     commands: await loadFileItems(path.join(projDir, "commands")),
@@ -204,18 +235,18 @@ export async function loadMachineConfig(): Promise<Partial<MergedConfig>> {
   const yamlContent = await readFileIfExists(path.join(machinesDir, `${hostname}.yaml`));
   if (yamlContent) {
     const mcps = parseConfig<Record<string, McpServerConfig>>(yamlContent, `machines/${hostname}.yaml`) ?? {};
-    return { mcps, skills: {}, ...fileItems };
+    return { mcps, skills: await loadSkillItems(path.join(hostDir, "skills")), ...fileItems };
   }
 
   // Try hostname.json (nested { mcps: {} })
   const jsonContent = await readFileIfExists(path.join(machinesDir, `${hostname}.json`));
   if (jsonContent) {
     const data = parseConfig<{ mcps: Record<string, McpServerConfig> }>(jsonContent, `machines/${hostname}.json`);
-    return { mcps: data?.mcps ?? {}, skills: {}, ...fileItems };
+    return { mcps: data?.mcps ?? {}, skills: await loadSkillItems(path.join(hostDir, "skills")), ...fileItems };
   }
 
   // Try hostname/ directory
-  return { mcps: await loadMcpsFromDir(hostDir), skills: {}, ...fileItems };
+  return { mcps: await loadMcpsFromDir(hostDir), skills: await loadSkillItems(path.join(hostDir, "skills")), ...fileItems };
 }
 
 /**

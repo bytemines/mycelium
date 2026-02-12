@@ -19,12 +19,16 @@ import {
   fetchMcpServers,
   mcpServerToEntry,
   fetchNpmDownloads,
+  parseGitHubUrl,
+  searchGitHubRepo,
+  installGitHubRepoItem,
   type ClawHubResult,
 } from "./marketplace-sources.js";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { MYCELIUM_HOME } from "./fs-helpers.js";
+import { MYCELIUM_HOME, readFileIfExists } from "./fs-helpers.js";
+import { loadStateManifest, saveStateManifest } from "./manifest-state.js";
 
 const MYCELIUM_DIR = path.join(MYCELIUM_HOME, "global");
 
@@ -46,15 +50,24 @@ export async function searchMarketplace(
         .filter(([, config]) => config.enabled)
         .map(([name]) => name);
 
-  const searches = enabledSources
-    .filter((s) => KNOWN_SEARCHERS[s])
-    .map((s) => KNOWN_SEARCHERS[s](query));
+  const searches = enabledSources.map((s) => {
+    if (KNOWN_SEARCHERS[s]) return KNOWN_SEARCHERS[s](query);
+    // Dynamic GitHub marketplace: parse URL from registry config
+    const config = registry[s];
+    if (config?.url) {
+      const gh = parseGitHubUrl(config.url);
+      if (gh) return searchGitHubRepo(gh.owner, gh.repo, query, s);
+    }
+    return null;
+  }).filter((p): p is Promise<MarketplaceSearchResult> => p !== null);
 
   const results = await Promise.allSettled(searches);
-  return results
+  const filtered = results
     .filter((r): r is PromiseFulfilledResult<MarketplaceSearchResult> => r.status === "fulfilled")
     .map((r) => r.value)
     .filter((r) => r.entries.length > 0);
+
+  return enrichWithInstalledStatus(filtered);
 }
 
 // ============================================================================
@@ -65,22 +78,46 @@ export async function installFromMarketplace(
   entry: MarketplaceEntry
 ): Promise<{ success: boolean; path?: string; error?: string }> {
   try {
+    let result: { success: boolean; path?: string; error?: string };
     switch (entry.source) {
       case MS.SKILLSMP:
         return { success: false, error: "SkillsMP requires an API key. Configure it in settings." };
       case MS.OPENSKILLS:
-        return await installOpenSkill(entry);
+        result = await installOpenSkill(entry); break;
       case MS.CLAUDE_PLUGINS:
-        return await installClaudePlugin(entry);
+        result = await installClaudePlugin(entry); break;
       case MS.MCP_REGISTRY:
-        return await installMcpRegistry(entry);
+        result = await installMcpRegistry(entry); break;
       case MS.ANTHROPIC_SKILLS:
-        return await installAnthropicSkill(entry);
+        result = await installAnthropicSkill(entry); break;
       case MS.CLAWHUB:
-        return await installClawHub(entry);
-      default:
+        result = await installClawHub(entry); break;
+      default: {
+        // Try dynamic GitHub marketplace
+        const reg = await loadMarketplaceRegistry();
+        const config = reg[entry.source];
+        if (config?.url) {
+          const gh = parseGitHubUrl(config.url);
+          if (gh) {
+            result = await installGitHubRepoItem(gh.owner, gh.repo, entry);
+            break;
+          }
+        }
         return { success: false, error: `Unknown source: ${entry.source}` };
+      }
     }
+    if (result.success && entry.source !== MS.MCP_REGISTRY) {
+      await registerSkillInManifest(entry.name, entry.source);
+    }
+    // Auto-sync to push installed item into tool directories
+    if (result.success) {
+      try {
+        await autoSync();
+      } catch {
+        // Sync failure shouldn't break the install
+      }
+    }
+    return result;
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -154,6 +191,22 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
     { name: "clawhub", fn: () => fetchPopularClawHub(results) },
   ];
 
+  // Add dynamic GitHub marketplaces
+  const registry = await loadMarketplaceRegistry();
+  for (const [name, config] of Object.entries(registry)) {
+    if (KNOWN_SEARCHERS[name] || !config.enabled || !config.url) continue;
+    const gh = parseGitHubUrl(config.url);
+    if (gh) {
+      fetchers.push({
+        name,
+        fn: async () => {
+          const r = await searchGitHubRepo(gh.owner, gh.repo, "", name);
+          if (r.entries.length > 0) results.push(r);
+        },
+      });
+    }
+  }
+
   const settled = await Promise.allSettled(fetchers.map(f => f.fn()));
   for (let i = 0; i < settled.length; i++) {
     if (settled[i].status === "rejected") {
@@ -161,7 +214,7 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
     }
   }
 
-  return results;
+  return enrichWithInstalledStatus(results);
 }
 
 async function fetchPopularAnthropicSkills(results: MarketplaceSearchResult[]) {
@@ -245,6 +298,54 @@ async function fetchPopularClawHub(results: MarketplaceSearchResult[]) {
     }));
     results.push({ entries, total: entries.length, source: MS.CLAWHUB });
   }
+}
+
+// ============================================================================
+// Auto-Sync
+// ============================================================================
+
+async function autoSync(): Promise<void> {
+  const { ALL_TOOL_IDS } = await import("@mycelish/core");
+  const { syncAll } = await import("../commands/sync.js");
+  const enabledTools: Record<string, { enabled: boolean }> = Object.fromEntries(
+    ALL_TOOL_IDS.map((id: string) => [id, { enabled: true }])
+  );
+  await syncAll(process.cwd(), enabledTools);
+}
+
+// ============================================================================
+// Manifest Registration
+// ============================================================================
+
+async function registerSkillInManifest(name: string, source: string): Promise<void> {
+  const manifestDir = MYCELIUM_HOME;
+  const manifest = await loadStateManifest(manifestDir) ?? { version: "1.0.0" };
+  if (!manifest.skills) manifest.skills = {};
+  manifest.skills[name] = { state: "enabled", source };
+  await saveStateManifest(manifestDir, manifest);
+}
+
+// ============================================================================
+// Installed Status Enrichment
+// ============================================================================
+
+async function getInstalledSkillNames(): Promise<Set<string>> {
+  const manifest = await loadStateManifest(MYCELIUM_HOME);
+  if (!manifest?.skills) return new Set();
+  return new Set(
+    Object.entries(manifest.skills)
+      .filter(([, cfg]) => cfg.state === "enabled")
+      .map(([name]) => name)
+  );
+}
+
+async function enrichWithInstalledStatus(results: MarketplaceSearchResult[]): Promise<MarketplaceSearchResult[]> {
+  const installed = await getInstalledSkillNames();
+  if (installed.size === 0) return results;
+  return results.map(r => ({
+    ...r,
+    entries: r.entries.map(e => installed.has(e.name) ? { ...e, installed: true } : e),
+  }));
 }
 
 // ============================================================================
