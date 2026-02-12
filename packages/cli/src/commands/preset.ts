@@ -33,9 +33,6 @@ presetCommand
     const preset = createPreset(name, {
       skills: Object.keys(config.skills),
       mcps: Object.keys(config.mcps),
-      memory: {
-        scopes: Object.keys(config.memory?.scopes ?? {}),
-      },
     });
 
     await savePreset(preset);

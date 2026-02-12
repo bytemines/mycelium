@@ -41,21 +41,7 @@ export function toolsWithCapability(cap: Capability): ToolDescriptor[] {
   return Object.values(TOOL_REGISTRY).filter(t => t.capabilities.includes(cap));
 }
 
-export function toolsForScope(scope: string): ToolDescriptor[] {
-  return Object.values(TOOL_REGISTRY).filter(t => t.scopes.includes(scope));
-}
-
 export function validateRegistry(): string[] {
   const errors: string[] = [];
-  const memPaths = new Map<string, string>();
-  for (const tool of Object.values(TOOL_REGISTRY)) {
-    const mem = resolvePath(tool.paths.globalMemory);
-    if (mem) {
-      if (memPaths.has(mem)) {
-        errors.push(`${tool.id} and ${memPaths.get(mem)} share globalMemory path: ${mem}`);
-      }
-      memPaths.set(mem, tool.id);
-    }
-  }
   return errors;
 }

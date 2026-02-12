@@ -6,7 +6,6 @@ import {
   resolvePath,
   getDescriptor,
   toolsWithCapability,
-  toolsForScope,
   validateRegistry,
 } from "./_registry.js";
 
@@ -82,18 +81,6 @@ describe("toolsWithCapability", () => {
     expect(rules).toHaveLength(3);
     const ids = rules.map(t => t.id).sort();
     expect(ids).toEqual(["codex", "cursor", "vscode"]);
-  });
-});
-
-describe("toolsForScope", () => {
-  it("returns all 8 for shared", () => {
-    expect(toolsForScope("shared")).toHaveLength(8);
-  });
-
-  it("returns only openclaw for personal", () => {
-    const personal = toolsForScope("personal");
-    expect(personal).toHaveLength(1);
-    expect(personal[0].id).toBe("openclaw");
   });
 });
 

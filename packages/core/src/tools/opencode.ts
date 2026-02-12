@@ -10,8 +10,6 @@ export const opencode: ToolDescriptor = {
     projectMcp: null,
     skills: "~/.config/opencode/plugin",
     projectSkills: null,
-    globalMemory: "~/.opencode/context.md",
-    projectMemory: null,
     agents: "~/.config/opencode/agents/",
     projectAgents: ".opencode/agents/",
     rules: null,
@@ -20,8 +18,6 @@ export const opencode: ToolDescriptor = {
     backupDirs: ["~/.config/opencode"],
   },
   mcp: { format: "json", key: "mcp", entryShape: "opencode" },
-  scopes: ["shared", "coding"],
-  capabilities: ["mcp", "skills", "memory", "agents", "hooks", "commands"],
+  capabilities: ["mcp", "skills", "agents", "hooks", "commands"],
   enabled: true,
-  memoryMaxLines: null,
 };

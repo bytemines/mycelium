@@ -48,19 +48,18 @@ import type { Status } from "@/types";
 
 // ── Category classifier ──
 
-type Category = "plugin" | "skill" | "tool" | "mcp" | "memory" | "other";
+type Category = "plugin" | "skill" | "tool" | "mcp" | "other";
 
 function getCategory(node: Node): Category {
   if (node.type === "tool" || node.type === "addTool") return "tool";
   if (node.type === "plugin") return "plugin";
   if (node.data?.type === "skill") return "skill";
   if (node.data?.type === "mcp") return "mcp";
-  if (node.data?.type === "memory") return "memory";
   return "other";
 }
 
 // Row order for layered layouts: top → bottom (DOWN) or left → right (RIGHT)
-const LAYER_ORDER: Category[] = ["plugin", "skill", "tool", "mcp", "memory"];
+const LAYER_ORDER: Category[] = ["plugin", "skill", "tool", "mcp"];
 
 function groupByCategory(nodes: Node[]): Map<Category, Node[]> {
   const groups = new Map<Category, Node[]>();
@@ -91,7 +90,6 @@ function getLayeredLayout(
     [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
     groups.get("tool") ?? [],
     groups.get("mcp") ?? [],
-    groups.get("memory") ?? [],
   ].filter((r) => r.length > 0);
 
   // Get actual node size: prefer measured dimensions, fall back to NODE_SIZES config
@@ -240,7 +238,6 @@ function getRadialHybrid(nodes: Node[], edges: Edge[], spacing = 60, center = 15
   const outerRings = [
     [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
     groups.get("mcp") ?? [],
-    groups.get("memory") ?? [],
   ];
 
   const ringRadii = computeAdaptiveRadii(outerRings, toolRadius, spacing, spacing / 2, density);
@@ -279,7 +276,6 @@ function getRadialSectors(nodes: Node[], edges: Edge[], spacing = 60, center = 1
   // Each category gets a fixed quadrant (center angle + sweep)
   const quadrants: { cat: Category[]; centerAngle: number; label: string }[] = [
     { cat: ["plugin"],  centerAngle: -Math.PI * 3 / 4, label: "Plugins (top-left)" },     // top-left
-    { cat: ["memory"],  centerAngle: -Math.PI / 4,     label: "Memory (top-right)" },      // top-right
     { cat: ["skill"],   centerAngle: Math.PI * 3 / 4,  label: "Skills (bottom-left)" },    // bottom-left
     { cat: ["mcp"],     centerAngle: Math.PI / 4,       label: "MCPs (bottom-right)" },     // bottom-right
   ];
@@ -362,10 +358,9 @@ function getRadialForce(nodes: Node[], edges: Edge[], spacing = 60, center = 150
     plugin: toolRadius + gap,
     skill: toolRadius + gap,
     mcp: toolRadius + gap * 2,
-    memory: toolRadius + gap * 3,
   };
 
-  const outerR = toolRadius + gap * 3 + 200;
+  const outerR = toolRadius + gap * 2 + 200;
   const cx = outerR + 200, cy = outerR + 200;
 
   // Initialize particles with positions spread by category ring + jittered angle
@@ -511,7 +506,7 @@ const nodeTypes = {
 };
 
 interface ToggleInfo {
-  type: "skill" | "mcp" | "memory";
+  type: "skill" | "mcp";
   name: string;
   enabled: boolean;
 }
@@ -597,7 +592,7 @@ export function Graph({
   onAddToolRef.current = onAddTool;
 
   const handleToggle = useCallback(
-    (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => {
+    (type: "skill" | "mcp", name: string, enabled: boolean) => {
       onToggleRef.current?.({ type, name, enabled });
     },
     []
@@ -889,7 +884,6 @@ export function Graph({
             if (nodeData?.status === "not_installed") return STATUS_COLORS.not_installed;
             if (nodeData?.type === "skill") return EDGE_COLORS.skill;
             if (nodeData?.type === "mcp") return EDGE_COLORS.mcp;
-            if (nodeData?.type === "memory") return EDGE_COLORS.memory;
             return STATUS_COLORS.fallback;
           }}
         />

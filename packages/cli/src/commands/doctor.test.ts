@@ -481,47 +481,6 @@ mcps:
     });
   });
 
-  describe("checkMemoryFilesExist", () => {
-    it("returns pass when memory directories have files", async () => {
-      const { pathExists } = await import("@mycelish/core");
-      const fs = await import("node:fs/promises");
-
-      vi.mocked(pathExists).mockResolvedValue(true);
-      vi.mocked(fs.readdir).mockResolvedValue(["memory1.md", "memory2.md"] as any);
-
-      const { checkMemoryFilesExist } = await import("./doctor.js");
-      const result = await checkMemoryFilesExist();
-
-      expect(result.status).toBe("pass");
-      expect(result.message).toContain("memory files found");
-    });
-
-    it("returns warn when no memory files exist", async () => {
-      const { pathExists } = await import("@mycelish/core");
-      const fs = await import("node:fs/promises");
-
-      vi.mocked(pathExists).mockResolvedValue(true);
-      vi.mocked(fs.readdir).mockResolvedValue([] as any);
-
-      const { checkMemoryFilesExist } = await import("./doctor.js");
-      const result = await checkMemoryFilesExist();
-
-      expect(result.status).toBe("warn");
-      expect(result.message).toContain("No memory files");
-    });
-
-    it("returns warn when memory directory does not exist", async () => {
-      const { pathExists } = await import("@mycelish/core");
-      vi.mocked(pathExists).mockResolvedValue(false);
-
-      const { checkMemoryFilesExist } = await import("./doctor.js");
-      const result = await checkMemoryFilesExist();
-
-      expect(result.status).toBe("warn");
-      expect(result.message).toContain("directory not found");
-    });
-  });
-
   describe("checkOrphanedConfigs", () => {
     it("returns pass when no orphaned configs exist", async () => {
       const { pathExists } = await import("@mycelish/core");
@@ -750,43 +709,6 @@ memory:
       const result = await checkToolVersions();
       expect(result.status).toBeDefined();
       expect(result.name).toContain("Tool Versions");
-    });
-  });
-
-  describe("checkMemoryFileSize", () => {
-    it("returns pass when memory files are within limits", async () => {
-      const { pathExists } = await import("@mycelish/core");
-      const fs = await import("node:fs/promises");
-
-      vi.mocked(pathExists).mockResolvedValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue("Line 1\nLine 2\nLine 3");
-
-      const { checkMemoryFileSize } = await import("./doctor.js");
-      const result = await checkMemoryFileSize("/mock/path/MEMORY.md", 200);
-      expect(result.status).toBe("pass");
-    });
-
-    it("returns warn when memory file exceeds limit", async () => {
-      const { pathExists } = await import("@mycelish/core");
-      const fs = await import("node:fs/promises");
-
-      vi.mocked(pathExists).mockResolvedValue(true);
-      const longContent = Array.from({ length: 250 }, (_, i) => `Line ${i}`).join("\n");
-      vi.mocked(fs.readFile).mockResolvedValue(longContent);
-
-      const { checkMemoryFileSize } = await import("./doctor.js");
-      const result = await checkMemoryFileSize("/mock/path/MEMORY.md", 200);
-      expect(result.status).toBe("warn");
-      expect(result.message).toContain("250");
-    });
-
-    it("returns pass when file does not exist", async () => {
-      const { pathExists } = await import("@mycelish/core");
-      vi.mocked(pathExists).mockResolvedValue(false);
-
-      const { checkMemoryFileSize } = await import("./doctor.js");
-      const result = await checkMemoryFileSize("/mock/path/MEMORY.md", 200);
-      expect(result.status).toBe("pass");
     });
   });
 

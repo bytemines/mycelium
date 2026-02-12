@@ -4,7 +4,6 @@
  * Shows sync status of all tools including:
  * - Skills count (symlinked to tool)
  * - MCPs count (injected into tool config)
- * - Memory files count (synced to tool)
  * - Sync status: synced, pending, error, disabled
  */
 
@@ -33,7 +32,6 @@ export interface ToolPathOptions {
   myceliumPath: string;
   toolSkillsPath: string;
   toolMcpPath: string;
-  toolMemoryPath: string;
   isDisabled?: boolean;
   itemState?: ItemState;
 }
@@ -48,11 +46,6 @@ export interface StatusOutputOptions {
   projectConfigExists?: boolean;
   showAll?: boolean;
 }
-
-// Memory scope mapping - derived from registry
-const TOOL_MEMORY_SCOPES: Record<string, string[]> = Object.fromEntries(
-  Object.values(TOOL_REGISTRY).map(desc => [desc.id, desc.scopes])
-);
 
 // ============================================================================
 // Core Functions
@@ -112,30 +105,6 @@ async function countMcps(mcpPath: string): Promise<number> {
 }
 
 /**
- * Get memory files applicable to a tool based on its scopes
- */
-async function getMemoryFilesForTool(
-  myceliumPath: string,
-  toolId: ToolId
-): Promise<string[]> {
-  const scopes = TOOL_MEMORY_SCOPES[toolId] || [];
-  const files: string[] = [];
-
-  for (const scope of scopes) {
-    const scopePath = path.join(myceliumPath, "global", "memory", scope);
-    try {
-      const entries = await fs.readdir(scopePath);
-      const mdFiles = entries.filter((f) => f.endsWith(".md"));
-      files.push(...mdFiles);
-    } catch {
-      // Scope directory doesn't exist, skip
-    }
-  }
-
-  return files;
-}
-
-/**
  * Determine sync status based on skill and MCP counts
  */
 function determineSyncStatus(
@@ -171,7 +140,7 @@ export async function getToolStatusFromPath(
   toolId: ToolId,
   options: ToolPathOptions
 ): Promise<ToolSyncStatusWithState> {
-  const { myceliumPath, toolSkillsPath, toolMcpPath, isDisabled = false, itemState } = options;
+  const { toolSkillsPath, toolMcpPath, isDisabled = false, itemState } = options;
   const desc = TOOL_REGISTRY[toolId];
 
   // Count skills synced to tool
@@ -191,9 +160,6 @@ export async function getToolStatusFromPath(
     ? await countFilesInDir(resolvePath(desc.paths.commands) ?? "")
     : 0;
 
-  // Get memory files for tool
-  const memoryFiles = await getMemoryFilesForTool(myceliumPath, toolId);
-
   // Check if tool path exists
   const toolPathExists = await pathExists(toolSkillsPath);
 
@@ -208,7 +174,6 @@ export async function getToolStatusFromPath(
     agentsCount,
     rulesCount,
     commandsCount,
-    memoryFiles,
     itemState,
   };
 }
@@ -237,7 +202,6 @@ export async function getToolStatus(toolId: ToolId): Promise<ToolSyncStatus> {
     myceliumPath,
     toolSkillsPath: resolvePath(desc.paths.skills) ?? "",
     toolMcpPath: resolvePath(desc.paths.mcp) ?? "",
-    toolMemoryPath: resolvePath(desc.paths.globalMemory) ?? "",
     isDisabled,
   });
 }
@@ -282,7 +246,6 @@ export async function getAllStatusFromPath(
       myceliumPath,
       toolSkillsPath: resolvePath(desc.paths.skills) ?? "",
       toolMcpPath: resolvePath(desc.paths.mcp) ?? "",
-      toolMemoryPath: resolvePath(desc.paths.globalMemory) ?? "",
       isDisabled,
       itemState,
     });
@@ -345,8 +308,7 @@ export function formatStatusOutput(
       const agents = status.agentsCount > 0 ? `Agents: ${status.agentsCount}`.padEnd(12) : "";
       const rules = status.rulesCount > 0 ? `Rules: ${status.rulesCount}`.padEnd(11) : "";
       const commands = status.commandsCount > 0 ? `Cmds: ${status.commandsCount}`.padEnd(10) : "";
-      const memory = `Memory: ${status.memoryFiles.length} files`;
-      lines.push(`  ${toolName}${statusStr}    ${skills}${mcps}${agents}${rules}${commands}${memory}${stateMarker}`);
+      lines.push(`  ${toolName}${statusStr}    ${skills}${mcps}${agents}${rules}${commands}${stateMarker}`);
     }
   }
 

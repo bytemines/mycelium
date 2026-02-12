@@ -19,7 +19,6 @@ export const DEFAULT_SIZE = { width: 160, height: 55 };
 export const EDGE_COLORS = {
   skill: "#3b82f6",
   mcp: "#a855f7",
-  memory: "#f59e0b",
   plugin: "#14b8a6",
   custom: "#6b7280",
   disabled: "#ef4444",

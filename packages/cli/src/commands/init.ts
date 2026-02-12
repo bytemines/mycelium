@@ -400,13 +400,13 @@ export async function autoSetup(options: {
       const { scanAllTools, executeMigration, generateMigrationPlan } = await import("../core/migrator/index.js");
       const scanResults = await scanAllTools();
       const totalItems =
-        scanResults.reduce((sum, r) => sum + r.skills.length + r.mcps.length + r.memory.length + (r.hooks?.length ?? 0), 0);
+        scanResults.reduce((sum, r) => sum + r.skills.length + r.mcps.length + (r.hooks?.length ?? 0), 0);
 
       if (totalItems > 0) {
         const plan = generateMigrationPlan(scanResults);
         console.log(`Found ${totalItems} items to migrate. Applying...`);
         const result = await executeMigration(plan);
-        console.log(`Migrated: ${result.skillsImported} skills, ${result.mcpsImported} MCPs, ${result.memoryImported} memory`);
+        console.log(`Migrated: ${result.skillsImported} skills, ${result.mcpsImported} MCPs`);
       } else {
         console.log("No tool configs found to migrate.");
       }

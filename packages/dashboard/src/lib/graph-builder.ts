@@ -7,14 +7,12 @@ export interface ScanData {
   installed: boolean;
   skills: Array<{ name: string; path: string; source: string; metadata?: Record<string, string>; marketplace?: string; pluginName?: string }>;
   mcps: Array<{ name: string; source: string; config: { command: string; args?: string[]; env?: Record<string, string> } }>;
-  memory: Array<{ name: string; path: string; source: string; content?: string }>;
   components: Array<{ type: string; name: string; path: string; marketplace?: string; pluginName?: string }>;
 }
 
 export interface MigrateToggleState {
   skills: Record<string, boolean>;
   mcps: Record<string, boolean>;
-  memory: Record<string, boolean>;
   tools: Record<string, boolean>;
 }
 
@@ -91,19 +89,7 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
     }
   }
 
-  // Memory
-  const memSeen = new Set<string>();
-  const memory: Array<{ name: string; scope: "shared"; status: Status }> = [];
-  for (const scan of scans) {
-    for (const mem of scan.memory) {
-      if (!memSeen.has(mem.name)) {
-        memSeen.add(mem.name);
-        memory.push({ name: mem.name, scope: "shared", status: "pending" });
-      }
-    }
-  }
-
-  return { tools, skills: standaloneSkills, mcps, memory, plugins };
+  return { tools, skills: standaloneSkills, mcps, plugins };
 }
 
 // ── Dashboard graph builder (extracted from Graph.tsx useMemo) ──
@@ -123,12 +109,6 @@ interface McpData {
   status: Status;
   enabled?: boolean;
   connectedTools?: string[];
-}
-
-interface MemoryData {
-  name: string;
-  scope: "shared" | "coding" | "personal";
-  status: Status;
 }
 
 interface ToolDataDash {
@@ -154,7 +134,6 @@ export interface DashboardGraphData {
   tools?: ToolDataDash[];
   skills: SkillData[];
   mcps: McpData[];
-  memory: MemoryData[];
   plugins?: PluginDataDash[];
 }
 
@@ -166,8 +145,8 @@ export const ALL_TOOLS: ToolDataDash[] = Object.values(TOOL_REGISTRY).map(desc =
 }));
 
 export interface DashboardGraphHandlers {
-  handleToggle: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
-  onToggle?: (toggle: { type: "skill" | "mcp" | "memory"; name: string; enabled: boolean }) => void;
+  handleToggle: (type: "skill" | "mcp", name: string, enabled: boolean) => void;
+  onToggle?: (toggle: { type: "skill" | "mcp"; name: string; enabled: boolean }) => void;
   onPluginToggle?: (name: string, enabled: boolean) => void;
   onPluginClick?: (pluginName: string) => void;
   onAddTool?: () => void;
@@ -289,36 +268,6 @@ export function buildDashboardGraph(
           target: nodeId,
           animated: isMcpEnabled && mcp.status === "synced",
           style: edgeStyle(EDGE_COLORS.mcp, isMcpEnabled),
-        });
-      }
-    });
-  });
-
-  // Memory nodes — bottom layer (LAST), edges from tool down to memory
-  data?.memory.forEach((mem, index) => {
-    const nodeId = `memory-${mem.name}`;
-    nodes.push({
-      id: nodeId,
-      type: "resource",
-      position: { x: index * INITIAL_LAYOUT.horizontalSpacing, y: INITIAL_LAYOUT.layers.bottom },
-      data: { name: mem.name, type: "memory", status: mem.status, onToggle: handlers.handleToggle, __elkLayer: "LAST" },
-    });
-    let targetToolIds: string[];
-    if (mem.scope === "personal") {
-      targetToolIds = ["openclaw"];
-    } else if (mem.scope === "coding") {
-      targetToolIds = visibleTools.filter(t => t.id !== "openclaw" && t.installed).map((t) => t.id);
-    } else {
-      targetToolIds = visibleTools.filter(t => t.installed).map((t) => t.id);
-    }
-    targetToolIds.forEach((toolId) => {
-      if (visibleTools.some(t => t.id === toolId)) {
-        edges.push({
-          id: `tool-${toolId}-to-${nodeId}`,
-          source: `tool-${toolId}`,
-          target: nodeId,
-          animated: mem.status === "synced",
-          style: edgeStyle(EDGE_COLORS.memory, true),
         });
       }
     });

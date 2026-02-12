@@ -10,8 +10,6 @@ export const cursor: ToolDescriptor = {
     projectMcp: ".cursor/mcp.json",
     skills: null,
     projectSkills: null,
-    globalMemory: null,
-    projectMemory: ".cursorrules",
     agents: null,
     projectAgents: ".cursor/agents/",
     rules: ".cursor/rules/",
@@ -20,8 +18,6 @@ export const cursor: ToolDescriptor = {
     backupDirs: ["~/.cursor"],
   },
   mcp: { format: "json", key: "mcpServers", entryShape: "standard" },
-  scopes: ["shared", "coding"],
-  capabilities: ["mcp", "memory", "rules", "agents", "hooks", "commands"],
+  capabilities: ["mcp", "rules", "agents", "hooks", "commands"],
   enabled: true,
-  memoryMaxLines: null,
 };

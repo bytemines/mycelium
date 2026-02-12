@@ -16,25 +16,11 @@ import type {
   McpServerConfig,
   MergedConfig,
   ConfigLevel,
-  MemoryConfig,
   Skill,
   FileItem,
 } from "@mycelish/core";
 import { MYCELIUM_HOME, readFileIfExists } from "./fs-helpers.js";
 import { loadItemsFromDir } from "./item-loader.js";
-
-/**
- * Default empty memory config
- */
-function getDefaultMemoryConfig(): MemoryConfig {
-  return {
-    scopes: {
-      shared: { syncTo: [], path: "", files: [] },
-      coding: { syncTo: [], path: "", files: [] },
-      personal: { syncTo: [], path: "", files: [] },
-    },
-  };
-}
 
 /**
  * Create an empty merged config
@@ -46,7 +32,6 @@ function createEmptyMergedConfig(): MergedConfig {
     agents: {},
     rules: {},
     commands: {},
-    memory: getDefaultMemoryConfig(),
     sources: {},
   };
 }
@@ -89,11 +74,6 @@ export function mergeConfigs(
     if (config.agents) Object.assign(result.agents, config.agents);
     if (config.rules) Object.assign(result.rules, config.rules);
     if (config.commands) Object.assign(result.commands, config.commands);
-
-    // Merge memory — scope-level overwrite
-    if (config.memory) {
-      result.memory = mergeMemoryConfig(result.memory, config.memory);
-    }
   }
 
   return result;
@@ -115,17 +95,6 @@ function mergeMcpServerConfig(
     tools: source.tools ?? target.tools,
     excludeTools: source.excludeTools ?? target.excludeTools,
   };
-}
-
-/**
- * Merge memory configs — scopes from source overwrite target at scope level
- */
-function mergeMemoryConfig(
-  target: MemoryConfig,
-  source: Partial<MemoryConfig>
-): MemoryConfig {
-  if (!source.scopes) return target;
-  return { ...target, scopes: { ...target.scopes, ...source.scopes } };
 }
 
 // ============================================================================

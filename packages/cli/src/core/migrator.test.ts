@@ -10,7 +10,6 @@ import type {
   ToolScanResult,
   ScannedSkill,
   ScannedMcp,
-  ScannedMemory,
   MigrationPlan,
 } from "@mycelish/core";
 
@@ -26,17 +25,12 @@ function makeMcp(name: string, source: string, command = "npx", args: string[] =
   return { name, config: { command, args }, source: source as any };
 }
 
-function makeMemory(name: string, source: string): ScannedMemory {
-  return { name, path: `/path/${name}.md`, source: source as any, scope: "shared" };
-}
-
 function makeScan(
   toolId: string,
   skills: ScannedSkill[] = [],
   mcps: ScannedMcp[] = [],
-  memory: ScannedMemory[] = [],
 ): ToolScanResult {
-  return { toolId: toolId as any, toolName: toolId, installed: true, skills, mcps, memory, hooks: [], components: [] };
+  return { toolId: toolId as any, toolName: toolId, installed: true, skills, mcps, hooks: [], components: [] };
 }
 
 // ============================================================================
@@ -44,15 +38,14 @@ function makeScan(
 // ============================================================================
 
 describe("generateMigrationPlan", () => {
-  it("collects skills, mcps, memory from all scans", () => {
+  it("collects skills, mcps from all scans", () => {
     const scans = [
-      makeScan("claude-code", [makeSkill("s1", "claude-code")], [makeMcp("m1", "claude-code")], [makeMemory("mem1", "claude-code")]),
+      makeScan("claude-code", [makeSkill("s1", "claude-code")], [makeMcp("m1", "claude-code")]),
       makeScan("codex", [makeSkill("s2", "codex")]),
     ];
     const plan = generateMigrationPlan(scans);
     expect(plan.skills).toHaveLength(2);
     expect(plan.mcps).toHaveLength(1);
-    expect(plan.memory).toHaveLength(1);
     expect(plan.conflicts).toHaveLength(0);
     expect(plan.strategy).toBe("latest");
   });
@@ -61,7 +54,6 @@ describe("generateMigrationPlan", () => {
     const plan = generateMigrationPlan([]);
     expect(plan.skills).toEqual([]);
     expect(plan.mcps).toEqual([]);
-    expect(plan.memory).toEqual([]);
     expect(plan.conflicts).toEqual([]);
   });
 
@@ -163,15 +155,6 @@ describe("generateMigrationPlan", () => {
     });
   });
 
-  it("collects all memory from all tools", () => {
-    const scans = [
-      makeScan("claude-code", [], [], [makeMemory("proj1", "claude-code")]),
-      makeScan("gemini-cli", [], [], [makeMemory("GEMINI", "gemini-cli")]),
-    ];
-    const plan = generateMigrationPlan(scans);
-    expect(plan.memory).toHaveLength(2);
-  });
-
   it("no conflicts when all skill names are unique", () => {
     const scans = [
       makeScan("claude-code", [makeSkill("a", "claude-code")]),
@@ -229,23 +212,11 @@ describe("scanners", () => {
   });
 
   describe("scanGemini", () => {
-    it("reads GEMINI.md when it exists", async () => {
-      mockDeps(makeFsMock({
-        readFile: vi.fn().mockResolvedValue("# Gemini Memory"),
-      }));
-      const { scanGemini } = await import("./migrator/index.js");
-      const result = await scanGemini();
-      expect(result.toolId).toBe("gemini-cli");
-      expect(result.memory).toHaveLength(1);
-      expect(result.memory[0].name).toBe("GEMINI");
-      expect(result.memory[0].content).toBe("# Gemini Memory");
-    });
-
-    it("returns empty when GEMINI.md missing", async () => {
+    it("returns scan result for gemini", async () => {
       mockDeps(makeFsMock());
       const { scanGemini } = await import("./migrator/index.js");
       const result = await scanGemini();
-      expect(result.memory).toEqual([]);
+      expect(result.toolId).toBe("gemini-cli");
     });
   });
 
@@ -269,18 +240,6 @@ describe("scanners", () => {
       expect(result.mcps[1].config.command).toBe("fs-mcp");
     });
 
-    it("reads AGENTS.md as memory", async () => {
-      mockDeps(makeFsMock({
-        readFile: vi.fn().mockImplementation(async (p: string) => {
-          if (p.includes("AGENTS.md")) return "# Agent instructions";
-          throw new Error("ENOENT");
-        }),
-      }));
-      const { scanCodex } = await import("./migrator/index.js");
-      const result = await scanCodex();
-      expect(result.memory).toHaveLength(1);
-      expect(result.memory[0].name).toBe("AGENTS");
-    });
   });
 
   describe("scanOpenClaw", () => {
@@ -414,7 +373,7 @@ describe("execution", () => {
   });
 
   describe("executeMigration", () => {
-    it("creates symlinks, writes mcps.yaml, copies memory", async () => {
+    it("creates symlinks and writes mcps.yaml", async () => {
       const mockSymlink = vi.fn().mockResolvedValue(undefined);
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       mockDeps(makeFsMock({ symlink: mockSymlink, writeFile: mockWriteFile }));
@@ -423,7 +382,6 @@ describe("execution", () => {
       const plan: MigrationPlan = {
         skills: [{ name: "tdd", path: "/src/tdd", source: "claude-code" }],
         mcps: [{ name: "git", config: { command: "git-mcp", args: ["--stdio"] }, source: "codex" }],
-        memory: [{ name: "proj1", path: "/mem/proj1.md", source: "claude-code", scope: "shared", content: "# Proj" }],
         components: [],
         conflicts: [],
         strategy: "latest",
@@ -433,8 +391,7 @@ describe("execution", () => {
       expect(result.success).toBe(true);
       expect(result.skillsImported).toBe(1);
       expect(result.mcpsImported).toBe(1);
-      expect(result.memoryImported).toBe(1);
-      expect(result.manifest.entries).toHaveLength(3);
+      expect(result.manifest.entries).toHaveLength(2);
       expect(mockSymlink).toHaveBeenCalled();
 
       const yamlCall = mockWriteFile.mock.calls.find((c: any[]) => String(c[0]).includes("mcps.yaml"));
@@ -450,7 +407,6 @@ describe("execution", () => {
       const plan: MigrationPlan = {
         skills: [{ name: "sk", path: "/a", source: "claude-code" }],
         mcps: [],
-        memory: [],
         components: [],
         conflicts: [],
         strategy: "latest",

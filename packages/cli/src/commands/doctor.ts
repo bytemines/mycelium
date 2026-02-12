@@ -23,8 +23,6 @@ export {
   checkMcpConfigYaml,
   checkOrphanedConfigs,
   checkMcpServerConnectivity,
-  checkMemoryFilesExist,
-  checkMemoryFileSize,
   checkToolVersions,
   checkTakenOverPlugins,
   runAllChecks,

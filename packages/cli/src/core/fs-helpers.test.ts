@@ -21,10 +21,6 @@ describe("fs-helpers", () => {
       expect(DEFAULT_PORT).toBe(3378);
     });
 
-    it("exports MEMORY_LINE_LIMIT as 200", async () => {
-      const { MEMORY_LINE_LIMIT } = await import("./fs-helpers.js");
-      expect(MEMORY_LINE_LIMIT).toBe(200);
-    });
   });
 
   describe("readFileIfExists", () => {

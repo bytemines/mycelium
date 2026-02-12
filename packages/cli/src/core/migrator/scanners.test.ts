@@ -112,7 +112,6 @@ describe("scanOpenCode", () => {
     expect(result.toolName).toBe("OpenCode");
     expect(result.installed).toBe(true);
     expect(result.mcps).toEqual([]);
-    expect(result.memory).toEqual([]);
     expect(result.skills).toEqual([]);
   });
 
@@ -173,22 +172,6 @@ describe("scanOpenCode", () => {
       config: { command: "https://mcp.example.com", args: ["remote"] },
       source: "opencode",
     });
-  });
-
-  it("scans AGENTS.md memory", async () => {
-    const { readFileIfExists } = await import("../fs-helpers.js");
-    const agentsPath = path.join("/Users/conrado", ".config", "opencode", "AGENTS.md");
-
-    vi.mocked(readFileIfExists).mockImplementation(async (p: string) => {
-      if (p === agentsPath) return "# Agents\nSome agent config";
-      return null;
-    });
-
-    const result = await scanOpenCode();
-    expect(result.memory).toHaveLength(1);
-    expect(result.memory[0].name).toBe("AGENTS");
-    expect(result.memory[0].source).toBe("opencode");
-    expect(result.memory[0].content).toBe("# Agents\nSome agent config");
   });
 
   it("scans commands as skills", async () => {

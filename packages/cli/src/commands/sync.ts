@@ -6,7 +6,6 @@
  * 2. For each enabled tool:
  *    a. Sync skills via symlinks
  *    b. Inject MCP configs
- *    c. Sync memory files
  */
 
 import * as fs from "node:fs/promises";
@@ -33,7 +32,6 @@ import {
   filterMcpsForTool,
   resolveEnvVarsInMcps,
 } from "../core/mcp-injector.js";
-import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
 import { syncFilesToDir, type FileSyncStrategy } from "../core/file-syncer.js";
 import { startWatcher } from "../core/watcher.js";
 import { restoreBackups, dryRunSync } from "../core/sync-writer.js";
@@ -184,26 +182,6 @@ export async function syncTool(
     const adapter = getAdapter(toolId);
     await adapter.syncAll(resolvedMcps);
 
-    // 7. Sync memory files
-    const memoryResult = await syncMemoryToTool(toolId);
-
-    if (!memoryResult.success) {
-      return {
-        tool: toolId,
-        status: "error",
-        skillsCount,
-        mcpsCount,
-        agentsCount,
-        rulesCount,
-        commandsCount,
-        memoryFiles: [],
-        error: memoryResult.error,
-      };
-    }
-
-    // 8. Get memory files for status reporting
-    const memoryFiles = await getMemoryFilesForTool(toolId);
-
     return {
       tool: toolId,
       status: "synced",
@@ -212,7 +190,6 @@ export async function syncTool(
       agentsCount,
       rulesCount,
       commandsCount,
-      memoryFiles: memoryFiles.map((f) => f.filename),
       lastSync: new Date(),
     };
   } catch (error) {
@@ -224,7 +201,6 @@ export async function syncTool(
       agentsCount: 0,
       rulesCount: 0,
       commandsCount: 0,
-      memoryFiles: [],
       error: error instanceof Error ? error.message : String(error),
     };
   }

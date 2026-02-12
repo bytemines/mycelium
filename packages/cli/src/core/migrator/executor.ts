@@ -24,9 +24,7 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
   const now = new Date().toISOString();
 
   const skillsDir = path.join(MYCELIUM_DIR, "global", "skills");
-  const memoryDir = path.join(MYCELIUM_DIR, "global", "memory", "shared");
   await mkdirp(skillsDir);
-  await mkdirp(memoryDir);
 
   // Skills: symlink from original path
   let skillsImported = 0;
@@ -79,31 +77,6 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
       }
     } catch (err) {
       errors.push(`Failed to write mcps.yaml: ${err}`);
-    }
-  }
-
-  // Memory: copy files
-  let memoryImported = 0;
-  for (const mem of plan.memory) {
-    const dest = path.join(memoryDir, `${mem.source}-${mem.name}.md`);
-    try {
-      if (mem.content) {
-        await fs.writeFile(dest, mem.content, "utf-8");
-      } else {
-        await fs.copyFile(mem.path, dest);
-      }
-      memoryImported++;
-      entries.push({
-        name: mem.name,
-        type: "memory",
-        source: mem.source,
-        originalPath: mem.path,
-        importedPath: dest,
-        importedAt: now,
-        strategy: plan.strategy,
-      });
-    } catch (err) {
-      errors.push(`Failed to copy memory ${mem.name}: ${err}`);
     }
   }
 
@@ -170,7 +143,6 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
     success: errors.length === 0,
     skillsImported,
     mcpsImported,
-    memoryImported,
     componentsImported,
     conflicts: plan.conflicts,
     errors,

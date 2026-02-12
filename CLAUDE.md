@@ -92,12 +92,6 @@ and imports skills/MCPs/memory into mycelium. Manifest tracked at `~/.mycelium/m
 Registry-driven (YAML config at `~/.mycelium/marketplace-registry.yaml`).
 Sources are pluggable — add/remove via CLI. `marketplace-registry.ts` manages discovery and state.
 
-### Memory Sync
-`memory-scoper.ts` routes memory files from `~/.mycelium/global/memory/{shared,coding,personal}/`
-to each tool's global memory path. `smart-memory.ts` handles compression and deduplication.
-Watcher triggers re-sync on `.md` file changes in memory scope directories.
-See `docs/memory-architecture.md` for full details.
-
 ### Observability
 `trace-store.ts` stores structured events in SQLite (`~/.mycelium/traces/trace.db`).
 `tracer.ts` provides `createTrace()` API — returns a `TraceLogger` with info/warn/error methods.
@@ -146,5 +140,4 @@ The auto-adapter (`packages/cli/src/core/auto-adapter.ts`) generates adapters fr
 - `preset load` prints planned actions but does not execute enable/disable
 - `Graph.tsx` is ~600 lines — should be refactored (extract edge-building, plugin nodes)
 - `doctor.ts` checkMcpServerConnectivity spawns actual MCP commands (could use `which` instead)
-- `memoryLimits` in `doctor.ts` could derive from `TOOL_REGISTRY` (currently separate)
 - `dryRunSync` doesn't use `entryShape` for vscode/opencode preview (cosmetic)

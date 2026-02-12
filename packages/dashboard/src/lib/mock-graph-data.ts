@@ -7,7 +7,7 @@
  * 3. **Generator** (generateMockData) — dynamic creation with configurable counts + distributions
  *
  * URL activation: ?debug=small|medium|large|xl|single-tool|radial|heavy-mcp|empty
- * Custom: ?debug=custom&tools=3&mcps=10&memory=5&skills=4&plugins=3&disabledRatio=0.3
+ * Custom: ?debug=custom&tools=3&mcps=10&skills=4&plugins=3&disabledRatio=0.3
  */
 import type { DashboardGraphData } from "./graph-builder";
 import type { Status } from "@/types";
@@ -47,23 +47,6 @@ const SKILL_POOL = [
   "env-sync", "secret-rotate", "changelog-gen", "pr-template", "benchmark",
 ] as const;
 
-const MEMORY_POOL = [
-  { name: "Argusito", scope: "shared" as const },
-  { name: "mycelium", scope: "shared" as const },
-  { name: "vnido", scope: "shared" as const },
-  { name: "bytemines-io", scope: "shared" as const },
-  { name: "trading-bot", scope: "shared" as const },
-  { name: "personal-notes", scope: "personal" as const },
-  { name: "coding-standards", scope: "coding" as const },
-  { name: "architecture-decisions", scope: "shared" as const },
-  { name: "api-patterns", scope: "coding" as const },
-  { name: "team-conventions", scope: "shared" as const },
-  { name: "incident-log", scope: "shared" as const },
-  { name: "performance-baselines", scope: "coding" as const },
-  { name: "security-policies", scope: "shared" as const },
-  { name: "onboarding-guide", scope: "shared" as const },
-] as const;
-
 // ── Builders (type-safe, composable) ──
 
 function mkTool(id: string, name: string, installed = true) {
@@ -72,10 +55,6 @@ function mkTool(id: string, name: string, installed = true) {
 
 function mkMcp(name: string, enabled = true, connectedTools?: string[]) {
   return { name, status: (enabled ? "synced" : "disabled") as Status, enabled, connectedTools };
-}
-
-function mkMemory(name: string, scope: "shared" | "coding" | "personal" = "shared") {
-  return { name, scope, status: "synced" as Status };
 }
 
 function mkSkill(name: string, enabled = true, connectedTools?: string[]) {
@@ -102,7 +81,6 @@ export const MOCK_SMALL: DashboardGraphData = {
   ],
   skills: [],
   mcps: [mkMcp("context7"), mkMcp("playwright"), mkMcp("whark-trading", false)],
-  memory: [mkMemory("Argusito"), mkMemory("mycelium"), mkMemory("vnido")],
 };
 
 export const MOCK_MEDIUM: DashboardGraphData = {
@@ -114,10 +92,6 @@ export const MOCK_MEDIUM: DashboardGraphData = {
   mcps: [
     mkMcp("context7"), mkMcp("playwright"), mkMcp("whark-trading", false),
     mkMcp("massive", false), mkMcp("supabase"), mkMcp("github-mcp"), mkMcp("linear"),
-  ],
-  memory: [
-    mkMemory("Argusito"), mkMemory("mycelium"), mkMemory("vnido"),
-    mkMemory("bytemines-io"), mkMemory("personal-notes", "personal"), mkMemory("coding-standards", "coding"),
   ],
 };
 
@@ -134,7 +108,6 @@ export const MOCK_LARGE: DashboardGraphData = {
     mkSkill("perf-profile", true, ["claude-code"]),
   ],
   mcps: MCP_POOL.slice(0, 12).map((name, i) => mkMcp(name, i !== 2 && i !== 3 && i !== 11)),
-  memory: MEMORY_POOL.slice(0, 10).map((m) => mkMemory(m.name, m.scope)),
 };
 
 export const MOCK_XL: DashboardGraphData = {
@@ -148,7 +121,6 @@ export const MOCK_XL: DashboardGraphData = {
     return mkSkill(name, true, connected);
   }),
   mcps: MCP_POOL.map((name, i) => mkMcp(name, i % 5 !== 0)),
-  memory: MEMORY_POOL.map((m) => mkMemory(m.name, m.scope)),
 };
 
 // ── Approach 2: Scenario datasets (targeted layout/edge-case testing) ──
@@ -159,7 +131,6 @@ export const MOCK_SINGLE_TOOL: DashboardGraphData = {
   plugins: [mkPlugin("superpowers", "superpowers-marketplace", ["tdd", "debugging"])],
   skills: [mkSkill("lint-fix", true, ["claude-code"])],
   mcps: [mkMcp("context7", true, ["claude-code"]), mkMcp("playwright", true, ["claude-code"])],
-  memory: [mkMemory("project-a")],
 };
 
 /** Radial sector test — explicit per-tool connectivity to validate sector grouping */
@@ -180,11 +151,6 @@ export const MOCK_RADIAL_TEST: DashboardGraphData = {
     mkMcp("shared-mcp", true, ["claude-code", "codex"]),
     mkMcp("all-mcp", true, ["claude-code", "codex", "gemini"]),
   ],
-  memory: [
-    mkMemory("shared-mem"),
-    mkMemory("coding-mem", "coding"),
-    mkMemory("personal-mem", "personal"),
-  ],
 };
 
 /** Heavy MCP — many MCPs, few of everything else; tests bottom-layer crowding */
@@ -193,7 +159,6 @@ export const MOCK_HEAVY_MCP: DashboardGraphData = {
   plugins: [],
   skills: [],
   mcps: MCP_POOL.map((name, i) => mkMcp(name, i % 3 !== 0, i % 2 === 0 ? ["claude-code"] : ["codex"])),
-  memory: [mkMemory("project-a")],
 };
 
 /** Empty state — no resources at all, only tools */
@@ -202,7 +167,6 @@ export const MOCK_EMPTY: DashboardGraphData = {
   plugins: [],
   skills: [],
   mcps: [],
-  memory: [],
 };
 
 // ── Approach 3: Dynamic generator (configurable counts + distributions) ──
@@ -210,7 +174,6 @@ export const MOCK_EMPTY: DashboardGraphData = {
 export interface MockDataConfig {
   tools?: number;
   mcps?: number;
-  memory?: number;
   skills?: number;
   plugins?: number;
   /** Ratio of disabled MCPs (0-1, default 0.2) */
@@ -233,7 +196,6 @@ export function generateMockData(config: MockDataConfig): DashboardGraphData {
   const rand = seededRandom(config.seed ?? Date.now());
   const numTools = Math.min(config.tools ?? 2, TOOL_POOL.length);
   const numMcps = config.mcps ?? 3;
-  const numMemory = config.memory ?? 2;
   const numSkills = config.skills ?? 0;
   const numPlugins = config.plugins ?? 2;
   const disabledRatio = config.disabledRatio ?? 0.2;
@@ -268,11 +230,6 @@ export function generateMockData(config: MockDataConfig): DashboardGraphData {
       const name = i < MCP_POOL.length ? MCP_POOL[i] : `${MCP_POOL[i % MCP_POOL.length]}-${i}`;
       return mkMcp(name, rand() > disabledRatio, pickTools(i));
     }),
-    memory: Array.from({ length: numMemory }, (_, i) => {
-      const src = MEMORY_POOL[i % MEMORY_POOL.length];
-      const name = i < MEMORY_POOL.length ? src.name : `${src.name}-${i}`;
-      return mkMemory(name, src.scope);
-    }),
   };
 }
 
@@ -305,7 +262,6 @@ export function getDebugMockData(): DashboardGraphData | null {
     return generateMockData({
       tools: parseInt(params.get("tools") ?? "2", 10),
       mcps: parseInt(params.get("mcps") ?? "3", 10),
-      memory: parseInt(params.get("memory") ?? "2", 10),
       skills: parseInt(params.get("skills") ?? "0", 10),
       plugins: parseInt(params.get("plugins") ?? "2", 10),
       disabledRatio: parseFloat(params.get("disabledRatio") ?? "0.2"),

@@ -187,7 +187,7 @@ args = ["my-mcp"]
 
       const { verifyItemState } = await import("./state-verifier.js");
 
-      for (const type of ["skill", "mcp", "hook", "memory", "agent", "command"] as const) {
+      for (const type of ["skill", "mcp", "hook", "agent", "command"] as const) {
         const result = await verifyItemState("test-item", { tool: "claude-code" as any, type });
         expect(result.type).toBe(type);
         expect(result.toolPresence).toHaveLength(1);

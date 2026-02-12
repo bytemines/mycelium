@@ -4,7 +4,6 @@
  * The status command shows sync status of all tools including:
  * - Skills count
  * - MCPs count
- * - Memory files count
  * - Sync status (synced, pending, error, disabled)
  */
 
@@ -65,14 +64,12 @@ describe("status command", () => {
         myceliumPath: mockMyceliumDir,
         toolSkillsPath: `${toolDir}/skills`,
         toolMcpPath: `${toolDir}/mcp.json`,
-        toolMemoryPath: `${toolDir}/CLAUDE.md`,
       });
 
       expect(status.tool).toBe("claude-code");
       expect(status.status).toBeDefined();
       expect(typeof status.skillsCount).toBe("number");
       expect(typeof status.mcpsCount).toBe("number");
-      expect(Array.isArray(status.memoryFiles)).toBe(true);
     });
 
     it("counts skills correctly", async () => {
@@ -103,7 +100,6 @@ describe("status command", () => {
         myceliumPath: mockMyceliumDir,
         toolSkillsPath: skillsDir,
         toolMcpPath: `${toolDir}/mcp.json`,
-        toolMemoryPath: `${toolDir}/CLAUDE.md`,
       });
 
       expect(status.skillsCount).toBe(3);
@@ -148,7 +144,6 @@ describe("status command", () => {
         myceliumPath: mockMyceliumDir,
         toolSkillsPath: `${toolDir}/skills`,
         toolMcpPath: `${toolDir}/mcp.json`,
-        toolMemoryPath: `${toolDir}/CLAUDE.md`,
       });
 
       expect(status.mcpsCount).toBe(8);
@@ -174,11 +169,9 @@ describe("status command", () => {
         myceliumPath: mockMyceliumDir,
         toolSkillsPath: `${toolDir}/skills`,
         toolMcpPath: `${toolDir}/mcp.json`,
-        toolMemoryPath: `${toolDir}/CLAUDE.md`,
       });
 
-      // claude-code gets shared + coding scopes = 3 files
-      expect(status.memoryFiles.length).toBe(3);
+      expect(status.status).toBeDefined();
     });
 
     it("returns 'disabled' for disabled tools", async () => {
@@ -200,7 +193,6 @@ describe("status command", () => {
         myceliumPath: mockMyceliumDir,
         toolSkillsPath: `${toolDir}/skills`,
         toolMcpPath: `${toolDir}/mcp.json`,
-        toolMemoryPath: `${toolDir}/GEMINI.md`,
         isDisabled: true,
       });
 
@@ -222,7 +214,6 @@ describe("status command", () => {
         myceliumPath: mockMyceliumDir,
         toolSkillsPath: `${toolDir}/skills`,
         toolMcpPath: `${toolDir}/mcp.json`,
-        toolMemoryPath: `${toolDir}/CLAUDE.md`,
       });
 
       expect(status.status).toBe("pending");
@@ -271,7 +262,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: ["memory1.md", "memory2.md", "memory3.md"],
         },
         {
           tool: "gemini-cli" as const,
@@ -281,7 +271,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: [],
         },
       ];
 
@@ -292,7 +281,6 @@ describe("status command", () => {
       expect(output).toContain("Claude Code");
       expect(output).toContain("Skills: 12");
       expect(output).toContain("MCPs: 8");
-      expect(output).toContain("Memory: 3 files");
       expect(output).toContain("Gemini CLI");
       expect(output).toContain("disabled");
     });
@@ -309,7 +297,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: ["m1.md"],
         },
         {
           tool: "codex" as const,
@@ -319,7 +306,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: [],
         },
         {
           tool: "gemini-cli" as const,
@@ -329,7 +315,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: [],
           error: "Config not found",
         },
         {
@@ -340,7 +325,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: [],
         },
       ];
 
@@ -369,7 +353,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: ["m1.md"],
           itemState: "disabled" as const,
         },
       ];
@@ -391,7 +374,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: ["m1.md"],
           itemState: "deleted" as const,
         },
         {
@@ -402,7 +384,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: [],
         },
       ];
 
@@ -424,7 +405,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: ["m1.md"],
           itemState: "deleted" as const,
         },
       ];
@@ -447,7 +427,6 @@ describe("status command", () => {
           agentsCount: 0,
           rulesCount: 0,
           commandsCount: 0,
-          memoryFiles: [],
         },
       ];
 

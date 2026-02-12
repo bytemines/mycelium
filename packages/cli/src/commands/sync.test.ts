@@ -43,11 +43,6 @@ vi.mock("../core/tool-adapter.js", () => ({
   })),
 }));
 
-vi.mock("../core/memory-scoper.js", () => ({
-  syncMemoryToTool: vi.fn(),
-  getMemoryFilesForTool: vi.fn(),
-}));
-
 // Import the module under test (doesn't exist yet - tests will fail)
 import { syncAll, syncTool, loadEnvFile } from "./sync.js";
 
@@ -58,7 +53,6 @@ import {
   filterMcpsForTool,
   resolveEnvVarsInMcps,
 } from "../core/mcp-injector.js";
-import { syncMemoryToTool, getMemoryFilesForTool } from "../core/memory-scoper.js";
 import { getAdapter } from "../core/tool-adapter.js";
 
 describe("Sync Command", () => {
@@ -88,13 +82,6 @@ describe("Sync Command", () => {
         name: "superpowers",
         path: "/Users/test/.mycelium/skills/superpowers",
         manifest: { name: "superpowers", state: "enabled" },
-      },
-    },
-    memory: {
-      scopes: {
-        shared: { syncTo: ["claude-code", "codex"], path: "", files: [] },
-        coding: { syncTo: ["claude-code"], path: "", files: [] },
-        personal: { syncTo: ["openclaw"], path: "", files: [] },
       },
     },
     agents: {},
@@ -128,14 +115,6 @@ describe("Sync Command", () => {
       (mcps, _envVars) => mcps
     );
 
-    (syncMemoryToTool as MockedFunction<typeof syncMemoryToTool>).mockResolvedValue({
-      success: true,
-      filesWritten: 1,
-    });
-
-    (getMemoryFilesForTool as MockedFunction<typeof getMemoryFilesForTool>).mockResolvedValue([
-      { scope: "shared", filename: "shared.md", path: "/path/to/shared.md" },
-    ]);
   });
 
   describe("syncAll", () => {
@@ -196,7 +175,6 @@ describe("Sync Command", () => {
       expect(toolStatus).toHaveProperty("status");
       expect(toolStatus).toHaveProperty("skillsCount");
       expect(toolStatus).toHaveProperty("mcpsCount");
-      expect(toolStatus).toHaveProperty("memoryFiles");
     });
 
     it("handles errors gracefully and continues with other tools", async () => {
@@ -299,14 +277,6 @@ describe("Sync Command", () => {
       expect(mockSyncAll).toHaveBeenCalled();
     });
 
-    it("syncs memory to specific tool", async () => {
-      const toolId: ToolId = "claude-code";
-
-      await syncTool(toolId, sampleMergedConfig);
-
-      expect(syncMemoryToTool).toHaveBeenCalledWith(toolId);
-    });
-
     it("returns ToolSyncStatus with correct counts", async () => {
       const toolId: ToolId = "claude-code";
 
@@ -325,18 +295,12 @@ describe("Sync Command", () => {
         mcp2: { command: "test2", state: "enabled" as const },
       });
 
-      (getMemoryFilesForTool as MockedFunction<typeof getMemoryFilesForTool>).mockResolvedValue([
-        { scope: "shared", filename: "shared.md", path: "/path/shared.md" },
-        { scope: "coding", filename: "coding.md", path: "/path/coding.md" },
-      ]);
-
       const result = await syncTool(toolId, sampleMergedConfig);
 
       expect(result.tool).toBe(toolId);
       expect(result.status).toBe("synced");
       expect(result.skillsCount).toBe(3); // 2 created + 1 updated
       expect(result.mcpsCount).toBe(2);
-      expect(result.memoryFiles).toHaveLength(2);
     });
 
     it("returns error status when skill sync fails", async () => {
@@ -459,20 +423,6 @@ describe("Sync Command", () => {
       expect(mcpServers["whark-trading"].command).toBe("uvx");
     });
 
-    it("returns error status when memory sync fails", async () => {
-      const toolId: ToolId = "claude-code";
-
-      (syncMemoryToTool as MockedFunction<typeof syncMemoryToTool>).mockResolvedValue({
-        success: false,
-        filesWritten: 0,
-        error: "Memory sync failed",
-      });
-
-      const result = await syncTool(toolId, sampleMergedConfig);
-
-      expect(result.status).toBe("error");
-      expect(result.error).toBe("Memory sync failed");
-    });
   });
 
   describe("loadEnvFile", () => {

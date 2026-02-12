@@ -10,8 +10,6 @@ export const codex: ToolDescriptor = {
     projectMcp: null,
     skills: "~/.codex/skills",
     projectSkills: null,
-    globalMemory: "~/.codex/AGENTS.md",
-    projectMemory: "AGENTS.md",
     agents: null,
     projectAgents: null,
     rules: ".codex/rules/",
@@ -20,8 +18,6 @@ export const codex: ToolDescriptor = {
     backupDirs: ["~/.codex"],
   },
   mcp: { format: "toml", key: "mcp.servers", entryShape: "standard" },
-  scopes: ["shared", "coding"],
-  capabilities: ["mcp", "skills", "memory", "rules", "hooks"],
+  capabilities: ["mcp", "skills", "rules", "hooks"],
   enabled: true,
-  memoryMaxLines: null,
 };

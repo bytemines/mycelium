@@ -10,8 +10,6 @@ export const claudeCode: ToolDescriptor = {
     projectMcp: ".claude/mcp.json",
     skills: "~/.claude/skills",
     projectSkills: ".claude/skills/",
-    globalMemory: "~/.claude/CLAUDE.md",
-    projectMemory: "CLAUDE.md",
     agents: "~/.claude/agents/",
     projectAgents: ".claude/agents/",
     rules: null,
@@ -20,8 +18,6 @@ export const claudeCode: ToolDescriptor = {
     backupDirs: ["~/.claude", "~/"],
   },
   mcp: { format: "json", key: "mcpServers", entryShape: "standard" },
-  scopes: ["shared", "coding"],
-  capabilities: ["mcp", "skills", "memory", "agents", "hooks"],
+  capabilities: ["mcp", "skills", "agents", "hooks"],
   enabled: true,
-  memoryMaxLines: 200,
 };

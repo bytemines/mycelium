@@ -5,7 +5,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerConfigTools } from "./tools/config-tools.js";
 import { registerItemTools } from "./tools/item-tools.js";
-import { registerMemoryTools } from "./tools/memory-tools.js";
 import { registerMarketplaceTools } from "./tools/marketplace-tools.js";
 import { registerObserveTools } from "./tools/observe-tools.js";
 import { registerResources } from "./resources.js";
@@ -19,7 +18,6 @@ export function createMyceliumMcpServer(): McpServer {
 
   registerConfigTools(server);
   registerItemTools(server);
-  registerMemoryTools(server);
   registerMarketplaceTools(server);
   registerObserveTools(server);
 

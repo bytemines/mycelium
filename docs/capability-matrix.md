@@ -4,22 +4,21 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 
 ## Matrix Overview
 
-| Tool | Skills | MCPs | Agents | Rules | Hooks | Commands | Memory |
-|------|--------|------|--------|-------|-------|----------|--------|
-| Claude Code | Symlink | Config (json) | Symlink | - | Config | - | Write |
-| Codex CLI | Symlink | Config (toml) | - | Copy | Config | - | Write |
-| Gemini CLI | Symlink | Config (json) | - | - | Config | - | Write |
-| OpenCode | Symlink | Config (json) | Symlink | - | Config | Symlink | Write |
-| OpenClaw | Symlink | Config (json) | - | - | Copy | - | Write |
-| Cursor | - | Config (json) | Symlink | Copy | Config | Symlink | Write |
-| VS Code | Symlink | Config (jsonc) | Symlink | Symlink | - | - | Write |
-| Antigravity | Symlink | Config (json) | Symlink | - | - | - | Write |
+| Tool | Skills | MCPs | Agents | Rules | Hooks | Commands |
+|------|--------|------|--------|-------|-------|----------|
+| Claude Code | Symlink | Config (json) | Symlink | - | Config | - |
+| Codex CLI | Symlink | Config (toml) | - | Copy | Config | - |
+| Gemini CLI | Symlink | Config (json) | - | - | Config | - |
+| OpenCode | Symlink | Config (json) | Symlink | - | Config | Symlink |
+| OpenClaw | Symlink | Config (json) | - | - | Copy | - |
+| Cursor | - | Config (json) | Symlink | Copy | Config | Symlink |
+| VS Code | Symlink | Config (jsonc) | Symlink | Symlink | - | - |
+| Antigravity | Symlink | Config (json) | Symlink | - | - | - |
 
 **Legend:**
 - **Symlink** — Mycelium creates symlinks from the central store into the tool's directory
 - **Config** — Mycelium writes entries into the tool's native config file (format in parentheses)
 - **Copy** — Mycelium copies files into the tool's directory (used when the tool doesn't support symlinks)
-- **Write** — Mycelium writes/appends to the tool's memory file
 - **-** — Not supported by this tool
 
 ## Detailed Paths
@@ -32,7 +31,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | MCPs | Config (json) | `~/.claude.json` (`mcpServers`) | `.claude/mcp.json` |
 | Agents | Symlink | `~/.claude/agents/` | `.claude/agents/` |
 | Hooks | Config | `~/.claude/settings.json` | - |
-| Memory | Write | `~/.claude/CLAUDE.md` | `CLAUDE.md` |
 
 ### Codex CLI
 
@@ -42,7 +40,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | MCPs | Config (toml) | `~/.codex/config.toml` (`mcp.servers`) | - |
 | Rules | Copy | - | `.codex/rules/` |
 | Hooks | Config | `~/.codex/config.toml` | - |
-| Memory | Write | `~/.codex/AGENTS.md` | `AGENTS.md` |
 
 ### Gemini CLI
 
@@ -51,7 +48,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | Skills | Symlink | `~/.gemini/extensions/` | - |
 | MCPs | Config (json) | `~/.gemini/settings.json` (`mcpServers`) | - |
 | Hooks | Config | `~/.gemini/settings.json` | - |
-| Memory | Write | `~/.gemini/GEMINI.md` | `GEMINI.md` |
 
 ### OpenCode
 
@@ -62,7 +58,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | Agents | Symlink | `~/.config/opencode/agents/` | `.opencode/agents/` |
 | Hooks | Config | `~/.config/opencode/settings.json` | - |
 | Commands | Symlink | `~/.config/opencode/commands/` | - |
-| Memory | Write | `~/.opencode/context.md` | - |
 
 ### OpenClaw
 
@@ -71,7 +66,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | Skills | Symlink | `~/.openclaw/skills/` | - |
 | MCPs | Config (json) | `~/.openclaw/openclaw.json` (`plugins.entries`, openclaw shape) | - |
 | Hooks | Copy | `~/.openclaw/hooks/` | - |
-| Memory | Write | `~/.openclaw/MEMORY.md` | - |
 
 ### Cursor
 
@@ -82,7 +76,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | Rules | Copy (.mdc) | - | `.cursor/rules/` |
 | Hooks | Config | - | `.cursor/hooks.json` |
 | Commands | Symlink | - | `.cursor/commands/` |
-| Memory | Write | - | `.cursorrules` |
 
 **Note:** Cursor rules use `.mdc` format (Markdown Components). Cursor has no global skills path.
 
@@ -94,7 +87,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | MCPs | Config (jsonc) | Platform-dependent (see below) | `.vscode/mcp.json` |
 | Agents | Symlink | - | `.github/agents/` |
 | Rules | Symlink | - | `.github/instructions/` |
-| Memory | Write | - | `.github/copilot-instructions.md` |
 
 **MCP global paths by platform:**
 - macOS: `~/Library/Application Support/Code/User/mcp.json`
@@ -110,7 +102,6 @@ This document maps every supported tool to its capabilities, sync mechanisms, an
 | Skills | Symlink | `~/.gemini/antigravity/skills/` | `.agent/skills/` |
 | MCPs | Config (json) | `~/.gemini/antigravity/mcp_config.json` (`mcpServers`) | - |
 | Agents | Symlink | - | `.agent/` |
-| Memory | Write | `~/.gemini/antigravity/rules.md` | `.antigravity/rules.md` |
 
 ## MCP Entry Shapes
 

@@ -2,7 +2,7 @@
  * State Verifier — checks both mycelium manifest AND actual tool config files.
  *
  * Answers the question: "Is item X truly disabled/absent in tool Y's config?"
- * Works for all item types (skill, mcp, hook, memory, agent, command)
+ * Works for all item types (skill, mcp, hook, agent, command)
  * and all 9 tools.
  */
 
@@ -106,11 +106,6 @@ async function checkFileInToolDir(name: string, toolId: ToolId, pathKey: keyof i
   }
 }
 
-/** Check if a memory file exists in a tool's memory directory */
-async function checkMemoryInTool(name: string, toolId: ToolId): Promise<{ present: boolean; configPath: string | null; details?: string }> {
-  return checkFileInToolDir(name, toolId, "globalMemory");
-}
-
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -138,7 +133,7 @@ const TYPE_TO_CHECK: Record<ItemType, (name: string, toolId: ToolId) => Promise<
   agent: (name, toolId) => checkFileInToolDir(name, toolId, "agents"),
   command: (name, toolId) => checkFileInToolDir(name, toolId, "skills"), // commands live in skills dir
   hook: (name, toolId) => checkFileInToolDir(name, toolId, "hooks"),
-  memory: checkMemoryInTool,
+  memory: async () => ({ present: false, configPath: null }),
 };
 
 // ============================================================================

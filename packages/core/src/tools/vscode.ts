@@ -14,8 +14,6 @@ export const vscode: ToolDescriptor = {
     projectMcp: ".vscode/mcp.json",
     skills: null,
     projectSkills: ".github/skills/",
-    globalMemory: null,
-    projectMemory: ".github/copilot-instructions.md",
     agents: null,
     projectAgents: ".github/agents/",
     rules: ".github/instructions/",
@@ -24,8 +22,6 @@ export const vscode: ToolDescriptor = {
     backupDirs: [],
   },
   mcp: { format: "jsonc", key: "servers", entryShape: "vscode" },
-  scopes: ["shared", "coding"],
-  capabilities: ["mcp", "skills", "memory", "agents", "rules"],
+  capabilities: ["mcp", "skills", "agents", "rules"],
   enabled: true,
-  memoryMaxLines: null,
 };

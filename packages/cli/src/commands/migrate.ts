@@ -136,7 +136,7 @@ export const migrateCommand = new Command("migrate")
         const plugins = new Set(scan.skills.filter(s => s.pluginName).map(s => `${s.marketplace}/${s.pluginName}`));
         const pluginInfo = plugins.size > 0 ? ` (${plugins.size} plugins)` : "";
         console.log(
-          `  ✓ ${scan.toolName}: ${scan.skills.length} skills${pluginInfo}, ${scan.mcps.length} MCPs, ${scan.memory.length} memory files`,
+          `  ✓ ${scan.toolName}: ${scan.skills.length} skills${pluginInfo}, ${scan.mcps.length} MCPs`,
         );
       } else {
         console.log(`  ✗ ${scan.toolName}: not installed`);
@@ -148,9 +148,9 @@ export const migrateCommand = new Command("migrate")
 
     // Filter by type if requested
     if (opts.skillsOnly) {
-      plan = { ...plan, mcps: [], memory: [] };
+      plan = { ...plan, mcps: [] };
     } else if (opts.mcpsOnly) {
-      plan = { ...plan, skills: [], memory: [] };
+      plan = { ...plan, skills: [] };
     }
 
     console.log("\nMigration Plan:");
@@ -176,13 +176,6 @@ export const migrateCommand = new Command("migrate")
         console.log(`    ${m.name} (${m.source}) — ${m.config.command}`);
       }
     }
-    if (plan.memory.length > 0) {
-      console.log(`  Memory (${plan.memory.length} files):`);
-      for (const m of plan.memory) {
-        console.log(`    ${m.source}/${m.name}`);
-      }
-    }
-
     if (plan.conflicts.length > 0) {
       console.log(`\n  Conflicts (${plan.conflicts.length}):`);
       for (const c of plan.conflicts) {
@@ -210,7 +203,7 @@ export const migrateCommand = new Command("migrate")
         const raw = await fs.readFile(manifestPath, "utf-8");
         const parsed = JSON.parse(raw);
         // Detect v1 format: any item has "enabled" field
-        const sections = ["skills", "mcps", "hooks", "memory"];
+        const sections = ["skills", "mcps", "hooks"];
         const hasEnabledField = sections.some((s) => {
           const items = parsed[s];
           if (!items || typeof items !== "object") return false;
@@ -256,9 +249,9 @@ export const migrateCommand = new Command("migrate")
       console.log(`Wrote ${allHooks.length} hooks to hooks.yaml`);
     }
 
-    log.info({ scope: "migration", op: "complete", msg: `Imported ${result.skillsImported} skills, ${result.mcpsImported} MCPs, ${result.memoryImported} memory` });
+    log.info({ scope: "migration", op: "complete", msg: `Imported ${result.skillsImported} skills, ${result.mcpsImported} MCPs` });
     console.log(
-      `\nDone! Imported ${result.skillsImported} skills, ${result.mcpsImported} MCPs, ${result.memoryImported} memory files.`,
+      `\nDone! Imported ${result.skillsImported} skills, ${result.mcpsImported} MCPs.`,
     );
     if (result.errors.length > 0) {
       console.error("Errors:");

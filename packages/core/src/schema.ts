@@ -43,23 +43,6 @@ export const skillManifestSchema = z.object({
 });
 
 // ============================================================================
-// Memory Schemas
-// ============================================================================
-
-export const memoryScopeSchema = z.enum(["shared", "coding", "personal"]);
-
-export const memoryScopeConfigSchema = z.object({
-  syncTo: z.array(toolIdSchema),
-  excludeFrom: z.array(toolIdSchema).optional(),
-  path: z.string(),
-  files: z.array(z.string()),
-});
-
-export const memoryConfigSchema = z.object({
-  scopes: z.record(memoryScopeSchema, memoryScopeConfigSchema),
-});
-
-// ============================================================================
 // Manifest Schemas
 // ============================================================================
 
@@ -71,7 +54,6 @@ export const manifestSchema = z.object({
       enabled: z.boolean(),
     })
   ),
-  memory: memoryConfigSchema,
 });
 
 // ============================================================================
@@ -82,6 +64,5 @@ export const machineOverridesSchema = z.object({
   hostname: z.string(),
   mcps: z.record(z.string(), mcpServerConfigSchema.partial()).optional(),
   skills: z.record(z.string(), skillManifestSchema.partial()).optional(),
-  memory: memoryConfigSchema.partial().optional(),
 });
 

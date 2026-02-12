@@ -17,8 +17,6 @@ import {
   checkMcpConfigYaml,
   checkOrphanedConfigs,
 } from "./config-check.js";
-import { checkMemoryFilesExist, checkMemoryFileSize } from "./memory-check.js";
-import { TOOL_MAX_LINES } from "../../core/fs-helpers.js";
 import { checkToolVersions } from "./tool-version-check.js";
 import type { DiagnosticResult, DoctorResult } from "./types.js";
 
@@ -40,12 +38,7 @@ export async function runAllChecks(): Promise<DoctorResult> {
     checks.push(await checkManifestValid());
   }
 
-  // 3. Check memory files
-  if (globalExists) {
-    checks.push(await checkMemoryFilesExist());
-  }
-
-  // 4. Check each tool's paths and configs
+  // 3. Check each tool's paths and configs
   for (const [toolId, desc] of Object.entries(TOOL_REGISTRY)) {
     // Check skills path
     checks.push(await checkToolPathExists(toolId as ToolId));
@@ -68,23 +61,15 @@ export async function runAllChecks(): Promise<DoctorResult> {
     }
   }
 
-  // 5. Check for orphaned configs
+  // 4. Check for orphaned configs
   if (globalExists) {
     checks.push(await checkOrphanedConfigs());
   }
 
-  // 6. Check tool versions
+  // 5. Check tool versions
   checks.push(await checkToolVersions());
 
-  // 7. Check memory file sizes for tools with limits
-  for (const [toolId, maxLines] of Object.entries(TOOL_MAX_LINES)) {
-    if (maxLines == null) continue;
-    const desc = TOOL_REGISTRY[toolId];
-    const memoryPath = resolvePath(desc.paths.globalMemory) ?? "";
-    checks.push(await checkMemoryFileSize(memoryPath, maxLines));
-  }
-
-  // 8. Check taken-over plugins
+  // 6. Check taken-over plugins
   try {
     const { checkTakenOverPlugins } = await import("./plugin-takeover-check.js");
     const pluginChecks = await checkTakenOverPlugins();
@@ -93,7 +78,7 @@ export async function runAllChecks(): Promise<DoctorResult> {
     // plugin takeover check is optional
   }
 
-  // 9. Check MCP self-registration
+  // 7. Check MCP self-registration
   try {
     const { checkSelfRegistration } = await import("./mcp-check.js");
     const selfRegChecks = await checkSelfRegistration();

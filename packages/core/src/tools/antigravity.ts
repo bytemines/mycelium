@@ -10,8 +10,6 @@ export const antigravity: ToolDescriptor = {
     projectMcp: null,
     skills: "~/.gemini/antigravity/skills/",
     projectSkills: ".agent/skills/",
-    globalMemory: "~/.gemini/antigravity/rules.md",
-    projectMemory: ".antigravity/rules.md",
     agents: null,
     projectAgents: ".agent/",
     rules: null,
@@ -20,8 +18,6 @@ export const antigravity: ToolDescriptor = {
     backupDirs: ["~/.gemini/antigravity"],
   },
   mcp: { format: "json", key: "mcpServers", entryShape: "standard" },
-  scopes: ["shared", "coding"],
-  capabilities: ["mcp", "skills", "memory", "agents"],
+  capabilities: ["mcp", "skills", "agents"],
   enabled: true,
-  memoryMaxLines: null,
 };

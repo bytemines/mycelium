@@ -1,5 +1,5 @@
 /**
- * Tool Scanners — scan installed AI tools for skills, MCPs, memory, hooks
+ * Tool Scanners — scan installed AI tools for skills, MCPs, hooks
  */
 import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
@@ -109,7 +109,6 @@ export async function scanClaudeCode(): Promise<ToolScanResult> {
     installed: true,
     skills: [],
     mcps: [],
-    memory: [],
     hooks: [],
     components: [],
   };
@@ -164,24 +163,6 @@ export async function scanClaudeCode(): Promise<ToolScanResult> {
           });
         }
       }
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    // Memory: ~/.claude/projects/*/memory/MEMORY.md
-    const projectsDir = path.join(home, ".claude", "projects");
-    const memoryFiles = await globDir(projectsDir, /MEMORY\.md$/);
-    for (const memPath of memoryFiles) {
-      const content = await readFileIfExists(memPath);
-      result.memory.push({
-        name: decodeProjectName(path.basename(path.dirname(path.dirname(memPath)))),
-        path: memPath,
-        source: "claude-code",
-        scope: "shared",
-        content: content ?? undefined,
-      });
     }
   } catch {
     // ignore
@@ -252,7 +233,6 @@ export async function scanCodex(): Promise<ToolScanResult> {
     installed: true,
     skills: [],
     mcps: [],
-    memory: [],
     hooks: [],
     components: [],
   };
@@ -308,23 +288,6 @@ export async function scanCodex(): Promise<ToolScanResult> {
     // ignore
   }
 
-  try {
-    // Memory: ~/.codex/AGENTS.md
-    const agentsPath = path.join(home, ".codex", "AGENTS.md");
-    const content = await readFileIfExists(agentsPath);
-    if (content) {
-      result.memory.push({
-        name: "AGENTS",
-        path: agentsPath,
-        source: "codex",
-        scope: "shared",
-        content,
-      });
-    }
-  } catch {
-    // ignore
-  }
-
   return result;
 }
 
@@ -336,26 +299,9 @@ export async function scanGemini(): Promise<ToolScanResult> {
     installed: true,
     skills: [],
     mcps: [],
-    memory: [],
     hooks: [],
     components: [],
   };
-
-  try {
-    const geminiPath = path.join(home, ".gemini", "GEMINI.md");
-    const content = await readFileIfExists(geminiPath);
-    if (content) {
-      result.memory.push({
-        name: "GEMINI",
-        path: geminiPath,
-        source: "gemini-cli",
-        scope: "shared",
-        content,
-      });
-    }
-  } catch {
-    // ignore
-  }
 
   return result;
 }
@@ -368,7 +314,6 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
     installed: true,
     skills: [],
     mcps: [],
-    memory: [],
     hooks: [],
     components: [],
   };
@@ -471,26 +416,6 @@ export async function scanOpenClaw(): Promise<ToolScanResult> {
   }
 
   try {
-    // Memory: workspace MEMORY.md + AGENTS.md
-    const workspaceDir = path.join(home, ".openclaw", "workspace");
-    for (const memFile of ["MEMORY.md", "AGENTS.md"]) {
-      const memPath = path.join(workspaceDir, memFile);
-      const content = await readFileIfExists(memPath);
-      if (content) {
-        result.memory.push({
-          name: memFile.replace(/\.md$/, ""),
-          path: memPath,
-          source: "openclaw",
-          scope: "shared",
-          content,
-        });
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
     // Workspace agents: ~/.openclaw/workspace/agents/*.md
     const agentsDir = path.join(home, ".openclaw", "workspace", "agents");
     const agentFiles = await globDir(agentsDir, /\.md$/);
@@ -516,7 +441,6 @@ export async function scanOpenCode(): Promise<ToolScanResult> {
     installed: true,
     skills: [],
     mcps: [],
-    memory: [],
     hooks: [],
     components: [],
   };
@@ -568,23 +492,6 @@ export async function scanOpenCode(): Promise<ToolScanResult> {
   }
 
   try {
-    // Memory: AGENTS.md in home config dir
-    const agentsPath = path.join(home, ".config", "opencode", "AGENTS.md");
-    const content = await readFileIfExists(agentsPath);
-    if (content) {
-      result.memory.push({
-        name: "AGENTS",
-        path: agentsPath,
-        source: "opencode",
-        scope: "shared",
-        content,
-      });
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
     // Commands: ~/.config/opencode/commands/*.md (similar to skills)
     const commandsDir = path.join(home, ".config", "opencode", "commands");
     const entries = await fs.readdir(commandsDir, { withFileTypes: true });
@@ -626,7 +533,6 @@ export async function scanTool(toolId: ToolId): Promise<ToolScanResult> {
         installed: false,
         skills: [],
         mcps: [],
-        memory: [],
         hooks: [],
         components: [],
       };

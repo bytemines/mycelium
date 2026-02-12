@@ -30,7 +30,6 @@ describe("Graph", () => {
     const mockData = {
       skills: [{ name: "test-skill", status: "synced" as const }],
       mcps: [],
-      memory: [],
     };
     renderWithProvider(<Graph data={mockData} />);
     expect(await screen.findByText("test-skill")).toBeInTheDocument();
@@ -41,21 +40,9 @@ describe("Graph", () => {
     const mockData = {
       skills: [],
       mcps: [{ name: "git-mcp", status: "synced" as const }],
-      memory: [],
     };
     renderWithProvider(<Graph data={mockData} />);
     expect(await screen.findByText("git-mcp")).toBeInTheDocument();
-  });
-
-  it("renders memory nodes", async () => {
-    const { Graph } = await import("./Graph");
-    const mockData = {
-      skills: [],
-      mcps: [],
-      memory: [{ name: "MEMORY.md", scope: "shared" as const, status: "synced" as const }],
-    };
-    renderWithProvider(<Graph data={mockData} />);
-    expect(await screen.findByText("MEMORY.md")).toBeInTheDocument();
   });
 });
 
@@ -128,9 +115,6 @@ describe("Graph toggle switches", () => {
     ],
     mcps: [
       { name: "git-mcp", status: "synced" as const, enabled: true, connectedTools: ["claude-code"] },
-    ],
-    memory: [
-      { name: "MEMORY.md", scope: "shared" as const, status: "synced" as const },
     ],
   };
 

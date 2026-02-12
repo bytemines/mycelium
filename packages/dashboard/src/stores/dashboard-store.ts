@@ -13,7 +13,6 @@ interface GraphData {
   tools: Array<{ id: string; name: string; status: Status; installed: boolean }>;
   skills: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
   mcps: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
-  memory: Array<{ name: string; scope: "shared" | "coding" | "personal"; status: Status }>;
   plugins: Array<{ name: string; marketplace: string; componentCount: number; enabled: boolean; skills: string[]; agents?: string[]; commands?: string[]; hooks?: string[]; libs?: string[]; disabledItems?: string[] }>;
   migrated: boolean;
 }
@@ -46,7 +45,6 @@ interface DashboardStore {
 function parseState(state: any): GraphData {
   const skills = (state.skills ?? []).map((s: any) => ({ ...s, enabled: s.enabled ?? true }));
   const mcps = (state.mcps ?? []).map((m: any) => ({ ...m, enabled: m.enabled ?? true }));
-  const memory = (state.memory ?? []).map((m: any) => ({ ...m, scope: m.scope ?? "shared" }));
   const plugins = (state.plugins ?? []).map((p: any) => {
     const sk = p.skills ?? [];
     const ag = p.agents ?? [];
@@ -66,7 +64,6 @@ function parseState(state: any): GraphData {
     tools: state.tools ?? [],
     skills,
     mcps,
-    memory,
     plugins,
     migrated: state.migrated ?? false,
   };
@@ -130,7 +127,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       return s;
     });
     try {
-      await sendToggle({ type: toggle.type as "skill" | "mcp" | "memory", name: toggle.name, toolId: "claude-code", enabled: toggle.enabled });
+      await sendToggle({ type: toggle.type as "skill" | "mcp", name: toggle.name, toolId: "claude-code", enabled: toggle.enabled });
       const fresh = await fetchDashboardState();
       set({ graphData: parseState(fresh) });
     } catch {

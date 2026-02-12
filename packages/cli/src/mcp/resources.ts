@@ -7,7 +7,7 @@ export function registerResources(server: McpServer): void {
   server.registerResource(
     "mycelium_config",
     "mycelium://config",
-    { description: "Current merged mycelium configuration (MCPs, skills, memory scopes)" },
+    { description: "Current merged mycelium configuration (MCPs, skills)" },
     async () => {
       const { loadAndMergeAllConfigs } = await import("../core/config-merger.js");
       const config = await loadAndMergeAllConfigs(process.cwd());

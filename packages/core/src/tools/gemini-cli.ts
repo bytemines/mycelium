@@ -10,8 +10,6 @@ export const geminiCli: ToolDescriptor = {
     projectMcp: null,
     skills: "~/.gemini/extensions",
     projectSkills: null,
-    globalMemory: "~/.gemini/GEMINI.md",
-    projectMemory: "GEMINI.md",
     agents: null,
     projectAgents: null,
     rules: null,
@@ -20,8 +18,6 @@ export const geminiCli: ToolDescriptor = {
     backupDirs: ["~/.gemini"],
   },
   mcp: { format: "json", key: "mcpServers", entryShape: "standard" },
-  scopes: ["shared", "coding"],
-  capabilities: ["mcp", "skills", "memory", "hooks"],
+  capabilities: ["mcp", "skills", "hooks"],
   enabled: true,
-  memoryMaxLines: null,
 };

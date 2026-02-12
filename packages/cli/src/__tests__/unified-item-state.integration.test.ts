@@ -49,11 +49,6 @@ vi.mock("../core/tool-adapter.js", () => ({
   })),
 }));
 
-vi.mock("../core/memory-scoper.js", () => ({
-  syncMemoryToTool: vi.fn().mockResolvedValue({ success: true, filesWritten: 0 }),
-  getMemoryFilesForTool: vi.fn().mockResolvedValue([]),
-}));
-
 // Imports after mocks
 import { syncTool } from "../commands/sync.js";
 import { syncSkillsToTool } from "../core/symlink-manager.js";
@@ -77,7 +72,6 @@ function baseMergedConfig(
     agents: {},
     rules: {},
     commands: {},
-    memory: { scopes: { shared: { syncTo: [], path: "", files: [] }, coding: { syncTo: [], path: "", files: [] }, personal: { syncTo: [], path: "", files: [] } } },
     sources: {},
   };
 }

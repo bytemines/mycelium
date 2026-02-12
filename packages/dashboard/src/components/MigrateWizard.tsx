@@ -19,7 +19,7 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
   const [scans, setScans] = useState<ScanData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [appliedCount, setAppliedCount] = useState(0);
-  const [toggleState, setToggleState] = useState<MigrateToggleState>({ skills: {}, mcps: {}, memory: {}, tools: {} });
+  const [toggleState, setToggleState] = useState<MigrateToggleState>({ skills: {}, mcps: {}, tools: {} });
 
   // Sidebar state
   const [selectedPlugin, setSelectedPlugin] = useState<{
@@ -38,15 +38,13 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
       // Initialize all toggles to true
       const skills: Record<string, boolean> = {};
       const mcps: Record<string, boolean> = {};
-      const memory: Record<string, boolean> = {};
       const tools: Record<string, boolean> = {};
       for (const scan of data as unknown as ScanData[]) {
         if (scan.installed) tools[scan.toolId] = true;
         for (const s of scan.skills) skills[s.name] = true;
         for (const m of scan.mcps) mcps[m.name] = true;
-        for (const mem of scan.memory) memory[mem.name] = true;
       }
-      setToggleState({ skills, mcps, memory, tools });
+      setToggleState({ skills, mcps, tools });
       setStep("review");
     } catch (e: any) {
       setError(e.message ?? "Scan failed");
@@ -61,7 +59,6 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
     try {
       const enabledSkills = new Set(Object.entries(toggleState.skills).filter(([, v]) => v).map(([name]) => name));
       const enabledMcps = new Set(Object.entries(toggleState.mcps).filter(([, v]) => v).map(([name]) => name));
-      const enabledMemory = new Set(Object.entries(toggleState.memory).filter(([, v]) => v).map(([name]) => name));
       const enabledTools = new Set(Object.entries(toggleState.tools).filter(([, v]) => v).map(([id]) => id));
 
       // Build plan from raw scan data (preserves path, config, content)
@@ -83,14 +80,7 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
             source: s.toolId,
             config: m.config,
           }))),
-        memory: scans
-          .filter(s => enabledTools.has(s.toolId))
-          .flatMap(s => s.memory.filter(m => enabledMemory.has(m.name)).map(m => ({
-            name: m.name,
-            path: m.path,
-            source: s.toolId,
-            content: m.content ?? "",
-          }))),
+        memory: [],
         components: scans
           .filter(s => enabledTools.has(s.toolId))
           .flatMap(s => (s.components ?? []).map(c => ({
@@ -114,7 +104,7 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
 
   const handleToggle = useCallback((toggle: { type: string; name: string; enabled: boolean }) => {
     setToggleState(prev => {
-      const key = toggle.type === "skill" ? "skills" : toggle.type === "mcp" ? "mcps" : toggle.type === "memory" ? "memory" : null;
+      const key = toggle.type === "skill" ? "skills" : toggle.type === "mcp" ? "mcps" : null;
       if (!key) return prev;
       return { ...prev, [key]: { ...prev[key], [toggle.name]: toggle.enabled } };
     });
@@ -161,8 +151,7 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
   const graphData = scans.length > 0 ? buildGraphData(scans, toggleState) : undefined;
 
   const selectedCount = Object.values(toggleState.skills).filter(Boolean).length
-    + Object.values(toggleState.mcps).filter(Boolean).length
-    + Object.values(toggleState.memory).filter(Boolean).length;
+    + Object.values(toggleState.mcps).filter(Boolean).length;
 
   const stepLabels: Record<WizardStep, string> = { scan: "Scan", review: "Review", apply: "Apply", done: "Done" };
   const steps: WizardStep[] = ["scan", "review", "apply", "done"];
@@ -217,7 +206,6 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
               <span><strong>{graphData.plugins.length}</strong> plugins</span>
               <span><strong>{Object.values(toggleState.skills).filter(Boolean).length}</strong> skills</span>
               <span><strong>{Object.values(toggleState.mcps).filter(Boolean).length}</strong> MCPs</span>
-              <span><strong>{Object.values(toggleState.memory).filter(Boolean).length}</strong> memory</span>
               <span className="text-muted-foreground">→ <strong>{graphData.tools.length}</strong> destinations</span>
             </div>
             <div className="flex gap-2">

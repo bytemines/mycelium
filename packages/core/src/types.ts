@@ -54,23 +54,6 @@ export interface Skill {
 }
 
 // ============================================================================
-// Memory Types
-// ============================================================================
-
-export type MemoryScope = "shared" | "coding" | "personal";
-
-export interface MemoryScopeConfig {
-  syncTo: ToolId[];
-  excludeFrom?: ToolId[];
-  path: string;
-  files: string[];
-}
-
-export interface MemoryConfig {
-  scopes: Record<MemoryScope, MemoryScopeConfig>;
-}
-
-// ============================================================================
 // Manifest Types
 // ============================================================================
 
@@ -78,7 +61,6 @@ export interface MachineOverrides {
   hostname: string;
   mcps?: Record<string, Partial<McpServerConfig>>;
   skills?: Record<string, Partial<SkillManifest>>;
-  memory?: Partial<MemoryConfig>;
 }
 
 export interface MachineOverrideEntry {
@@ -96,7 +78,6 @@ export interface MachineOverridesFile {
 export interface Manifest {
   version: string;
   tools: Record<ToolId, { enabled: boolean; state?: ItemState }>;
-  memory: MemoryConfig;
 }
 
 // ============================================================================
@@ -113,7 +94,6 @@ export interface ToolSyncStatus {
   agentsCount: number;
   rulesCount: number;
   commandsCount: number;
-  memoryFiles: string[];
   lastSync?: Date;
   error?: string;
 }
@@ -170,7 +150,6 @@ export interface MergedConfig {
   agents: Record<string, FileItem>;
   rules: Record<string, FileItem>;
   commands: Record<string, FileItem>;
-  memory: MemoryConfig;
   sources: Record<string, ConfigLevel>;
 }
 
@@ -179,7 +158,7 @@ export interface MergedConfig {
 // ============================================================================
 
 export interface ToggleAction {
-  type: "skill" | "mcp" | "memory";
+  type: "skill" | "mcp";
   name: string;
   toolId: ToolId;
   enabled: boolean;
@@ -195,7 +174,6 @@ export interface ToolScanResult {
   installed: boolean;
   skills: ScannedSkill[];
   mcps: ScannedMcp[];
-  memory: ScannedMemory[];
   hooks: ScannedHook[];
   components: PluginComponent[];
 }
@@ -216,14 +194,6 @@ export interface ScannedMcp {
   config: McpServerConfig;
   source: ToolId;
   projectPath?: string;
-}
-
-export interface ScannedMemory {
-  name: string;
-  path: string;
-  source: ToolId;
-  scope: MemoryScope;
-  content?: string;
 }
 
 export interface ScannedHook {
@@ -253,7 +223,6 @@ export interface MigrationConflict {
 export interface MigrationPlan {
   skills: ScannedSkill[];
   mcps: ScannedMcp[];
-  memory: ScannedMemory[];
   components: PluginComponent[];
   conflicts: MigrationConflict[];
   strategy: ConflictStrategy;
@@ -263,7 +232,6 @@ export interface MigrationResult {
   success: boolean;
   skillsImported: number;
   mcpsImported: number;
-  memoryImported: number;
   componentsImported: number;
   conflicts: MigrationConflict[];
   errors: string[];
@@ -292,7 +260,7 @@ export interface PluginManifest {
 
 export interface MigrationManifestEntry {
   name: string;
-  type: "skill" | "mcp" | "memory" | "hook" | "agent" | "command" | "lib";
+  type: "skill" | "mcp" | "hook" | "agent" | "command" | "lib";
   source: ToolId;
   originalPath: string;
   importedPath: string;
@@ -402,16 +370,9 @@ export interface DashboardMcp {
   connectedTools: ToolId[];
 }
 
-export interface DashboardMemory {
-  name: string;
-  scope: MemoryScope;
-  status: SyncStatus;
-}
-
 export interface DashboardState {
   tools: DashboardTool[];
   skills: DashboardSkill[];
   mcps: DashboardMcp[];
-  memory: DashboardMemory[];
   version?: string;
 }

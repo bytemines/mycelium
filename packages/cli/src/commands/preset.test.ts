@@ -21,13 +21,12 @@ describe("createPreset", () => {
     const preset = createPreset("dev", {
       skills: ["skill-a", "skill-b"],
       mcps: ["mcp-1"],
-      memory: { scopes: ["global"] },
     });
 
     expect(preset.name).toBe("dev");
     expect(preset.skills).toEqual(["skill-a", "skill-b"]);
     expect(preset.mcps).toEqual(["mcp-1"]);
-    expect(preset.memory.scopes).toEqual(["global"]);
+
   });
 });
 
@@ -35,7 +34,7 @@ describe("applyPreset", () => {
   it("computes enable/disable actions", async () => {
     const { applyPreset } = await import("../core/presets.js");
     const actions = applyPreset(
-      { name: "dev", skills: ["a"], mcps: ["x"], memory: { scopes: [] } },
+      { name: "dev", skills: ["a"], mcps: ["x"] },
       { allSkills: ["a", "b", "c"], allMcps: ["x", "y"] },
     );
 
@@ -53,7 +52,6 @@ describe("exportPreset", () => {
       name: "test",
       skills: ["s1"],
       mcps: [],
-      memory: { scopes: [] },
     });
 
     expect(yaml).toContain("name: test");
@@ -76,7 +74,6 @@ describe("savePreset / loadPreset / listPresets", () => {
       name: "my-preset",
       skills: [],
       mcps: [],
-      memory: { scopes: [] },
     });
 
     expect(fs.writeFile).toHaveBeenCalledWith(

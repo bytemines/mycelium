@@ -5,7 +5,6 @@ import type {
   ToolScanResult,
   ScannedSkill,
   ScannedMcp,
-  ScannedMemory,
   PluginComponent,
   MigrationPlan,
   MigrationConflict,
@@ -18,7 +17,6 @@ export function generateMigrationPlan(
 ): MigrationPlan {
   const allSkills: ScannedSkill[] = [];
   const allMcps: ScannedMcp[] = [];
-  const allMemory: ScannedMemory[] = [];
   const allComponents: PluginComponent[] = [];
   const conflicts: MigrationConflict[] = [];
 
@@ -26,7 +24,6 @@ export function generateMigrationPlan(
   for (const scan of scans) {
     allSkills.push(...scan.skills);
     allMcps.push(...scan.mcps);
-    allMemory.push(...scan.memory);
     allComponents.push(...(scan.components ?? []));
   }
 
@@ -127,7 +124,6 @@ export function generateMigrationPlan(
   return {
     skills: resolvedSkills,
     mcps: resolvedMcps,
-    memory: allMemory,
     components: resolvedComponents,
     conflicts,
     strategy,

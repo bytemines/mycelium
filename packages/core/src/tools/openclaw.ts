@@ -10,8 +10,6 @@ export const openclaw: ToolDescriptor = {
     projectMcp: null,
     skills: "~/.openclaw/workspace/skills",
     projectSkills: null,
-    globalMemory: "~/.openclaw/workspace/MEMORY.md",
-    projectMemory: null,
     agents: "~/.openclaw/workspace/agents",
     projectAgents: null,
     rules: null,
@@ -20,8 +18,6 @@ export const openclaw: ToolDescriptor = {
     backupDirs: ["~/.openclaw"],
   },
   mcp: { format: "json", key: "plugins.entries", entryShape: "openclaw" },
-  scopes: ["shared", "personal"],
-  capabilities: ["mcp", "skills", "memory", "hooks", "agents"],
+  capabilities: ["mcp", "skills", "hooks", "agents"],
   enabled: true,
-  memoryMaxLines: null,
 };

@@ -2,7 +2,7 @@
  * Presets Module
  *
  * One-click config switching with named presets.
- * Presets store which skills, MCPs, and memory scopes should be active.
+ * Presets store which skills and MCPs should be active.
  */
 
 import * as fs from "node:fs/promises";
@@ -14,13 +14,11 @@ export interface Preset {
   name: string;
   skills: string[];
   mcps: string[];
-  memory: { scopes: string[] };
 }
 
 export interface PresetConfig {
   skills: string[];
   mcps: string[];
-  memory: { scopes: string[] };
 }
 
 export interface ApplyActions {
@@ -38,7 +36,6 @@ export function createPreset(name: string, config: PresetConfig): Preset {
     name,
     skills: [...config.skills],
     mcps: [...config.mcps],
-    memory: { scopes: [...config.memory.scopes] },
   };
 }
 

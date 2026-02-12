@@ -2,7 +2,7 @@
  * Tool Registry Types — defines the ToolDescriptor interface and related types.
  */
 
-export type Capability = "mcp" | "skills" | "memory" | "agents" | "hooks" | "rules" | "commands";
+export type Capability = "mcp" | "skills" | "agents" | "hooks" | "rules" | "commands";
 
 export type McpFormat = "json" | "jsonc" | "toml" | "yaml";
 
@@ -21,8 +21,6 @@ export interface ToolPaths {
   projectMcp: PathSpec;
   skills: PathSpec;
   projectSkills: PathSpec;
-  globalMemory: PathSpec;
-  projectMemory: PathSpec;
   agents: PathSpec;
   projectAgents: PathSpec;
   rules: PathSpec;
@@ -61,8 +59,6 @@ export interface ToolDescriptor {
   detectPath: PathSpec;
   paths: ToolPaths;
   mcp: McpConfig;
-  scopes: string[];
   capabilities: Capability[];
   enabled: boolean;
-  memoryMaxLines: number | null;
 }
