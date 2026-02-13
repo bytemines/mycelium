@@ -7,12 +7,10 @@ import * as fs from "node:fs/promises";
 vi.mock("node:fs/promises");
 vi.mock("./marketplace-registry.js", () => ({
   loadMarketplaceRegistry: vi.fn().mockResolvedValue({
-    skillsmp: { type: "remote", enabled: true },
     openskills: { type: "remote", enabled: true },
     "claude-plugins": { type: "local", enabled: true },
     "mcp-registry": { type: "remote", enabled: true },
     "anthropic-skills": { type: "remote", enabled: true },
-    clawhub: { type: "remote", enabled: true },
   }),
 }));
 vi.mock("./manifest-state.js", () => {
@@ -76,25 +74,13 @@ describe("searchMarketplace", () => {
     expect(Array.isArray(results)).toBe(true);
   });
 
-  it("filters empty results", async () => {
-    // SkillsMP returns empty (no API key)
-    const results = await searchMarketplace("test", "skillsmp");
+  it("filters empty results for unknown source", async () => {
+    const results = await searchMarketplace("test", "nonexistent-source");
     expect(results).toEqual([]);
   });
 });
 
 describe("installFromMarketplace", () => {
-  it("returns error for skillsmp (no API key)", async () => {
-    const result = await installFromMarketplace({
-      name: "test-skill",
-      description: "desc",
-      source: "skillsmp",
-      type: "skill",
-    });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("API key");
-  });
-
   it("installs from openskills", async () => {
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.writeFile.mockResolvedValue(undefined);
@@ -151,22 +137,6 @@ describe("installFromMarketplace", () => {
     expect(result.path).toContain("canvas-design");
   });
 
-  it("installs from clawhub", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      text: async () => "# Skill content",
-    });
-    mockFs.mkdir.mockResolvedValue(undefined);
-    mockFs.writeFile.mockResolvedValue(undefined);
-
-    const result = await installFromMarketplace({
-      name: "git-workflows",
-      description: "Git workflows",
-      source: "clawhub",
-      type: "skill",
-    });
-    expect(result.success).toBe(true);
-  });
 });
 
 describe("manifest registration on install", () => {

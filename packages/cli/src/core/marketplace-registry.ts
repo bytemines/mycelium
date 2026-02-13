@@ -83,12 +83,6 @@ export async function loadMarketplaceRegistry(): Promise<
 > {
   // Start with defaults
   const registry: Record<string, MarketplaceConfig> = {
-    [MS.SKILLSMP]: {
-      type: "remote",
-      enabled: true,
-      url: "https://skillsmp.com",
-      description: "SkillsMP marketplace",
-    },
     [MS.OPENSKILLS]: {
       type: "remote",
       enabled: true,
@@ -113,11 +107,11 @@ export async function loadMarketplaceRegistry(): Promise<
       url: "https://github.com/anthropics/skills",
       description: "Official Anthropic skills",
     },
-    [MS.CLAWHUB]: {
+    "awesome-mcp-servers": {
       type: "remote",
       enabled: true,
-      url: "https://clawhub.ai",
-      description: "ClawHub marketplace",
+      url: "https://github.com/punkpeye/awesome-mcp-servers",
+      description: "Awesome MCP Servers collection",
     },
   };
 

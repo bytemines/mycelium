@@ -8,6 +8,7 @@ import {
 import type { MarketplaceConfig } from "@mycelish/core";
 import { SkillCard } from "./SkillCard";
 import type { MarketplaceItem } from "./SkillCard";
+import { ENTRY_TYPE_META } from "@/lib/entry-type-meta";
 import * as Dialog from "@radix-ui/react-dialog";
 
 const CATEGORIES = ["All", "Testing", "Git", "Debugging", "Frontend", "Backend", "DevOps", "AI", "Code Review", "Documentation"];
@@ -32,6 +33,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<"all" | "skill" | "mcp" | "agent" | "plugin">("all");
 
   // Registry / marketplace pills state
   const [marketplaces, setMarketplaces] = useState<{value: string; label: string}[]>([{ value: "all", label: "All" }]);
@@ -172,6 +174,9 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     if (source !== "all") {
       filtered = filtered.filter(item => item.source === source);
     }
+    if (typeFilter !== "all") {
+      filtered = filtered.filter(item => item.type === typeFilter);
+    }
     if (category !== "All") {
       const cat = category.toLowerCase();
       filtered = filtered.filter(item =>
@@ -194,7 +199,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       return 0;
     });
     return sorted;
-  }, [results, source, category, sortBy]);
+  }, [results, source, category, sortBy, typeFilter]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -342,6 +347,24 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
               {cat}
             </button>
           ))}
+        </div>
+
+        {/* Type filter chips */}
+        <div className="flex flex-wrap gap-1.5">
+          {(["all", "skill", "mcp", "agent", "plugin"] as const).map(t => {
+            const meta = t === "all"
+              ? { label: "All Types", color: "text-foreground", bgColor: "bg-muted" }
+              : ENTRY_TYPE_META[t] || { label: t, color: "text-gray-400", bgColor: "bg-gray-500/10" };
+            return (
+              <button key={t} onClick={() => setTypeFilter(t)}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  typeFilter === t ? `${meta.bgColor} ${meta.color} ring-1 ring-current` : "bg-muted/50 text-muted-foreground hover:text-foreground"
+                )}>
+                {meta.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

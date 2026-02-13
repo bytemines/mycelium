@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ENTRY_TYPE_META } from "@/lib/entry-type-meta";
+import { getTrustTier } from "@/lib/trust";
+import { SourceIcon } from "./icons/ToolIcons";
+import { auditMarketplaceEntry } from "@/lib/api";
 
 export interface MarketplaceItem {
   name: string;
@@ -14,6 +18,7 @@ export interface MarketplaceItem {
   latestVersion?: string;
   installed?: boolean;
   type: string;
+  url?: string;
 }
 
 const DEFAULT_TYPE_META = { label: "Item", color: "text-gray-400", bgColor: "bg-gray-500/10", borderColor: "border-gray-500/30", fileExt: ".md" };
@@ -56,6 +61,8 @@ export function SkillCard({
   const hasUpdate = item.installed && item.latestVersion && item.installedVersion && item.latestVersion !== item.installedVersion;
   const meta = getTypeMeta(item.type);
   const icon = TYPE_ICONS[item.type] || "\u25CF";
+  const [auditResult, setAuditResult] = useState<{ safe: boolean; findings: Array<{ ruleId: string; severity: string; message: string; match: string }> } | null>(null);
+  const [auditing, setAuditing] = useState(false);
 
   return (
     <div
@@ -92,6 +99,14 @@ export function SkillCard({
                     Update
                   </span>
                 )}
+                {(() => {
+                  const trust = getTrustTier(item.source);
+                  return (
+                    <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium", trust.bgColor, trust.color)}>
+                      {trust.tier !== "community" ? "\u2713 " : ""}{trust.label}
+                    </span>
+                  );
+                })()}
               </div>
               {item.author && (
                 <span className="text-xs text-muted-foreground">{item.author}</span>
@@ -136,8 +151,13 @@ export function SkillCard({
         {item.latestVersion && (
           <span className="font-mono">v{item.latestVersion}</span>
         )}
-        <span className={cn("ml-auto rounded-full px-2 py-0.5 text-[10px]", meta.bgColor, meta.color)}>
+        <span className={cn("ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]", meta.bgColor, meta.color)}>
+          <SourceIcon source={item.source} size={12} />
           {item.source}
+          {item.url && (
+            <a href={item.url} target="_blank" rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()} className="ml-1 hover:text-primary" title="View source">&#8599;</a>
+          )}
         </span>
       </div>
 
@@ -161,6 +181,21 @@ export function SkillCard({
             <div className="text-xs text-muted-foreground">Updated: {item.updatedAt}</div>
           )}
           <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                setAuditing(true);
+                try {
+                  const result = await auditMarketplaceEntry(item.name, item.source, item.type);
+                  setAuditResult(result);
+                } catch { setAuditResult(null); }
+                finally { setAuditing(false); }
+              }}
+              disabled={auditing}
+              className="rounded-md px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted disabled:opacity-50 transition-colors"
+            >
+              {auditing ? "Scanning..." : "\u{1F6E1}\uFE0F Audit"}
+            </button>
             {item.installed && onRemove && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRemove(item); }}
@@ -193,6 +228,30 @@ export function SkillCard({
               {item.installed ? "Installed" : isInstalling ? "Installing..." : "Install"}
             </button>
           </div>
+          {auditResult && (
+            <div className="space-y-1.5 pt-2 border-t border-border/50">
+              {auditResult.safe ? (
+                <span className="text-xs text-green-400 font-medium">{"\u2713"} No security issues found</span>
+              ) : (
+                <>
+                  <span className="text-xs font-medium text-muted-foreground">{auditResult.findings.length} finding(s):</span>
+                  {auditResult.findings.slice(0, 5).map((f, i) => (
+                    <div key={i} className={cn("rounded px-2 py-1 text-[11px]",
+                      f.severity === "critical" ? "bg-red-500/15 text-red-400" :
+                      f.severity === "high" ? "bg-orange-500/15 text-orange-400" :
+                      f.severity === "medium" ? "bg-yellow-500/15 text-yellow-400" :
+                      "bg-blue-500/15 text-blue-400"
+                    )}>
+                      <span className="font-medium">[{f.severity}]</span> {f.message}
+                    </div>
+                  ))}
+                  {auditResult.findings.length > 5 && (
+                    <span className="text-[11px] text-muted-foreground">...and {auditResult.findings.length - 5} more</span>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

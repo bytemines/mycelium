@@ -67,6 +67,7 @@ async function transformNpmResponse(data: NpmSearchResponse): Promise<Marketplac
     downloads: downloads[o.package.name],
     source: MS.OPENSKILLS,
     type: "skill" as const,
+    url: `https://www.npmjs.com/package/${o.package.name}`,
   }));
   return { entries, total: entries.length, source: MS.OPENSKILLS };
 }
@@ -183,6 +184,7 @@ export function mcpServerToEntry(s: McpRegistryServer): MarketplaceEntry {
     latestVersion: srv.version,
     source: MS.MCP_REGISTRY,
     type: "mcp" as const,
+    url: srv.repository?.url || undefined,
   };
 }
 
@@ -243,69 +245,9 @@ export async function searchAnthropicSkills(query: string, options?: CacheOption
     author: "anthropics",
     source: MS.ANTHROPIC_SKILLS,
     type: "skill" as const,
+    url: `https://github.com/anthropics/skills/tree/main/skills/${name}`,
   }));
   return { entries, total: entries.length, source: MS.ANTHROPIC_SKILLS };
-}
-
-// ============================================================================
-// ClawHub
-// ============================================================================
-
-export interface ClawHubResult {
-  slug: string;
-  displayName: string;
-  summary: string;
-  version?: string;
-  updatedAt?: number;
-  score?: number;
-}
-
-export async function searchClawHub(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
-  if (query) {
-    // User-initiated search: live
-    return fetchClawHubLive(query);
-  }
-  const data = await cachedFetch("clawhub", async () => {
-    const res = await fetch(
-      `https://clawhub.ai/api/v1/search?q=&limit=12`,
-      { headers: { Accept: "application/json" } }
-    );
-    if (!res.ok) throw new Error(`ClawHub search failed: ${res.statusText}`);
-    return (await res.json()) as { results: ClawHubResult[] };
-  }, options);
-  return clawHubToResult(data.results || []);
-}
-
-function fetchClawHubLive(query: string): Promise<MarketplaceSearchResult> {
-  return fetch(
-    `https://clawhub.ai/api/v1/search?q=${encodeURIComponent(query)}&limit=12`,
-    { headers: { Accept: "application/json" } }
-  ).then(async (res) => {
-    if (!res.ok) throw new Error(`ClawHub search failed: ${res.statusText}`);
-    const data = (await res.json()) as { results: ClawHubResult[] };
-    return clawHubToResult(data.results || []);
-  });
-}
-
-function clawHubToResult(items: ClawHubResult[]): MarketplaceSearchResult {
-  const entries: MarketplaceEntry[] = items.map((item) => ({
-    name: item.slug,
-    description: item.summary || item.displayName || "",
-    version: item.version,
-    latestVersion: item.version,
-    updatedAt: item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : undefined,
-    source: MS.CLAWHUB,
-    type: "skill" as const,
-  }));
-  return { entries, total: entries.length, source: MS.CLAWHUB };
-}
-
-// ============================================================================
-// SkillsMP (disabled — needs API key)
-// ============================================================================
-
-export async function searchSkillsmp(_query: string): Promise<MarketplaceSearchResult> {
-  return { entries: [], total: 0, source: MS.SKILLSMP };
 }
 
 // ============================================================================
@@ -351,6 +293,7 @@ export async function searchGitHubRepo(
     author: owner,
     source: sourceName,
     type: item.type,
+    url: `https://github.com/${owner}/${repo}/tree/main/${item.path}`,
   }));
   return { entries, total: entries.length, source: sourceName };
 }
@@ -433,10 +376,8 @@ export const KNOWN_SEARCHERS: Record<
   string,
   (q: string, options?: CacheOptions) => Promise<MarketplaceSearchResult>
 > = {
-  [MS.SKILLSMP]: searchSkillsmp,
   [MS.OPENSKILLS]: searchOpenSkills,
   [MS.CLAUDE_PLUGINS]: searchClaudePlugins,
   [MS.MCP_REGISTRY]: searchMcpRegistry,
   [MS.ANTHROPIC_SKILLS]: searchAnthropicSkills,
-  [MS.CLAWHUB]: searchClawHub,
 };

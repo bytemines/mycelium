@@ -71,9 +71,10 @@ describe("loadMarketplaceRegistry", () => {
   it("returns defaults when no saved config or plugins", async () => {
     mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
     const registry = await loadMarketplaceRegistry();
-    expect(registry["skillsmp"]).toBeDefined();
+    expect(registry["openskills"]).toBeDefined();
     expect(registry["mcp-registry"]).toBeDefined();
     expect(registry["anthropic-skills"]).toBeDefined();
+    expect(registry["awesome-mcp-servers"]).toBeDefined();
   });
 
   it("merges saved YAML config with defaults", async () => {
@@ -93,7 +94,7 @@ describe("loadMarketplaceRegistry", () => {
     expect(registry["custom-source"]).toBeDefined();
     expect(registry["custom-source"].url).toBe("https://example.com");
     // Defaults still present
-    expect(registry["skillsmp"]).toBeDefined();
+    expect(registry["openskills"]).toBeDefined();
   });
 
   it("merges discovered marketplaces", async () => {
@@ -163,10 +164,10 @@ describe("removeMarketplace", () => {
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.writeFile.mockResolvedValue(undefined);
 
-    await removeMarketplace("skillsmp");
+    await removeMarketplace("openskills");
 
     const written = mockFs.writeFile.mock.calls[0][1] as string;
-    expect(written).not.toContain("skillsmp:");
+    expect(written).not.toContain("openskills:");
   });
 });
 

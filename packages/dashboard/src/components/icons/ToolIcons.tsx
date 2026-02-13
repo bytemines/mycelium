@@ -11,6 +11,9 @@ import openclawSvg from "./svg/openclaw.svg?raw";
 import cursorSvg from "./svg/cursor.svg?raw";
 import vscodeSvg from "./svg/vscode.svg?raw";
 import antigravitySvg from "./svg/antigravity.svg?raw";
+import githubSvg from "./svg/github.svg?raw";
+import npmSvg from "./svg/npm.svg?raw";
+import mcpSvg from "./svg/mcp.svg?raw";
 import { TOOL_REGISTRY } from "@mycelish/core";
 
 interface IconProps {
@@ -76,3 +79,17 @@ export const TOOL_ICONS: Record<string, React.ReactNode> = Object.fromEntries(
     <SvgIcon svg={SVG_MAP[desc.display.icon] ?? ""} />,
   ])
 );
+
+export const SOURCE_ICON_MAP: Record<string, string> = {
+  openskills: npmSvg,
+  "mcp-registry": mcpSvg,
+  "anthropic-skills": githubSvg,
+  "claude-plugins": claudeSvg,
+  "awesome-mcp-servers": githubSvg,
+};
+
+export function SourceIcon({ source, size = 14 }: { source: string; size?: number }) {
+  const svg = SOURCE_ICON_MAP[source];
+  if (!svg) return null;
+  return <SvgIcon svg={svg} size={size} />;
+}

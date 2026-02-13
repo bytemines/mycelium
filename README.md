@@ -8,7 +8,7 @@
   <a href="https://github.com/bytemines/mycelium/actions"><img src="https://img.shields.io/github/actions/workflow/status/bytemines/mycelium/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@mycelish/cli"><img src="https://img.shields.io/npm/v/@mycelish/cli?color=cb3837&logo=npm" alt="npm" /></a>
   <img src="https://img.shields.io/badge/tools-8%20supported-blueviolet" alt="8 Tools" />
-  <img src="https://img.shields.io/badge/tests-697%20passing-brightgreen" alt="697 Tests" />
+  <img src="https://img.shields.io/badge/tests-732%20passing-brightgreen" alt="732 Tests" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
 </p>
 
@@ -52,7 +52,8 @@ mycelium serve             # Launch visual dashboard
 | | Capability | What it means |
 |---|-----------|--------------|
 | 🎯 | **Per-skill plugin control** | Disable individual skills, agents, or commands within a plugin — without disabling the entire plugin. The only tool that does this. |
-| 🧬 | **6 item types sync** | Skills + MCPs + Agents + Rules + Commands + Hooks. Competitors sync 1-2 types. |
+| 🧬 | **6 item types sync** | Skills + MCPs + Agents + Rules + Commands + Hooks. Competitors sync 1–2 types. |
+| 🛡️ | **Built-in security scanner** | 80+ detection rules scan skills before install. Catches prompt injection, reverse shells, credential harvesting, data exfiltration. |
 | 🏗️ | **3-tier config merge** | Project > Machine > Global. Different MCPs per project, different paths per machine. Automatic. |
 | 🖥️ | **Visual control plane** | React Flow dashboard — see your entire tool landscape, toggle items, migrate, browse marketplace. |
 | 🔌 | **Self-registering MCP server** | Mycelium exposes itself as MCP — any AI tool can manage its own config through natural language. |
@@ -129,6 +130,17 @@ mycelium migrate --apply  # Import everything
 
 Scans all 8 tools for existing skills, MCPs, and hooks. Generates a plan. Handles conflicts with configurable strategies (`--strategy latest|interactive|all`).
 
+### Security Scanner
+
+Every skill and MCP gets scanned before installation — 80+ rules across 20 categories, adapted from [Cisco AI Defense](https://github.com/cisco-ai-defense/skill-scanner) (Apache 2.0):
+
+```bash
+mycelium doctor --security          # Scan all installed skills
+mycelium add some-skill             # Auto-scans before install
+```
+
+Detection categories include prompt injection, command injection, reverse shells, credential harvesting, data exfiltration, hardcoded secrets, cryptomining, and more. The dashboard shows trust badges (Official / Verified / Community) and an inline Audit button on every marketplace card.
+
 ### Marketplace & Presets
 
 ```bash
@@ -138,7 +150,7 @@ mycelium preset save my-react-setup # Snapshot current config
 mycelium preset load my-react-setup # Restore it on any machine
 ```
 
-Pluggable registry sources — add your own skill/MCP repositories.
+Pluggable registry sources — add your own skill/MCP repositories. Default sources include npm (OpenSkills), MCP Registry, Anthropic Skills, and awesome-mcp-servers.
 
 ---
 
@@ -151,7 +163,7 @@ mycelium serve    # → http://localhost:3378
 - **Graph View** — React Flow visualization of your entire tool landscape: tools, MCPs, skills, plugins, all connected
 - **Toggle switches** — Enable/disable any item directly from the graph
 - **Migration Wizard** — 4-step guided import from existing tools
-- **Marketplace Browser** — Search and install from configured sources
+- **Marketplace Browser** — Search, install, and audit from configured sources with trust badges and type filters
 - **Plugin Detail Panels** — Click any plugin node to manage individual components
 
 ---
@@ -177,7 +189,7 @@ Mycelium registers itself as an MCP server in all your tools during `init`. This
 | `mycelium init` | Auto-setup: detect, migrate, sync, register MCP |
 | `mycelium sync [--watch]` | Sync to all tools |
 | `mycelium status [--json]` | Show sync status across tools |
-| `mycelium doctor` | 8-module health check |
+| `mycelium doctor [--security]` | Health checks + security scan |
 | `mycelium add <skill\|mcp>` | Add items to config |
 | `mycelium remove <name>` | Remove items |
 | `mycelium enable <name> [--tool]` | Enable items (with plugin release) |

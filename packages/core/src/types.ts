@@ -285,12 +285,10 @@ export type MarketplaceSource = string;
 
 /** Well-known marketplace source identifiers */
 export const MARKETPLACE_SOURCES = {
-  SKILLSMP: "skillsmp" as const,
   OPENSKILLS: "openskills" as const,
   CLAUDE_PLUGINS: "claude-plugins" as const,
   MCP_REGISTRY: "mcp-registry" as const,
   ANTHROPIC_SKILLS: "anthropic-skills" as const,
-  CLAWHUB: "clawhub" as const,
 };
 
 /** Well-known entry types with display metadata */
@@ -337,6 +335,7 @@ export interface MarketplaceEntry {
   latestVersion?: string;
   installed?: boolean;
   type: MarketplaceEntryType;
+  url?: string;
 }
 
 export interface MarketplaceSearchResult {

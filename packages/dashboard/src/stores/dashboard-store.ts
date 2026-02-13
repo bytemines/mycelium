@@ -69,11 +69,20 @@ function parseState(state: any): GraphData {
   };
 }
 
+type TabId = "graph" | "migrate" | "marketplace";
+
+function getInitialTab(): TabId {
+  if (typeof window === "undefined") return "graph";
+  const hash = window.location.hash.replace("#", "");
+  if (hash === "graph" || hash === "migrate" || hash === "marketplace") return hash;
+  return "graph";
+}
+
 export const useDashboardStore = create<DashboardStore>((set, get) => ({
   graphData: null,
   loading: true,
   error: false,
-  activeTab: "graph",
+  activeTab: getInitialTab(),
   selectedPlugin: null,
   apiStatus: "checking",
   version: null,
@@ -252,7 +261,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) => {
+    if (typeof window !== "undefined" && window.location.hash !== `#${tab}`) {
+      window.location.hash = tab;
+    }
+    set({ activeTab: tab });
+  },
   setSelectedPlugin: (plugin) => set({ selectedPlugin: plugin }),
 
   openPluginPanel: (pluginName) => {
@@ -313,3 +327,15 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     });
   },
 }));
+
+if (typeof window !== "undefined") {
+  window.addEventListener("hashchange", () => {
+    const hash = window.location.hash.replace("#", "");
+    if (hash === "graph" || hash === "migrate" || hash === "marketplace") {
+      const current = useDashboardStore.getState().activeTab;
+      if (current !== hash) {
+        useDashboardStore.setState({ activeTab: hash });
+      }
+    }
+  });
+}

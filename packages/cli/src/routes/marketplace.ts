@@ -82,5 +82,40 @@ export function registerMarketplaceRoutes(app: Express): void {
     res.json({ cleared, refreshed, errors });
   }));
 
+  router.post("/audit", asyncHandler(async (req, res) => {
+    const { name, source, type, content, fileName } = req.body || {};
+
+    if (content && fileName) {
+      const { scanContent } = await import("../core/security-scanner.js");
+      const result = scanContent(content, fileName);
+      res.json(result);
+      return;
+    }
+
+    if (!name || !source) {
+      res.status(400).json({ success: false, error: "Missing required fields: name+source or content+fileName" });
+      return;
+    }
+
+    // Sanitize name to prevent path traversal
+    const safeName = String(name).replace(/[/\\..]/g, "");
+    if (!safeName || safeName !== name) {
+      res.status(400).json({ success: false, error: "Invalid item name" });
+      return;
+    }
+
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const skillPath = path.join(os.default.homedir(), ".mycelium", "global", "skills", safeName);
+
+    try {
+      const { scanSkill } = await import("../core/security-scanner.js");
+      const result = await scanSkill(skillPath);
+      res.json(result);
+    } catch (err) {
+      res.status(404).json({ safe: true, findings: [], scannedFiles: 0, duration: 0, error: `Item not found: ${safeName}` });
+    }
+  }));
+
   app.use("/api/marketplace", router);
 }

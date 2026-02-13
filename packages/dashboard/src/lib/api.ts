@@ -125,6 +125,15 @@ export async function removePlugin(name: string): Promise<{ removed: string[]; e
   return res.json();
 }
 
+export async function auditMarketplaceEntry(name: string, source: string, type: string): Promise<{ safe: boolean; findings: Array<{ ruleId: string; category: string; severity: string; message: string; match: string }> }> {
+  const res = await fetch(`/api/marketplace/audit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, source, type }),
+  });
+  return res.json();
+}
+
 export async function updateMarketplaceEntry(name: string, source: MarketplaceSource): Promise<{ success: boolean; path?: string; error?: string }> {
   const res = await fetch(`/api/marketplace/update`, {
     method: "POST",

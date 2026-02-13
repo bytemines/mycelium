@@ -22,7 +22,6 @@ import {
   parseGitHubUrl,
   searchGitHubRepo,
   installGitHubRepoItem,
-  type ClawHubResult,
 } from "./marketplace-sources.js";
 import type { CacheOptions } from "./marketplace-cache.js";
 import { getTracer } from "./global-tracer.js";
@@ -91,8 +90,6 @@ export async function installFromMarketplace(
   try {
     let result: { success: boolean; path?: string; error?: string };
     switch (entry.source) {
-      case MS.SKILLSMP:
-        return { success: false, error: "SkillsMP requires an API key. Configure it in settings." };
       case MS.OPENSKILLS:
         result = await installOpenSkill(entry); break;
       case MS.CLAUDE_PLUGINS:
@@ -101,8 +98,6 @@ export async function installFromMarketplace(
         result = await installMcpRegistry(entry); break;
       case MS.ANTHROPIC_SKILLS:
         result = await installAnthropicSkill(entry); break;
-      case MS.CLAWHUB:
-        result = await installClawHub(entry); break;
       default: {
         // Try dynamic GitHub marketplace
         const reg = await loadMarketplaceRegistry();
@@ -173,20 +168,6 @@ async function installAnthropicSkill(entry: MarketplaceEntry) {
   return { success: true, path: filePath };
 }
 
-async function installClawHub(entry: MarketplaceEntry) {
-  const res = await fetch(
-    `https://clawhub.ai/api/v1/download/${encodeURIComponent(entry.name)}`,
-    { headers: { Accept: "application/json" } }
-  );
-  if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
-  const content = await res.text();
-  const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, "SKILL.md");
-  await fs.writeFile(filePath, content, "utf-8");
-  return { success: true, path: filePath };
-}
-
 // ============================================================================
 // Popular / Browse
 // ============================================================================
@@ -199,7 +180,6 @@ export async function getPopularSkills(options?: CacheOptions): Promise<Marketpl
     { name: "claude-plugins", fn: () => fetchPopularClaudePlugins(results) },
     { name: "mcp-registry", fn: () => fetchPopularMcpServers(results, options) },
     { name: "openskills", fn: () => fetchPopularOpenSkills(results, options) },
-    { name: "clawhub", fn: () => fetchPopularClawHub(results, options) },
   ];
 
   // Add dynamic GitHub marketplaces
@@ -281,42 +261,6 @@ async function fetchPopularOpenSkills(results: MarketplaceSearchResult[], option
     type: "skill" as const,
   }));
   results.push({ entries, total: entries.length, source: MS.OPENSKILLS });
-}
-
-async function fetchPopularClawHub(results: MarketplaceSearchResult[], options?: CacheOptions) {
-  const data = await cachedFetch("clawhub-popular", async () => {
-    const queries = ["code", "git", "test", "debug"];
-    const allItems: ClawHubResult[] = [];
-    const seen = new Set<string>();
-    for (const q of queries) {
-      try {
-        const res = await fetch(`https://clawhub.ai/api/v1/search?q=${q}&limit=6`,
-          { headers: { Accept: "application/json" } });
-        if (!res.ok) continue;
-        const d = (await res.json()) as { results: ClawHubResult[] };
-        for (const item of d.results || []) {
-          if (!seen.has(item.slug)) {
-            seen.add(item.slug);
-            allItems.push(item);
-          }
-        }
-      } catch { /* skip */ }
-      if (allItems.length >= 12) break;
-    }
-    return allItems;
-  }, options);
-  if (data.length > 0) {
-    const entries: MarketplaceEntry[] = data.slice(0, 12).map((item) => ({
-      name: item.slug,
-      description: item.summary || item.displayName || "",
-      version: item.version,
-      latestVersion: item.version,
-      updatedAt: item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : undefined,
-      source: MS.CLAWHUB,
-      type: "skill" as const,
-    }));
-    results.push({ entries, total: entries.length, source: MS.CLAWHUB });
-  }
 }
 
 // ============================================================================
