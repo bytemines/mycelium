@@ -17,6 +17,8 @@ import {
   listPlugins,
   togglePlugin,
 } from "../core/marketplace-registry.js";
+import { clearAllCaches, getCacheInfo } from "../core/marketplace-cache.js";
+import { searchMarketplace } from "../core/marketplace.js";
 
 const listCmd = new Command("list")
   .description("List configured marketplaces")
@@ -29,6 +31,14 @@ const listCmd = new Command("list")
       const tag = config.discovered ? " [discovered]" : "";
       const def = config.default ? " [default]" : "";
       console.log(`  ${name} — ${config.type} — ${status}${url}${def}${tag}`);
+    }
+    const caches = await getCacheInfo();
+    if (caches.length > 0) {
+      console.log("\n  Cached sources:");
+      for (const c of caches) {
+        const when = c.cachedAt.slice(0, 19).replace("T", " ");
+        console.log(`    ${c.key} — cached ${when}`);
+      }
     }
     console.log();
   });
@@ -88,6 +98,27 @@ const disableCmd = new Command("disable")
     console.log(`Disabled plugin: ${plugin}`);
   });
 
+const refreshCmd = new Command("refresh")
+  .description("Refresh marketplace cache from remote sources")
+  .action(async () => {
+    console.log("Refreshing marketplace cache...");
+    const cleared = await clearAllCaches();
+    if (cleared > 0) console.log(`  Cleared ${cleared} cached source(s).`);
+
+    const registry = await loadMarketplaceRegistry();
+    for (const [name, config] of Object.entries(registry)) {
+      if (!config.enabled) continue;
+      try {
+        process.stdout.write(`  Fetching ${name}...`);
+        await searchMarketplace("", name, { forceRefresh: true });
+        console.log(" done");
+      } catch (err) {
+        console.log(` failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    console.log("\nMarketplace cache refreshed.");
+  });
+
 export const marketplaceCommand = new Command("marketplace")
   .description("Manage marketplace sources and plugins")
   .addCommand(listCmd)
@@ -95,4 +126,5 @@ export const marketplaceCommand = new Command("marketplace")
   .addCommand(removeCmd)
   .addCommand(pluginsCmd)
   .addCommand(enableCmd)
-  .addCommand(disableCmd);
+  .addCommand(disableCmd)
+  .addCommand(refreshCmd);

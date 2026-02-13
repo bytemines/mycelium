@@ -24,10 +24,13 @@ import {
   installGitHubRepoItem,
   type ClawHubResult,
 } from "./marketplace-sources.js";
+import type { CacheOptions } from "./marketplace-cache.js";
+import { getTracer } from "./global-tracer.js";
+import { cachedFetch } from "./marketplace-cache.js";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { MYCELIUM_HOME, readFileIfExists } from "./fs-helpers.js";
+import { MYCELIUM_HOME } from "./fs-helpers.js";
 import { loadStateManifest, saveStateManifest } from "./manifest-state.js";
 
 const MYCELIUM_DIR = path.join(MYCELIUM_HOME, "global");
@@ -41,7 +44,8 @@ export { listInstalledPlugins } from "./marketplace-sources.js";
 
 export async function searchMarketplace(
   query: string,
-  source?: MarketplaceSource
+  source?: MarketplaceSource,
+  options?: CacheOptions,
 ): Promise<MarketplaceSearchResult[]> {
   const registry = await loadMarketplaceRegistry();
   const enabledSources = source
@@ -50,13 +54,17 @@ export async function searchMarketplace(
         .filter(([, config]) => config.enabled)
         .map(([name]) => name);
 
+  const log = getTracer().createTrace("marketplace");
+  log.info({ scope: "search", op: "start", msg: `q="${query}" sources=${enabledSources.length}` });
+  const t0 = Date.now();
+
   const searches = enabledSources.map((s) => {
-    if (KNOWN_SEARCHERS[s]) return KNOWN_SEARCHERS[s](query);
+    if (KNOWN_SEARCHERS[s]) return KNOWN_SEARCHERS[s](query, options);
     // Dynamic GitHub marketplace: parse URL from registry config
     const config = registry[s];
     if (config?.url) {
       const gh = parseGitHubUrl(config.url);
-      if (gh) return searchGitHubRepo(gh.owner, gh.repo, query, s);
+      if (gh) return searchGitHubRepo(gh.owner, gh.repo, query, s, options);
     }
     return null;
   }).filter((p): p is Promise<MarketplaceSearchResult> => p !== null);
@@ -66,6 +74,9 @@ export async function searchMarketplace(
     .filter((r): r is PromiseFulfilledResult<MarketplaceSearchResult> => r.status === "fulfilled")
     .map((r) => r.value)
     .filter((r) => r.entries.length > 0);
+
+  const total = filtered.reduce((n, r) => n + r.entries.length, 0);
+  log.info({ scope: "search", op: "done", dur: Date.now() - t0, msg: `${total} entries from ${filtered.length} sources` });
 
   return enrichWithInstalledStatus(filtered);
 }
@@ -180,15 +191,15 @@ async function installClawHub(entry: MarketplaceEntry) {
 // Popular / Browse
 // ============================================================================
 
-export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
+export async function getPopularSkills(options?: CacheOptions): Promise<MarketplaceSearchResult[]> {
   const results: MarketplaceSearchResult[] = [];
 
   const fetchers: Array<{ name: string; fn: () => Promise<void> }> = [
-    { name: "anthropic-skills", fn: () => fetchPopularAnthropicSkills(results) },
+    { name: "anthropic-skills", fn: () => fetchPopularAnthropicSkills(results, options) },
     { name: "claude-plugins", fn: () => fetchPopularClaudePlugins(results) },
-    { name: "mcp-registry", fn: () => fetchPopularMcpServers(results) },
-    { name: "openskills", fn: () => fetchPopularOpenSkills(results) },
-    { name: "clawhub", fn: () => fetchPopularClawHub(results) },
+    { name: "mcp-registry", fn: () => fetchPopularMcpServers(results, options) },
+    { name: "openskills", fn: () => fetchPopularOpenSkills(results, options) },
+    { name: "clawhub", fn: () => fetchPopularClawHub(results, options) },
   ];
 
   // Add dynamic GitHub marketplaces
@@ -200,25 +211,28 @@ export async function getPopularSkills(): Promise<MarketplaceSearchResult[]> {
       fetchers.push({
         name,
         fn: async () => {
-          const r = await searchGitHubRepo(gh.owner, gh.repo, "", name);
+          const r = await searchGitHubRepo(gh.owner, gh.repo, "", name, options);
           if (r.entries.length > 0) results.push(r);
         },
       });
     }
   }
 
+  const log = getTracer().createTrace("marketplace");
+  const t0 = Date.now();
   const settled = await Promise.allSettled(fetchers.map(f => f.fn()));
   for (let i = 0; i < settled.length; i++) {
     if (settled[i].status === "rejected") {
-      console.warn(`${fetchers[i].name} popular fetch failed:`, (settled[i] as PromiseRejectedResult).reason);
+      log.warn({ scope: "popular", op: "fetch-failed", item: fetchers[i].name, msg: String((settled[i] as PromiseRejectedResult).reason) });
     }
   }
+  log.info({ scope: "popular", op: "done", dur: Date.now() - t0, msg: `${results.reduce((n, r) => n + r.entries.length, 0)} entries` });
 
   return enrichWithInstalledStatus(results);
 }
 
-async function fetchPopularAnthropicSkills(results: MarketplaceSearchResult[]) {
-  const skills = await fetchAnthropicSkillsList();
+async function fetchPopularAnthropicSkills(results: MarketplaceSearchResult[], options?: CacheOptions) {
+  const skills = await fetchAnthropicSkillsList(options);
   if (skills.length > 0) {
     const entries: MarketplaceEntry[] = skills.slice(0, 12).map(name => ({
       name,
@@ -238,20 +252,22 @@ async function fetchPopularClaudePlugins(results: MarketplaceSearchResult[]) {
   }
 }
 
-async function fetchPopularMcpServers(results: MarketplaceSearchResult[]) {
-  const servers = await fetchMcpServers("");
+async function fetchPopularMcpServers(results: MarketplaceSearchResult[], options?: CacheOptions) {
+  const servers = await cachedFetch("mcp-registry", () => fetchMcpServers(""), options);
   if (servers.length > 0) {
     const entries = servers.slice(0, 12).map(mcpServerToEntry);
     results.push({ entries, total: entries.length, source: MS.MCP_REGISTRY });
   }
 }
 
-async function fetchPopularOpenSkills(results: MarketplaceSearchResult[]) {
-  const res = await fetch("https://registry.npmjs.org/-/v1/search?text=openskills&size=12");
-  if (!res.ok) return;
-  const data = (await res.json()) as {
-    objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
-  };
+async function fetchPopularOpenSkills(results: MarketplaceSearchResult[], options?: CacheOptions) {
+  const data = await cachedFetch("openskills", async () => {
+    const res = await fetch("https://registry.npmjs.org/-/v1/search?text=openskills&size=12");
+    if (!res.ok) throw new Error(`openskills browse failed: ${res.statusText}`);
+    return (await res.json()) as {
+      objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
+    };
+  }, options);
   const names = data.objects.map(o => o.package.name);
   const downloads = await fetchNpmDownloads(names);
   const entries: MarketplaceEntry[] = data.objects.map((o) => ({
@@ -267,27 +283,30 @@ async function fetchPopularOpenSkills(results: MarketplaceSearchResult[]) {
   results.push({ entries, total: entries.length, source: MS.OPENSKILLS });
 }
 
-async function fetchPopularClawHub(results: MarketplaceSearchResult[]) {
-  const queries = ["code", "git", "test", "debug"];
-  const allItems: ClawHubResult[] = [];
-  const seen = new Set<string>();
-  for (const q of queries) {
-    try {
-      const res = await fetch(`https://clawhub.ai/api/v1/search?q=${q}&limit=6`,
-        { headers: { Accept: "application/json" } });
-      if (!res.ok) continue;
-      const data = (await res.json()) as { results: ClawHubResult[] };
-      for (const item of data.results || []) {
-        if (!seen.has(item.slug)) {
-          seen.add(item.slug);
-          allItems.push(item);
+async function fetchPopularClawHub(results: MarketplaceSearchResult[], options?: CacheOptions) {
+  const data = await cachedFetch("clawhub-popular", async () => {
+    const queries = ["code", "git", "test", "debug"];
+    const allItems: ClawHubResult[] = [];
+    const seen = new Set<string>();
+    for (const q of queries) {
+      try {
+        const res = await fetch(`https://clawhub.ai/api/v1/search?q=${q}&limit=6`,
+          { headers: { Accept: "application/json" } });
+        if (!res.ok) continue;
+        const d = (await res.json()) as { results: ClawHubResult[] };
+        for (const item of d.results || []) {
+          if (!seen.has(item.slug)) {
+            seen.add(item.slug);
+            allItems.push(item);
+          }
         }
-      }
-    } catch { /* skip */ }
-    if (allItems.length >= 12) break;
-  }
-  if (allItems.length > 0) {
-    const entries: MarketplaceEntry[] = allItems.slice(0, 12).map((item) => ({
+      } catch { /* skip */ }
+      if (allItems.length >= 12) break;
+    }
+    return allItems;
+  }, options);
+  if (data.length > 0) {
+    const entries: MarketplaceEntry[] = data.slice(0, 12).map((item) => ({
       name: item.slug,
       description: item.summary || item.displayName || "",
       version: item.version,

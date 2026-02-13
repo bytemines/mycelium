@@ -6,6 +6,7 @@ import {
   addMarketplace,
   removeMarketplace,
 } from "../core/marketplace-registry.js";
+import { clearAllCaches } from "../core/marketplace-cache.js";
 import { asyncHandler } from "./async-handler.js";
 
 import type { MarketplaceSource, MarketplaceEntry, MarketplaceConfig } from "@mycelish/core";
@@ -61,6 +62,24 @@ export function registerMarketplaceRoutes(app: Express): void {
     }
     const result = await updateSkill(name, source);
     res.json(result);
+  }));
+
+  router.post("/refresh", asyncHandler(async (_req, res) => {
+    const cleared = await clearAllCaches();
+    const registry = await loadMarketplaceRegistry();
+    const refreshed: string[] = [];
+    const errors: string[] = [];
+
+    for (const [name, config] of Object.entries(registry)) {
+      if (!config.enabled) continue;
+      try {
+        await searchMarketplace("", name, { forceRefresh: true });
+        refreshed.push(name);
+      } catch (err) {
+        errors.push(`${name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    res.json({ cleared, refreshed, errors });
   }));
 
   app.use("/api/marketplace", router);

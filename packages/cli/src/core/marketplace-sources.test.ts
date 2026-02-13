@@ -1,14 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("node:fs/promises");
+vi.mock("./marketplace-cache.js", () => ({
+  cachedFetch: vi.fn(),
+}));
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 import { parseGitHubUrl, searchGitHubRepo, fetchGitHubRepoItems } from "./marketplace-sources.js";
+import { cachedFetch } from "./marketplace-cache.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // By default, cachedFetch calls the fetcher
+  vi.mocked(cachedFetch).mockImplementation(async (_key, fetcher) => fetcher());
 });
 
 describe("parseGitHubUrl", () => {
@@ -61,9 +67,8 @@ describe("fetchGitHubRepoItems", () => {
   });
 
   it("returns empty on API failure", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false });
-    const items = await fetchGitHubRepoItems("owner", "repo");
-    expect(items).toEqual([]);
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+    await expect(fetchGitHubRepoItems("owner", "repo")).rejects.toThrow("GitHub API 500");
   });
 });
 
@@ -98,5 +103,34 @@ describe("searchGitHubRepo", () => {
 
     const result = await searchGitHubRepo("owner", "repo", "", "src");
     expect(result.entries).toHaveLength(2);
+  });
+});
+
+describe("cachedFetch integration", () => {
+  it("uses cachedFetch for GitHub tree", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ tree: [{ path: "skills/cached/SKILL.md", type: "blob" }] }),
+    });
+
+    const items = await fetchGitHubRepoItems("owner", "repo");
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("cached");
+    expect(cachedFetch).toHaveBeenCalledWith(
+      "github-owner-repo",
+      expect.any(Function),
+      undefined,
+    );
+  });
+
+  it("returns cached data when cachedFetch provides it", async () => {
+    vi.mocked(cachedFetch).mockResolvedValueOnce([
+      { path: "skills/from-cache/SKILL.md", type: "blob" },
+    ]);
+
+    const items = await fetchGitHubRepoItems("owner", "repo");
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("from-cache");
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

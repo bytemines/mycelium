@@ -8,6 +8,7 @@ import { MARKETPLACE_SOURCES as MS } from "@mycelish/core";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { cachedFetch, type CacheOptions } from "./marketplace-cache.js";
 
 // ============================================================================
 // npm download counts
@@ -35,14 +36,26 @@ export async function fetchNpmDownloads(names: string[]): Promise<Record<string,
 // OpenSkills (npm registry)
 // ============================================================================
 
-export async function searchOpenSkills(query: string): Promise<MarketplaceSearchResult> {
+export async function searchOpenSkills(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
+  const data = query
+    ? await fetchOpenSkillsRaw(query)  // user search: live
+    : await cachedFetch("openskills", () => fetchOpenSkillsRaw(""), options);  // browse: cached
+  return transformNpmResponse(data);
+}
+
+interface NpmSearchResponse {
+  objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
+}
+
+async function fetchOpenSkillsRaw(query: string): Promise<NpmSearchResponse> {
   const res = await fetch(
     `https://registry.npmjs.org/-/v1/search?text=openskills+${encodeURIComponent(query)}&size=12`
   );
   if (!res.ok) throw new Error(`openskills search failed: ${res.statusText}`);
-  const data = (await res.json()) as {
-    objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
-  };
+  return (await res.json()) as NpmSearchResponse;
+}
+
+async function transformNpmResponse(data: NpmSearchResponse): Promise<MarketplaceSearchResult> {
   const names = data.objects.map(o => o.package.name);
   const downloads = await fetchNpmDownloads(names);
   const entries: MarketplaceEntry[] = data.objects.map((o) => ({
@@ -96,7 +109,7 @@ export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
     return [];
   } catch (e: unknown) {
     if (e && typeof e === "object" && (e as { code?: string }).code !== "ENOENT") {
-      console.warn("Failed to read installed plugins:", e);
+      // Non-critical warning — skip logging to avoid noise
     }
     return [];
   }
@@ -173,25 +186,45 @@ export function mcpServerToEntry(s: McpRegistryServer): MarketplaceEntry {
   };
 }
 
-export async function searchMcpRegistry(query: string): Promise<MarketplaceSearchResult> {
-  const servers = await fetchMcpServers(query);
+export async function searchMcpRegistry(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
+  const servers = query
+    ? await fetchMcpServers(query)  // user search: live
+    : await cachedFetch("mcp-registry", () => fetchMcpServers(""), options);  // browse: cached
   const entries = servers.map(mcpServerToEntry);
   return { entries, total: entries.length, source: MS.MCP_REGISTRY };
+}
+
+// ============================================================================
+// GitHub tree (uses cachedFetch for L1+L2 caching)
+// ============================================================================
+
+async function fetchGitHubTree(owner: string, repo: string, options?: CacheOptions): Promise<{ path: string; type: string }[]> {
+  return cachedFetch(`github-${owner}-${repo}`, async () => {
+    const headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
+    const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
+
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`,
+      { headers }
+    );
+    if (!res.ok) {
+      const hint = res.status === 403 ? " (rate limited — try again later or set GITHUB_TOKEN)" : "";
+      throw new Error(`GitHub API ${res.status} for ${owner}/${repo}${hint}`);
+    }
+    const body = (await res.json()) as { tree: { path: string; type: string }[] };
+    return body.tree;
+  }, options);
 }
 
 // ============================================================================
 // Anthropic Skills (GitHub)
 // ============================================================================
 
-export async function fetchAnthropicSkillsList(): Promise<string[]> {
-  const res = await fetch(
-    "https://api.github.com/repos/anthropics/skills/git/trees/main?recursive=1",
-    { headers: { Accept: "application/vnd.github.v3+json" } }
-  );
-  if (!res.ok) return [];
-  const data = (await res.json()) as { tree: { path: string; type: string }[] };
+export async function fetchAnthropicSkillsList(options?: CacheOptions): Promise<string[]> {
+  const tree = await fetchGitHubTree("anthropics", "skills", options);
   const skills: string[] = [];
-  for (const t of data.tree) {
+  for (const t of tree) {
     if (t.type === "blob" && t.path.endsWith("/SKILL.md") && t.path.startsWith("skills/")) {
       const parts = t.path.split("/");
       if (parts.length === 3) skills.push(parts[1]);
@@ -200,8 +233,8 @@ export async function fetchAnthropicSkillsList(): Promise<string[]> {
   return skills;
 }
 
-export async function searchAnthropicSkills(query: string): Promise<MarketplaceSearchResult> {
-  const allSkills = await fetchAnthropicSkillsList();
+export async function searchAnthropicSkills(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
+  const allSkills = await fetchAnthropicSkillsList(options);
   const q = query.toLowerCase();
   const filtered = q ? allSkills.filter(s => s.toLowerCase().includes(q)) : allSkills;
   const entries: MarketplaceEntry[] = filtered.map(name => ({
@@ -227,14 +260,35 @@ export interface ClawHubResult {
   score?: number;
 }
 
-export async function searchClawHub(query: string): Promise<MarketplaceSearchResult> {
-  const res = await fetch(
+export async function searchClawHub(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
+  if (query) {
+    // User-initiated search: live
+    return fetchClawHubLive(query);
+  }
+  const data = await cachedFetch("clawhub", async () => {
+    const res = await fetch(
+      `https://clawhub.ai/api/v1/search?q=&limit=12`,
+      { headers: { Accept: "application/json" } }
+    );
+    if (!res.ok) throw new Error(`ClawHub search failed: ${res.statusText}`);
+    return (await res.json()) as { results: ClawHubResult[] };
+  }, options);
+  return clawHubToResult(data.results || []);
+}
+
+function fetchClawHubLive(query: string): Promise<MarketplaceSearchResult> {
+  return fetch(
     `https://clawhub.ai/api/v1/search?q=${encodeURIComponent(query)}&limit=12`,
     { headers: { Accept: "application/json" } }
-  );
-  if (!res.ok) throw new Error(`ClawHub search failed: ${res.statusText}`);
-  const data = (await res.json()) as { results: ClawHubResult[] };
-  const entries: MarketplaceEntry[] = (data.results || []).map((item) => ({
+  ).then(async (res) => {
+    if (!res.ok) throw new Error(`ClawHub search failed: ${res.statusText}`);
+    const data = (await res.json()) as { results: ClawHubResult[] };
+    return clawHubToResult(data.results || []);
+  });
+}
+
+function clawHubToResult(items: ClawHubResult[]): MarketplaceSearchResult {
+  const entries: MarketplaceEntry[] = items.map((item) => ({
     name: item.slug,
     description: item.summary || item.displayName || "",
     version: item.version,
@@ -283,9 +337,10 @@ export async function searchGitHubRepo(
   owner: string,
   repo: string,
   query: string,
-  sourceName: string
+  sourceName: string,
+  options?: CacheOptions,
 ): Promise<MarketplaceSearchResult> {
-  const items = await fetchGitHubRepoItems(owner, repo);
+  const items = await fetchGitHubRepoItems(owner, repo, options);
   const q = query.toLowerCase();
   const filtered = q
     ? items.filter(i => i.name.toLowerCase().includes(q) || (i.description?.toLowerCase().includes(q) ?? false))
@@ -303,20 +358,15 @@ export async function searchGitHubRepo(
 /**
  * Fetch all items (skills, agents, commands) from a GitHub repo tree.
  */
-export async function fetchGitHubRepoItems(owner: string, repo: string): Promise<GitHubRepoItem[]> {
-  const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`,
-    { headers: { Accept: "application/vnd.github.v3+json" } }
-  );
-  if (!res.ok) return [];
-  const data = (await res.json()) as { tree: { path: string; type: string }[] };
+export async function fetchGitHubRepoItems(owner: string, repo: string, options?: CacheOptions): Promise<GitHubRepoItem[]> {
+  const tree = await fetchGitHubTree(owner, repo, options);
   const items: GitHubRepoItem[] = [];
   const dirMap: Record<string, "skill" | "agent" | "command"> = {
     skills: "skill",
     agents: "agent",
     commands: "command",
   };
-  for (const t of data.tree) {
+  for (const t of tree) {
     if (t.type !== "blob") continue;
     for (const [dir, itemType] of Object.entries(dirMap)) {
       if (t.path.startsWith(`${dir}/`) && t.path.endsWith(".md")) {
@@ -381,7 +431,7 @@ export async function installGitHubRepoItem(
 
 export const KNOWN_SEARCHERS: Record<
   string,
-  (q: string) => Promise<MarketplaceSearchResult>
+  (q: string, options?: CacheOptions) => Promise<MarketplaceSearchResult>
 > = {
   [MS.SKILLSMP]: searchSkillsmp,
   [MS.OPENSKILLS]: searchOpenSkills,

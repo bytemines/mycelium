@@ -93,6 +93,11 @@ export async function togglePluginItem(
   return res.json();
 }
 
+export async function refreshMarketplaceCache(): Promise<{ cleared: number; refreshed: string[]; errors: string[] }> {
+  const res = await fetch(`/api/marketplace/refresh`, { method: "POST" });
+  return res.json();
+}
+
 export async function fetchPopularSkills(): Promise<MarketplaceSearchResult[]> {
   const res = await fetch(`/api/marketplace/popular`);
   return res.json();

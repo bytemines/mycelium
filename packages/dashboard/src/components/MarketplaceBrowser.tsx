@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   fetchMarketplaceRegistry, addMarketplaceToRegistry, removeMarketplaceFromRegistry,
   searchMarketplace as apiSearch, installMarketplaceEntry, fetchPopularSkills,
-  updateMarketplaceEntry, purgeItem,
+  updateMarketplaceEntry, purgeItem, refreshMarketplaceCache,
 } from "@/lib/api";
 import type { MarketplaceConfig } from "@mycelish/core";
 import { SkillCard } from "./SkillCard";
@@ -31,6 +31,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   const [removing, setRemoving] = useState<string | null>(null);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Registry / marketplace pills state
   const [marketplaces, setMarketplaces] = useState<{value: string; label: string}[]>([{ value: "all", label: "All" }]);
@@ -314,6 +315,20 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
           </button>
           <button type="button" onClick={() => setShowAddDialog(true)}
             className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">+ Add</button>
+          <button type="button" onClick={async () => {
+              setRefreshing(true); setError(null);
+              try {
+                const result = await refreshMarketplaceCache();
+                if (result.errors.length > 0) setError(`Refreshed with errors: ${result.errors.join(", ")}`);
+                await handleSearch();
+              } catch (err) {
+                setError(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+              } finally { setRefreshing(false); }
+            }} disabled={refreshing}
+            className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+            title="Refresh marketplace cache from remote sources">
+            {refreshing ? "Refreshing..." : "\u21bb Refresh"}
+          </button>
         </form>
 
         {/* Category chips */}
