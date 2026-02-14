@@ -373,9 +373,10 @@ async function getInstalledItems(): Promise<Map<string, { source: string; versio
 
   for (const [name, cfg] of Object.entries(manifest.skills)) {
     if (cfg.state === "enabled") {
-      // Backfill: compute contentHash for items that have none
-      if (!cfg.version && !cfg.contentHash) {
-        const hash = await backfillContentHash(name);
+      // Backfill: compute contentHash for items that have none, or migrate short hashes
+      const needsBackfill = !cfg.version && (!cfg.contentHash || cfg.contentHash.length < 12);
+      if (needsBackfill) {
+        const hash = await backfillContentHash(name, cfg);
         if (hash) {
           cfg.contentHash = hash;
           needsSave = true;
@@ -393,13 +394,21 @@ async function getInstalledItems(): Promise<Map<string, { source: string; versio
 }
 
 /** Backfill: compute content hash from already-installed item files */
-async function backfillContentHash(name: string): Promise<string | undefined> {
+async function backfillContentHash(name: string, cfg?: ItemConfig): Promise<string | undefined> {
   // Try all item type paths — skills use dir/SKILL.md, agents/commands use flat .md
   const candidates = [
     path.join(MYCELIUM_DIR, "skills", name, "SKILL.md"),
     path.join(MYCELIUM_DIR, "agents", `${name}.md`),
     path.join(MYCELIUM_DIR, "commands", `${name}.md`),
   ];
+  // Plugin-origin items live in the plugin cache, not in ~/.mycelium/global/
+  if (cfg?.pluginOrigin?.cachePath) {
+    candidates.unshift(
+      path.join(cfg.pluginOrigin.cachePath, "skills", name, "SKILL.md"),
+      path.join(cfg.pluginOrigin.cachePath, "agents", `${name}.md`),
+      path.join(cfg.pluginOrigin.cachePath, "commands", `${name}.md`),
+    );
+  }
   for (const p of candidates) {
     try {
       const content = await fs.readFile(p, "utf-8");
