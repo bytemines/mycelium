@@ -62,8 +62,19 @@ export async function executeMigration(plan: MigrationPlan): Promise<MigrationRe
     const mcpsPath = path.join(MYCELIUM_DIR, "global", "mcps.yaml");
     try {
       await mkdirp(path.join(MYCELIUM_DIR, "global"));
-      await fs.writeFile(mcpsPath, serializeMcpsYaml(plan.mcps), "utf-8");
+      const extractedSecrets: Record<string, string> = {};
+      await fs.writeFile(mcpsPath, serializeMcpsYaml(plan.mcps, { secretsOut: extractedSecrets }), "utf-8");
       mcpsImported = plan.mcps.length;
+
+      // Write extracted secrets to .env.local
+      const secretKeys = Object.keys(extractedSecrets);
+      if (secretKeys.length > 0) {
+        const { setupEnvVars, ensureGitignore } = await import("../env-template.js");
+        await setupEnvVars(extractedSecrets);
+        await ensureGitignore();
+        console.warn(`\u26A0 Extracted ${secretKeys.length} secret(s) to ~/.mycelium/.env.local (never commit this file)`);
+        console.warn(`  Keys: ${secretKeys.join(", ")}`);
+      }
       for (const mcp of plan.mcps) {
         entries.push({
           name: mcp.name,

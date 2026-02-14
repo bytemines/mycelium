@@ -175,6 +175,24 @@ envCommand
   });
 
 envCommand
+  .command("extract")
+  .description("Extract hardcoded secrets from mcps.yaml into .env.local")
+  .action(async () => {
+    const { extractSecretsFromMcps } = await import("../core/env-template.js");
+    const { extracted, mcpsPath } = await extractSecretsFromMcps();
+    if (extracted.length === 0) {
+      console.log("No hardcoded secrets found in mcps.yaml.");
+      return;
+    }
+    console.log(`Extracted ${extracted.length} secret(s) to ~/.mycelium/.env.local:`);
+    for (const item of extracted) {
+      console.log(`  \u2713 ${item}`);
+    }
+    console.log(`\nUpdated: ${mcpsPath}`);
+    console.log("Secrets replaced with ${VAR} references.");
+  });
+
+envCommand
   .command("list")
   .description("Show all env vars and their status")
   .action(async () => {

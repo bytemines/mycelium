@@ -43,7 +43,8 @@ export async function scanMcpsVarRefs(): Promise<string[]> {
   const content = await readFileIfExists(mcpsPath);
   if (!content) return [];
   const refs = new Set<string>();
-  const re = /\$\{([A-Z_][A-Z0-9_]*)}/g;
+  // Match both ${VAR} and ${env:VAR} (Cursor/Windsurf syntax)
+  const re = /\$\{(?:env:)?([A-Z_][A-Z0-9_]*)(?::-[^}]*)?\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     refs.add(m[1]);
@@ -113,6 +114,77 @@ export async function setupEnvVars(answers: Record<string, string>): Promise<voi
 /**
  * Ensure ~/.mycelium/.gitignore contains .env.local and machines/ entries.
  */
+/**
+ * Scan mcps.yaml for hardcoded secrets, move them to .env.local, replace with ${VAR} refs.
+ * Returns the number of secrets extracted.
+ */
+export async function extractSecretsFromMcps(): Promise<{ extracted: string[]; mcpsPath: string }> {
+  const { isLikelySecret } = await import("./secret-detector.js");
+  const { default: yaml } = await import("yaml");
+
+  const dir = expandPath(MYCELIUM_DIR);
+  const mcpsGlobal = path.join(dir, "global", "mcps.yaml");
+  const mcpsRoot = path.join(dir, "mcps.yaml");
+
+  // Try global/mcps.yaml first, then mcps.yaml
+  let mcpsPath = mcpsGlobal;
+  let content = await readFileIfExists(mcpsGlobal);
+  if (!content) {
+    mcpsPath = mcpsRoot;
+    content = await readFileIfExists(mcpsRoot);
+  }
+  if (!content) return { extracted: [], mcpsPath: mcpsGlobal };
+
+  let parsed: Record<string, any>;
+  try {
+    parsed = yaml.parse(content) ?? {};
+  } catch {
+    return { extracted: [], mcpsPath };
+  }
+  const secrets: Record<string, string> = {};
+  const extracted: string[] = [];
+
+  for (const [mcpName, mcpConfig] of Object.entries(parsed)) {
+    const cfg = mcpConfig as any;
+    if (!cfg?.env) continue;
+    for (const [key, value] of Object.entries(cfg.env as Record<string, string>)) {
+      const strVal = String(value);
+      // Normalize ${env:VAR} (Cursor/Windsurf syntax) → ${VAR}
+      const envColonMatch = strVal.match(/^\$\{env:([A-Z_][A-Z0-9_]*)\}$/);
+      if (envColonMatch) {
+        cfg.env[key] = `\${${envColonMatch[1]}}`;
+        extracted.push(`${mcpName}.env.${key} (normalized \${env:} → \${})`);
+        continue;
+      }
+      if (isLikelySecret(key, strVal)) {
+        secrets[key] = strVal;
+        cfg.env[key] = `\${${key}}`;
+        extracted.push(`${mcpName}.env.${key}`);
+      }
+    }
+  }
+
+  if (extracted.length === 0) return { extracted, mcpsPath };
+
+  // Write secrets to .env.local
+  const localPath = path.join(dir, ".env.local");
+  const existing = await readFileIfExists(localPath);
+  const existingPairs = existing ? parseEnvPairs(existing) : {};
+  // Preserve existing values — only add keys not already in .env.local
+  const merged = { ...secrets, ...existingPairs };
+  const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
+  await mkdirp(dir);
+  await fs.writeFile(localPath, lines.join("\n") + "\n", "utf-8");
+
+  // Rewrite mcps.yaml with ${VAR} refs
+  await fs.writeFile(mcpsPath, yaml.stringify(parsed), "utf-8");
+
+  // Ensure .env.local is gitignored
+  await ensureGitignore();
+
+  return { extracted, mcpsPath };
+}
+
 export async function ensureGitignore(): Promise<void> {
   const dir = expandPath(MYCELIUM_DIR);
   await mkdirp(dir);

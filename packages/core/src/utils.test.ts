@@ -115,6 +115,37 @@ describe("resolveEnvVars", () => {
     const { resolveEnvVars } = await import("./utils.js");
     expect(resolveEnvVars("no vars here", {})).toBe("no vars here");
   });
+
+  it("resolves ${env:VAR} Cursor/Windsurf syntax", async () => {
+    const { resolveEnvVars } = await import("./utils.js");
+    const env = { API_KEY: "secret123" };
+    expect(resolveEnvVars("${env:API_KEY}", env)).toBe("secret123");
+  });
+
+  it("resolves ${VAR:-default} with fallback", async () => {
+    const { resolveEnvVars } = await import("./utils.js");
+    expect(resolveEnvVars("${MY_VAR:-fallback}", {})).toBe("fallback");
+    expect(resolveEnvVars("${MY_VAR:-fallback}", { MY_VAR: "real" })).toBe("real");
+  });
+
+  it("resolves ${env:VAR:-default} combined syntax", async () => {
+    const { resolveEnvVars } = await import("./utils.js");
+    expect(resolveEnvVars("${env:API_KEY:-none}", {})).toBe("none");
+    expect(resolveEnvVars("${env:API_KEY:-none}", { API_KEY: "secret" })).toBe("secret");
+  });
+
+  it("resolves mixed syntaxes in one string", async () => {
+    const { resolveEnvVars } = await import("./utils.js");
+    const env = { A: "1", C: "3" };
+    expect(resolveEnvVars("${A} ${env:C} ${B:-default}", env)).toBe("1 3 default");
+  });
+
+  it("preserves falsy but valid values like '0' and empty string", async () => {
+    const { resolveEnvVars } = await import("./utils.js");
+    expect(resolveEnvVars("${PORT:-3000}", { PORT: "0" })).toBe("0");
+    expect(resolveEnvVars("${FLAG:-yes}", { FLAG: "" })).toBe("");
+    expect(resolveEnvVars("${env:PORT:-8080}", { PORT: "0" })).toBe("0");
+  });
 });
 
 describe("resolveEnvVarsInObject", () => {

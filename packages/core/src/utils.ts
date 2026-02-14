@@ -82,15 +82,31 @@ export function deepMerge<T extends Record<string, unknown>>(
 }
 
 /**
- * Resolve environment variables in a string (e.g., ${VAR_NAME})
+ * Resolve environment variables in a string.
+ * Supports both ${VAR} (Claude Code) and ${env:VAR} (Cursor/Windsurf) syntax.
+ * Also supports ${VAR:-default} for default values.
  */
 export function resolveEnvVars(
   str: string,
   env: Record<string, string> = process.env as Record<string, string>
 ): string {
-  return str.replace(/\$\{([^}]+)\}/g, (_, varName) => {
-    return env[varName] || "";
-  });
+  return str
+    // ${env:VAR:-default} — Cursor/Windsurf with fallback (most specific first)
+    .replace(/\$\{env:([^}:]+):-([^}]*)\}/g, (_, varName, defaultVal) => {
+      return varName in env ? env[varName] : defaultVal;
+    })
+    // ${env:VAR} — Cursor/Windsurf syntax
+    .replace(/\$\{env:([^}]+)\}/g, (_, varName) => {
+      return env[varName] ?? "";
+    })
+    // ${VAR:-default} — default value syntax
+    .replace(/\$\{([^}:]+):-([^}]*)\}/g, (_, varName, defaultVal) => {
+      return varName in env ? env[varName] : defaultVal;
+    })
+    // ${VAR} — standard syntax (least specific last)
+    .replace(/\$\{([^}]+)\}/g, (_, varName) => {
+      return env[varName] ?? "";
+    });
 }
 
 /**

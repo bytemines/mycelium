@@ -44,6 +44,7 @@ import {
 import { getDisabledItems, loadStateManifest } from "../core/manifest-state.js";
 import { scanPluginComponents } from "../core/plugin-scanner.js";
 import { PLUGIN_COMPONENT_DIRS, cleanOrphanedTakeovers } from "../core/plugin-takeover.js";
+import { extractSecretsFromMcps } from "../core/env-template.js";
 
 // ============================================================================
 // Types
@@ -373,6 +374,19 @@ export const syncCommand = new Command("sync")
     const globalEnvVars = await loadEnvFile(globalEnvPath);
     const projectEnvVars = await loadEnvFile(projectEnvPath);
     const envVars = { ...globalEnvVars, ...projectEnvVars };
+
+    // Auto-extract hardcoded secrets before syncing
+    const { extracted } = await extractSecretsFromMcps();
+    if (extracted.length > 0) {
+      console.warn(`\u26A0 Auto-extracted ${extracted.length} hardcoded secret(s) to ~/.mycelium/.env.local:`);
+      for (const item of extracted) {
+        console.warn(`  \u2713 ${item}`);
+      }
+      console.warn("");
+      // Reload env vars since we just wrote new ones
+      const freshGlobal = await loadEnvFile(globalEnvPath);
+      Object.assign(envVars, freshGlobal);
+    }
 
     // Get enabled tools from manifest (default all enabled)
     const enabledTools: Record<string, { enabled: boolean }> = Object.fromEntries(

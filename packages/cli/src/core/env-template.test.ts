@@ -5,6 +5,7 @@ import {
   setupEnvVars,
   ensureGitignore,
   scanMcpsVarRefs,
+  extractSecretsFromMcps,
 } from "./env-template.js";
 
 vi.mock("node:fs/promises", () => ({
@@ -185,5 +186,140 @@ describe("scanMcpsVarRefs", () => {
     expect(vars).toContain("API_KEY");
     // deduped
     expect(vars.filter((v) => v === "HOST")).toHaveLength(1);
+  });
+});
+
+describe("extractSecretsFromMcps", () => {
+  it("extracts hardcoded secrets and writes .env.local", async () => {
+    readFile.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("global/mcps.yaml"))
+        return Promise.resolve(
+          "context7:\n  command: npx\n  env:\n    CONTEXT7_API_KEY: ctx7sk-real-key-123\n"
+        );
+      return Promise.reject(new Error("not found"));
+    });
+
+    const { extracted } = await extractSecretsFromMcps();
+    expect(extracted).toHaveLength(1);
+    expect(extracted[0]).toContain("context7.env.CONTEXT7_API_KEY");
+
+    // .env.local should be written
+    const envWrite = writeFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".env.local")
+    );
+    expect(envWrite).toBeDefined();
+    expect(envWrite![1] as string).toContain("CONTEXT7_API_KEY=ctx7sk-real-key-123");
+
+    // mcps.yaml should be rewritten with ${VAR} ref
+    const yamlWrite = writeFile.mock.calls.find(([p]) =>
+      String(p).endsWith("mcps.yaml")
+    );
+    expect(yamlWrite).toBeDefined();
+    expect(yamlWrite![1] as string).not.toContain("ctx7sk-real-key-123");
+  });
+
+  it("returns empty when no secrets found", async () => {
+    readFile.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("global/mcps.yaml"))
+        return Promise.resolve(
+          "server:\n  command: node\n  env:\n    API_KEY: ${API_KEY}\n    PORT: 3000\n"
+        );
+      return Promise.reject(new Error("not found"));
+    });
+
+    const { extracted } = await extractSecretsFromMcps();
+    expect(extracted).toHaveLength(0);
+    // No writes should happen
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("normalizes ${env:VAR} Cursor syntax to ${VAR}", async () => {
+    readFile.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("global/mcps.yaml"))
+        return Promise.resolve(
+          "server:\n  command: node\n  env:\n    TOKEN: ${env:MY_TOKEN}\n"
+        );
+      return Promise.reject(new Error("not found"));
+    });
+
+    const { extracted } = await extractSecretsFromMcps();
+    expect(extracted).toHaveLength(1);
+    expect(extracted[0]).toContain("normalized");
+
+    const yamlWrite = writeFile.mock.calls.find(([p]) =>
+      String(p).endsWith("mcps.yaml")
+    );
+    expect(yamlWrite).toBeDefined();
+    // Should now have ${MY_TOKEN} not ${env:MY_TOKEN}
+    const content = yamlWrite![1] as string;
+    expect(content).not.toContain("${env:");
+  });
+
+  it("preserves existing .env.local values on conflict", async () => {
+    readFile.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("global/mcps.yaml"))
+        return Promise.resolve(
+          "server:\n  command: node\n  env:\n    API_KEY: sk-new-key-from-config\n"
+        );
+      if (path.endsWith(".env.local"))
+        return Promise.resolve("API_KEY=sk-old-key-user-set\n");
+      return Promise.reject(new Error("not found"));
+    });
+
+    await extractSecretsFromMcps();
+
+    const envWrite = writeFile.mock.calls.find(([p]) =>
+      String(p).endsWith(".env.local")
+    );
+    expect(envWrite).toBeDefined();
+    // Existing value should be preserved, new value should NOT appear
+    expect(envWrite![1] as string).toContain("API_KEY=sk-old-key-user-set");
+    expect(envWrite![1] as string).not.toContain("sk-new-key-from-config");
+  });
+
+  it("handles malformed YAML gracefully", async () => {
+    readFile.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("global/mcps.yaml"))
+        return Promise.resolve(":::invalid yaml{{{\n");
+      return Promise.reject(new Error("not found"));
+    });
+
+    const { extracted } = await extractSecretsFromMcps();
+    expect(extracted).toHaveLength(0);
+  });
+
+  it("handles MCPs without env section", async () => {
+    readFile.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("global/mcps.yaml"))
+        return Promise.resolve("server:\n  command: node\n  args:\n    - mcp\n");
+      return Promise.reject(new Error("not found"));
+    });
+
+    const { extracted } = await extractSecretsFromMcps();
+    expect(extracted).toHaveLength(0);
+  });
+
+  it("falls back to mcps.yaml when global/mcps.yaml missing", async () => {
+    readFile.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("global/mcps.yaml"))
+        return Promise.reject(new Error("not found"));
+      if (path.endsWith("mcps.yaml") && !path.includes("global"))
+        return Promise.resolve(
+          "server:\n  command: node\n  env:\n    SECRET_KEY: sk-fallback-secret-val\n"
+        );
+      return Promise.reject(new Error("not found"));
+    });
+
+    const { extracted, mcpsPath } = await extractSecretsFromMcps();
+    expect(extracted).toHaveLength(1);
+    expect(mcpsPath).toContain("mcps.yaml");
+    expect(mcpsPath).not.toContain("global");
   });
 });
