@@ -10,4 +10,5 @@ export const TIMEOUT_GLAMA = 10000;
 export const ENRICHMENT_OVERALL_TIMEOUT = 15_000;
 export const BATCH_HASH = 5;
 export const BATCH_NPM = 8;
-export const BATCH_GITHUB = 10;
+export const TIMEOUT_UNGH = 3000;
+export const BATCH_GITHUB = 30;

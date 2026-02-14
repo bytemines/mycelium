@@ -336,6 +336,7 @@ export interface MarketplaceEntry {
   installed?: boolean;
   type: MarketplaceEntryType;
   url?: string;
+  npmPackage?: string;
 }
 
 export interface MarketplaceSearchResult {

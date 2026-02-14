@@ -13,6 +13,7 @@ import { computeContentHash } from "./content-hash.js";
 import {
   MARKETPLACE_FETCH_LIMIT,
   TIMEOUT_GITHUB,
+  TIMEOUT_UNGH,
   TIMEOUT_NPM,
   TIMEOUT_GLAMA,
   BATCH_NPM,
@@ -175,6 +176,8 @@ interface McpRegistryServer {
     description?: string;
     version?: string;
     repository?: { url?: string; source?: string };
+    websiteUrl?: string;
+    packages?: { registryType?: string; identifier?: string }[];
   };
 }
 
@@ -192,6 +195,8 @@ export async function fetchMcpServers(query: string): Promise<McpRegistryServer[
 
 export function mcpServerToEntry(s: McpRegistryServer): MarketplaceEntry {
   const srv = s.server;
+  const url = srv.repository?.url || srv.websiteUrl || undefined;
+  const npmPkg = srv.packages?.find(p => p.registryType === "npm")?.identifier;
   return {
     name: srv.name,
     description: srv.description || "",
@@ -199,7 +204,8 @@ export function mcpServerToEntry(s: McpRegistryServer): MarketplaceEntry {
     latestVersion: srv.version,
     source: MS.MCP_REGISTRY,
     type: "mcp" as const,
-    url: srv.repository?.url || undefined,
+    url,
+    npmPackage: npmPkg,
   };
 }
 
@@ -329,10 +335,15 @@ export interface GitHubRepoItem {
  * Parse a github.com URL into owner/repo.
  * Returns null if not a GitHub URL.
  */
+const GITHUB_NAME_RE = /^[a-zA-Z0-9._-]+$/;
+
 export function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
   const m = url.match(/github\.com\/([^/]+)\/([^/]+)/);
   if (!m) return null;
-  return { owner: m[1], repo: m[2].replace(/\.git$/, "") };
+  const owner = m[1];
+  const repo = m[2].replace(/\.git$/, "");
+  if (!GITHUB_NAME_RE.test(owner) || !GITHUB_NAME_RE.test(repo)) return null;
+  return { owner, repo };
 }
 
 /**
@@ -342,11 +353,22 @@ export function parseGitHubUrl(url: string): { owner: string; repo: string } | n
 async function fetchGitHubRepoStars(owner: string, repo: string, options?: CacheOptions): Promise<number | undefined> {
   try {
     const data = await cachedFetch(`github-stars-${owner}-${repo}`, async () => {
+      // Tier 1: ungh.cc — free, no auth, no rate limit
+      try {
+        const unghRes = await fetch(`https://ungh.cc/repos/${owner}/${repo}`, { signal: AbortSignal.timeout(TIMEOUT_UNGH) });
+        if (unghRes.ok) {
+          const json = (await unghRes.json()) as { repo?: { stars?: number } };
+          if (json.repo?.stars != null) return { stars: json.repo.stars };
+        }
+      } catch {
+        // Fall through to GitHub API
+      }
+
+      // Tier 2/3: GitHub API (with token if available, unauth otherwise)
       const headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
       const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
       if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
       const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers, signal: AbortSignal.timeout(TIMEOUT_GITHUB) });
-      // Throw on failure so cachedFetch doesn't cache empty results
       if (!res.ok) throw new Error(`GitHub API ${res.status} for ${owner}/${repo}`);
       const json = (await res.json()) as { stargazers_count?: number };
       return { stars: json.stargazers_count };
@@ -529,11 +551,44 @@ export async function enrichWithNpmDownloads(entries: MarketplaceEntry[]): Promi
 // ============================================================================
 
 /**
+ * Resolve a GitHub URL from an npm package name via the npm registry.
+ * Returns a github.com URL or undefined.
+ */
+async function resolveGitHubUrlFromNpm(pkg: string): Promise<string | undefined> {
+  try {
+    const data = await cachedFetch(`npm-repo-${pkg}`, async () => {
+      const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}`, { signal: AbortSignal.timeout(TIMEOUT_NPM) });
+      if (!res.ok) throw new Error(`npm ${res.status}`);
+      const json = (await res.json()) as { repository?: { url?: string } | string };
+      const repoUrl = typeof json.repository === "string" ? json.repository : json.repository?.url;
+      return { repoUrl: repoUrl || null };
+    });
+    if (data.repoUrl && data.repoUrl.includes("github.com")) {
+      // Normalize git+https://github.com/foo/bar.git → https://github.com/foo/bar
+      return data.repoUrl.replace(/^git\+/, "").replace(/\.git$/, "");
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Enrich marketplace entries with GitHub star counts.
- * Targets entries that have a github.com URL but no stars yet.
- * Uses GITHUB_TOKEN/GH_TOKEN if available for higher rate limits.
+ * For entries without a GitHub URL but with an npm package, resolves the repo via npm first.
+ * Uses ungh.cc → GitHub API (token) → GitHub API (unauth) priority chain.
  */
 export async function enrichWithGitHubStars(entries: MarketplaceEntry[]): Promise<void> {
+  // Phase 1: resolve GitHub URLs from npm packages for entries missing a GitHub URL
+  const needsNpmResolve = entries.filter(e => e.stars == null && e.npmPackage && (!e.url || !e.url.includes("github.com")));
+  if (needsNpmResolve.length > 0) {
+    await Promise.allSettled(needsNpmResolve.map(async (entry) => {
+      const ghUrl = await resolveGitHubUrlFromNpm(entry.npmPackage!);
+      if (ghUrl) entry.url = ghUrl;
+    }));
+  }
+
+  // Phase 2: enrich with stars
   const needsStars = entries.filter(e => e.url && e.stars == null && e.url.includes("github.com"));
   if (needsStars.length === 0) return;
 
