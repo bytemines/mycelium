@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import {
   fetchMarketplaceRegistry, addMarketplaceToRegistry, removeMarketplaceFromRegistry,
   searchMarketplace as apiSearch, installMarketplaceEntry, fetchPopularSkills,
-  updateMarketplaceEntry, purgeItem, refreshMarketplaceCache,
+  updateMarketplaceEntry, purgeItem, refreshMarketplaceCache, fetchAvailableUpdates,
+  fetchMyceliumVersion,
 } from "@/lib/api";
 import type { MarketplaceConfig } from "@mycelish/core";
 import { SkillCard } from "./SkillCard";
@@ -43,6 +44,9 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   const [newMpUrl, setNewMpUrl] = useState("");
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [confirmRemoveItem, setConfirmRemoveItem] = useState<MarketplaceItem | null>(null);
+  const [availableUpdates, setAvailableUpdates] = useState<{ name: string; source: string }[]>([]);
+  const [showUpdatesOnly, setShowUpdatesOnly] = useState(false);
+  const [myceliumUpdate, setMyceliumUpdate] = useState<{ current: string; latest: string; hasUpdate: boolean } | null>(null);
 
   // Load registry + popular on mount
   useEffect(() => {
@@ -51,6 +55,8 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       const dynamic = Object.keys(reg).map(k => ({ value: k, label: k }));
       setMarketplaces([{ value: "all", label: "All" }, ...dynamic]);
     }).catch((err) => { console.warn("Failed to load marketplace registry:", err); });
+    fetchAvailableUpdates().then(setAvailableUpdates).catch((err) => { console.warn("Failed to check for updates:", err); });
+    fetchMyceliumVersion().then(setMyceliumUpdate).catch((err) => { console.warn("Failed to check mycelium version:", err); });
     // Initial results load is handled by the handleSearch effect
   }, []);
 
@@ -61,9 +67,8 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     if (!query.trim() && source === "all") {
       setLoading(true);
       setSearched(false);
-      fetchPopularSkills().then(results => {
-        const flat = results.flatMap(r => r.entries.map(e => ({ ...e, type: e.type as "skill" | "mcp" })));
-        setResults(flat);
+      fetchPopularSkills().then(entries => {
+        setResults(entries as MarketplaceItem[]);
       }).catch(() => setResults([])).finally(() => setLoading(false));
       return;
     }
@@ -72,8 +77,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     setSearched(true);
     try {
       const searchResults = await apiSearch(query, source !== "all" ? source : undefined);
-      const flat = searchResults.flatMap(r => r.entries.map(e => ({ ...e, type: e.type as "skill" | "mcp" })));
-      setResults(flat);
+      setResults(searchResults as MarketplaceItem[]);
     } catch {
       setResults([]);
     } finally {
@@ -91,7 +95,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     setInstalling(key);
     setError(null);
     try {
-      const result = await installMarketplaceEntry(item.name, item.source);
+      const result = await installMarketplaceEntry(item.name, item.source, item.type);
       if (result.success) {
         setResults(prev => prev.map(r => (r.name === item.name && r.source === item.source ? { ...r, installed: true } : r)));
       } else {
@@ -171,6 +175,10 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
 
   const displayResults = useMemo(() => {
     let filtered = results;
+    if (showUpdatesOnly) {
+      const updateNames = new Set(availableUpdates.map(u => u.name));
+      filtered = filtered.filter(item => updateNames.has(item.name));
+    }
     if (source !== "all") {
       filtered = filtered.filter(item => item.source === source);
     }
@@ -199,7 +207,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       return 0;
     });
     return sorted;
-  }, [results, source, category, sortBy, typeFilter]);
+  }, [results, source, category, sortBy, typeFilter, showUpdatesOnly, availableUpdates]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -367,6 +375,30 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
           })}
         </div>
       </div>
+
+      {/* Mycelium self-update banner */}
+      {myceliumUpdate?.hasUpdate && (
+        <div className="flex items-center justify-between rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-400">
+          <span>Mycelium <span className="font-mono">v{myceliumUpdate.current}</span> → <span className="font-mono">v{myceliumUpdate.latest}</span> available</span>
+          <span className="text-xs text-blue-400/70">Run <code className="rounded bg-blue-500/20 px-1.5 py-0.5 font-mono">npm update -g @mycelish/cli</code> to update</span>
+        </div>
+      )}
+
+      {/* Updates banner */}
+      {availableUpdates.length > 0 && (
+        <button
+          onClick={() => setShowUpdatesOnly(!showUpdatesOnly)}
+          className={cn(
+            "flex w-full items-center justify-between rounded-lg border px-4 py-3 text-sm transition-colors cursor-pointer",
+            showUpdatesOnly
+              ? "border-yellow-500/50 bg-yellow-500/15 text-yellow-400"
+              : "border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/15"
+          )}
+        >
+          <span>{availableUpdates.length} update{availableUpdates.length > 1 ? "s" : ""} available: {availableUpdates.map(u => u.name).join(", ")}</span>
+          <span className="text-xs">{showUpdatesOnly ? "Show all" : "Show updates"}</span>
+        </button>
+      )}
 
       {/* Error banner */}
       {error && (

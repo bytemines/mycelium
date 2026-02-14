@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { ENTRY_TYPE_META } from "@/lib/entry-type-meta";
 import { getTrustTier } from "@/lib/trust";
 import { SourceIcon } from "./icons/ToolIcons";
-import { auditMarketplaceEntry } from "@/lib/api";
+import { auditMarketplaceEntry, fetchItemContent } from "@/lib/api";
+import { Sparkles, Bot, Terminal, Puzzle, Server, FileText, ShieldCheck } from "lucide-react";
 
 export interface MarketplaceItem {
   name: string;
@@ -23,13 +25,17 @@ export interface MarketplaceItem {
 
 const DEFAULT_TYPE_META = { label: "Item", color: "text-gray-400", bgColor: "bg-gray-500/10", borderColor: "border-gray-500/30", fileExt: ".md" };
 
-const TYPE_ICONS: Record<string, string> = {
-  skill: "\u2699",      // gear
-  mcp: "\u26A1",        // lightning
-  plugin: "\u2B22",     // hexagon
-  agent: "\u25B6",      // play triangle
-  template: "\u25A6",   // square with pattern
-};
+/** Lucide icons matching the graph nodes (PluginNode uses Sparkles/Bot/Terminal) */
+function getTypeIcon(type: string, size: number): ReactNode {
+  switch (type) {
+    case "skill": return <Sparkles size={size} />;
+    case "mcp": return <Server size={size} />;
+    case "plugin": return <Puzzle size={size} />;
+    case "agent": return <Bot size={size} />;
+    case "command": return <Terminal size={size} />;
+    default: return <FileText size={size} />;
+  }
+}
 
 function getTypeMeta(type: string) {
   return ENTRY_TYPE_META[type] || DEFAULT_TYPE_META;
@@ -60,68 +66,92 @@ export function SkillCard({
   const isRemoving = removing === itemKey;
   const hasUpdate = item.installed && item.latestVersion && item.installedVersion && item.latestVersion !== item.installedVersion;
   const meta = getTypeMeta(item.type);
-  const icon = TYPE_ICONS[item.type] || "\u25CF";
+  const trust = getTrustTier(item.source);
+  const isPlugin = item.type === "plugin";
   const [auditResult, setAuditResult] = useState<{ safe: boolean; findings: Array<{ ruleId: string; severity: string; message: string; match: string }> } | null>(null);
   const [auditing, setAuditing] = useState(false);
+  const [contentPreview, setContentPreview] = useState<string | null>(null);
+  const [loadingContent, setLoadingContent] = useState(false);
+
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
+  async function handleExpand() {
+    onToggleExpand(itemKey);
+    // Fetch content on first expand
+    if (!expanded && item.url && contentPreview === null) {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setLoadingContent(true);
+      try {
+        const content = await fetchItemContent(item.url, item.type, controller.signal);
+        if (!controller.signal.aborted) {
+          setContentPreview(content ?? "");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingContent(false);
+        }
+      }
+    }
+  }
 
   return (
     <div
       className={cn(
-        "group rounded-xl border bg-card text-sm shadow-sm transition-all cursor-pointer",
+        "group relative flex flex-col rounded-xl border bg-card text-sm shadow-sm transition-all cursor-pointer",
         "hover:shadow-md hover:border-primary/40",
         meta.borderColor,
         expanded && "ring-2 ring-primary/30 shadow-md",
         item.installed && "border-green-500/40"
       )}
-      onClick={() => onToggleExpand(itemKey)}
+      onClick={handleExpand}
     >
-      {/* Header */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-start justify-between gap-2">
-          {/* Type icon + name */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className={cn(
-              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base",
-              meta.bgColor, meta.color
-            )}>
-              {icon}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-foreground truncate">{item.name}</span>
-                {item.installed && (
-                  <span className="shrink-0 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-400">
-                    Installed
-                  </span>
-                )}
-                {hasUpdate && (
-                  <span className="shrink-0 rounded-full bg-yellow-500/15 px-1.5 py-0.5 text-[10px] font-medium text-yellow-400">
-                    Update
-                  </span>
-                )}
-                {(() => {
-                  const trust = getTrustTier(item.source);
-                  return (
-                    <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium", trust.bgColor, trust.color)}>
-                      {trust.tier !== "community" ? "\u2713 " : ""}{trust.label}
-                    </span>
-                  );
-                })()}
-              </div>
-              {item.author && (
-                <span className="text-xs text-muted-foreground">{item.author}</span>
-              )}
-            </div>
-          </div>
+      {/* Type badge — top-right */}
+      <span className={cn(
+        "absolute top-3 right-3 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+        meta.bgColor, meta.color
+      )}>
+        {meta.label}
+      </span>
 
-          {/* Type badge */}
-          <span className={cn(
-            "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+      {/* Icon + Name (full width) */}
+      <div className="px-4 pt-4 pb-1">
+        <div className="flex items-center gap-2.5 pr-16">
+          <div className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
             meta.bgColor, meta.color
           )}>
-            {meta.label}
-          </span>
+            {getTypeIcon(item.type, 18)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-foreground break-words leading-tight">{item.name}</div>
+            {item.author && (
+              <span className="text-xs text-muted-foreground">{item.author}</span>
+            )}
+          </div>
         </div>
+      </div>
+
+      {/* Badges row — separate line, wrapping */}
+      <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2">
+        {item.installed && (
+          <span className="rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-medium text-green-400">
+            Installed
+          </span>
+        )}
+        {hasUpdate && (
+          <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
+            Update
+          </span>
+        )}
+        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", trust.bgColor, trust.color)}>
+          {trust.tier !== "community" ? "\u2713 " : ""}{trust.label}
+        </span>
       </div>
 
       {/* Description */}
@@ -134,29 +164,29 @@ export function SkillCard({
         </p>
       </div>
 
-      {/* Stats row — always visible */}
+      {/* Bottom row: version | stats | source */}
       <div className="flex items-center gap-3 px-4 pb-3 text-xs text-muted-foreground">
+        {item.latestVersion && (
+          <span className="font-mono text-[11px]">v{item.latestVersion}</span>
+        )}
         {item.stars != null && (
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-0.5">
             <span className="text-yellow-400">&#9733;</span>
             {formatCount(item.stars)}
           </span>
         )}
         {item.downloads != null && (
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-0.5">
             <span className="text-muted-foreground/60">&#8595;</span>
             {formatCount(item.downloads)}
           </span>
-        )}
-        {item.latestVersion && (
-          <span className="font-mono">v{item.latestVersion}</span>
         )}
         <span className={cn("ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]", meta.bgColor, meta.color)}>
           <SourceIcon source={item.source} size={12} />
           {item.source}
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()} className="ml-1 hover:text-primary" title="View source">&#8599;</a>
+              onClick={e => e.stopPropagation()} className="ml-0.5 hover:text-primary" title="View source">&#8599;</a>
           )}
         </span>
       </div>
@@ -180,7 +210,22 @@ export function SkillCard({
           {item.updatedAt && (
             <div className="text-xs text-muted-foreground">Updated: {item.updatedAt}</div>
           )}
-          <div className="flex items-center justify-end gap-2 pt-1">
+
+          {/* Content preview */}
+          {loadingContent && (
+            <div className="text-xs text-muted-foreground">Loading definition...</div>
+          )}
+          {contentPreview && (
+            <div className="rounded-md border border-border/50 bg-muted/30 p-3">
+              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Definition</div>
+              <pre className="max-h-48 overflow-auto text-[11px] text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+                {contentPreview.slice(0, 2000)}{contentPreview.length > 2000 ? "\n..." : ""}
+              </pre>
+            </div>
+          )}
+
+          {/* Action buttons — centered */}
+          <div className="flex items-center justify-center gap-2 pt-1">
             <button
               onClick={async (e) => {
                 e.stopPropagation();
@@ -192,9 +237,10 @@ export function SkillCard({
                 finally { setAuditing(false); }
               }}
               disabled={auditing}
-              className="rounded-md px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted disabled:opacity-50 transition-colors"
             >
-              {auditing ? "Scanning..." : "\u{1F6E1}\uFE0F Audit"}
+              <ShieldCheck size={14} />
+              {auditing ? "Scanning..." : "Audit"}
             </button>
             {item.installed && onRemove && (
               <button
@@ -221,11 +267,13 @@ export function SkillCard({
                 "rounded-md px-4 py-1.5 text-xs font-medium transition-colors",
                 item.installed
                   ? "border border-green-500/30 text-green-400 bg-green-500/10"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90",
+                  : isPlugin
+                    ? "bg-amber-500/80 text-white hover:bg-amber-500"
+                    : "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:opacity-50"
               )}
             >
-              {item.installed ? "Installed" : isInstalling ? "Installing..." : "Install"}
+              {item.installed ? "Installed" : isInstalling ? "Installing..." : isPlugin ? "Install Plugin" : "Install"}
             </button>
           </div>
           {auditResult && (
@@ -255,14 +303,14 @@ export function SkillCard({
         </div>
       )}
 
-      {/* Collapsed footer with quick install */}
+      {/* Collapsed footer with quick install — centered */}
       {!expanded && (
-        <div className="flex items-center justify-end px-4 pb-3">
+        <div className="mt-auto flex items-center justify-center gap-2 px-4 pb-3">
           {hasUpdate && (
             <button
               onClick={(e) => { e.stopPropagation(); onUpdate(item); }}
               disabled={isUpdating}
-              className="mr-2 rounded-md px-2.5 py-1 text-[11px] font-medium text-yellow-400 hover:bg-yellow-500/15 disabled:opacity-50 transition-colors"
+              className="rounded-md px-2.5 py-1 text-[11px] font-medium text-yellow-400 hover:bg-yellow-500/15 disabled:opacity-50 transition-colors"
             >
               {isUpdating ? "..." : "Update"}
             </button>
@@ -274,11 +322,13 @@ export function SkillCard({
               "rounded-md px-3 py-1 text-[11px] font-medium transition-colors",
               item.installed
                 ? "text-green-400 bg-green-500/10"
-                : "bg-primary/80 text-primary-foreground hover:bg-primary",
+                : isPlugin
+                  ? "bg-amber-500/80 text-white hover:bg-amber-500"
+                  : "bg-primary/80 text-primary-foreground hover:bg-primary",
               "disabled:opacity-50"
             )}
           >
-            {item.installed ? "Installed" : isInstalling ? "..." : "Install"}
+            {item.installed ? "Installed" : isInstalling ? "..." : isPlugin ? "Install Plugin" : "Install"}
           </button>
         </div>
       )}

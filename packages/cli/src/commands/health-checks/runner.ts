@@ -78,7 +78,28 @@ export async function runAllChecks(): Promise<DoctorResult> {
     // plugin takeover check is optional
   }
 
-  // 7. Check MCP self-registration
+  // 7. Check for item updates
+  try {
+    const { checkForUpdates } = await import("../../core/marketplace.js");
+    const updates = await checkForUpdates();
+    if (updates.length > 0) {
+      checks.push({
+        name: "Item Updates",
+        status: "warn",
+        message: `${updates.length} item(s) have updates available: ${updates.map(u => u.name).join(", ")}`,
+      });
+    } else {
+      checks.push({
+        name: "Item Updates",
+        status: "pass",
+        message: "All installed items are up to date",
+      });
+    }
+  } catch {
+    // update check is optional — network may be unavailable
+  }
+
+  // 8. Check MCP self-registration
   try {
     const { checkSelfRegistration } = await import("./mcp-check.js");
     const selfRegChecks = await checkSelfRegistration();

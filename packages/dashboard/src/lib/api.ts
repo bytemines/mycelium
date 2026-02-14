@@ -1,4 +1,4 @@
-import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceSearchResult, MarketplaceConfig, PluginInfo, MarketplaceSource } from "@mycelish/core";
+import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceEntry, MarketplaceConfig, PluginInfo, MarketplaceSource } from "@mycelish/core";
 
 export async function fetchDashboardState(): Promise<DashboardState> {
   const res = await fetch(`/api/state`);
@@ -33,18 +33,18 @@ export async function clearMigration(toolId?: string): Promise<{ cleared: string
   return res.json();
 }
 
-export async function searchMarketplace(query: string, source?: string): Promise<MarketplaceSearchResult[]> {
+export async function searchMarketplace(query: string, source?: string): Promise<MarketplaceEntry[]> {
   const params = new URLSearchParams({ q: query });
   if (source) params.set("source", source);
   const res = await fetch(`/api/marketplace/search?${params}`);
   return res.json();
 }
 
-export async function installMarketplaceEntry(name: string, source: string): Promise<{ success: boolean; error?: string }> {
+export async function installMarketplaceEntry(name: string, source: string, type?: string): Promise<{ success: boolean; error?: string }> {
   const res = await fetch(`/api/marketplace/install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, source }),
+    body: JSON.stringify({ name, source, type }),
   });
   return res.json();
 }
@@ -98,7 +98,7 @@ export async function refreshMarketplaceCache(): Promise<{ cleared: number; refr
   return res.json();
 }
 
-export async function fetchPopularSkills(): Promise<MarketplaceSearchResult[]> {
+export async function fetchPopularSkills(): Promise<MarketplaceEntry[]> {
   const res = await fetch(`/api/marketplace/popular`);
   return res.json();
 }
@@ -131,6 +131,28 @@ export async function auditMarketplaceEntry(name: string, source: string, type: 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, source, type }),
   });
+  return res.json();
+}
+
+export async function fetchMyceliumVersion(): Promise<{ current: string; latest: string; hasUpdate: boolean }> {
+  const res = await fetch(`/api/marketplace/self-update`);
+  return res.json();
+}
+
+export async function fetchItemContent(url: string, type = "skill", signal?: AbortSignal): Promise<string | null> {
+  try {
+    const params = new URLSearchParams({ url, type });
+    const res = await fetch(`/api/marketplace/content?${params}`, { signal });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { content?: string };
+    return data.content ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchAvailableUpdates(): Promise<{ name: string; source: string; type: string; installedVersion: string; latestVersion: string }[]> {
+  const res = await fetch(`/api/marketplace/updates`);
   return res.json();
 }
 

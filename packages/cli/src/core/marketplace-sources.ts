@@ -9,6 +9,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { cachedFetch, type CacheOptions } from "./marketplace-cache.js";
+import { computeContentHash } from "./content-hash.js";
 
 // ============================================================================
 // npm download counts
@@ -236,7 +237,10 @@ export async function fetchAnthropicSkillsList(options?: CacheOptions): Promise<
 }
 
 export async function searchAnthropicSkills(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
-  const allSkills = await fetchAnthropicSkillsList(options);
+  const [allSkills, stars] = await Promise.all([
+    fetchAnthropicSkillsList(options),
+    fetchGitHubRepoStars("anthropics", "skills", options),
+  ]);
   const q = query.toLowerCase();
   const filtered = q ? allSkills.filter(s => s.toLowerCase().includes(q)) : allSkills;
   const entries: MarketplaceEntry[] = filtered.map(name => ({
@@ -245,6 +249,7 @@ export async function searchAnthropicSkills(query: string, options?: CacheOption
     author: "anthropics",
     source: MS.ANTHROPIC_SKILLS,
     type: "skill" as const,
+    stars,
     url: `https://github.com/anthropics/skills/tree/main/skills/${name}`,
   }));
   return { entries, total: entries.length, source: MS.ANTHROPIC_SKILLS };
@@ -275,6 +280,23 @@ export function parseGitHubUrl(url: string): { owner: string; repo: string } | n
  * Search a GitHub repo for skills, agents, and commands.
  * Uses the recursive tree endpoint (same pattern as fetchAnthropicSkillsList).
  */
+async function fetchGitHubRepoStars(owner: string, repo: string, options?: CacheOptions): Promise<number | undefined> {
+  try {
+    const data = await cachedFetch(`github-stars-${owner}-${repo}`, async () => {
+      const headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
+      const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+      if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+      if (!res.ok) return { stars: undefined };
+      const json = (await res.json()) as { stargazers_count?: number };
+      return { stars: json.stargazers_count };
+    }, options);
+    return data.stars;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function searchGitHubRepo(
   owner: string,
   repo: string,
@@ -282,7 +304,10 @@ export async function searchGitHubRepo(
   sourceName: string,
   options?: CacheOptions,
 ): Promise<MarketplaceSearchResult> {
-  const items = await fetchGitHubRepoItems(owner, repo, options);
+  const [items, stars] = await Promise.all([
+    fetchGitHubRepoItems(owner, repo, options),
+    fetchGitHubRepoStars(owner, repo, options),
+  ]);
   const q = query.toLowerCase();
   const filtered = q
     ? items.filter(i => i.name.toLowerCase().includes(q) || (i.description?.toLowerCase().includes(q) ?? false))
@@ -293,8 +318,25 @@ export async function searchGitHubRepo(
     author: owner,
     source: sourceName,
     type: item.type,
+    stars,
     url: `https://github.com/${owner}/${repo}/tree/main/${item.path}`,
   }));
+
+  // If the repo has multiple item types, add a plugin entry representing the whole repo
+  const types = new Set(items.map(i => i.type));
+  if (types.size > 1 && (!q || repo.toLowerCase().includes(q) || owner.toLowerCase().includes(q))) {
+    const counts = [...types].map(t => `${items.filter(i => i.type === t).length} ${t}s`).join(", ");
+    entries.unshift({
+      name: repo,
+      description: `Plugin bundle: ${counts}`,
+      author: owner,
+      source: sourceName,
+      type: "plugin",
+      stars,
+      url: `https://github.com/${owner}/${repo}`,
+    });
+  }
+
   return { entries, total: entries.length, source: sourceName };
 }
 
@@ -337,7 +379,7 @@ export async function installGitHubRepoItem(
   owner: string,
   repo: string,
   entry: MarketplaceEntry
-): Promise<{ success: boolean; path?: string; error?: string }> {
+): Promise<{ success: boolean; path?: string; error?: string; contentHash?: string }> {
   const itemType = entry.type as "skill" | "agent" | "command";
   let remotePath: string;
   let localDir: string;
@@ -365,7 +407,7 @@ export async function installGitHubRepoItem(
   await fs.mkdir(localDir, { recursive: true });
   const filePath = path.join(localDir, fileName);
   await fs.writeFile(filePath, content, "utf-8");
-  return { success: true, path: filePath };
+  return { success: true, path: filePath, contentHash: computeContentHash(content) };
 }
 
 // ============================================================================

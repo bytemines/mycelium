@@ -26,6 +26,8 @@ export type { ItemState };
 export interface ItemConfig {
   state?: ItemState;
   source?: string;
+  version?: string;
+  contentHash?: string;
   command?: string;
   args?: string[];
   env?: Record<string, string>;

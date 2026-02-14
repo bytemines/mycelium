@@ -7,6 +7,7 @@ import type {
   MarketplaceSource,
 } from "@mycelish/core";
 import { MARKETPLACE_SOURCES as MS } from "@mycelish/core";
+import { deduplicateEntries } from "./marketplace-deduplicator.js";
 import {
   getRegistryEntry,
   parseRegistryEntry,
@@ -22,6 +23,7 @@ import {
   parseGitHubUrl,
   searchGitHubRepo,
   installGitHubRepoItem,
+  fetchGitHubRepoItems,
 } from "./marketplace-sources.js";
 import type { CacheOptions } from "./marketplace-cache.js";
 import { getTracer } from "./global-tracer.js";
@@ -31,6 +33,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { MYCELIUM_HOME } from "./fs-helpers.js";
 import { loadStateManifest, saveStateManifest } from "./manifest-state.js";
+import type { ItemConfig } from "./manifest-state.js";
+import { computeContentHash } from "./content-hash.js";
+
+// Re-export so existing consumers don't break
+export { computeContentHash } from "./content-hash.js";
 
 const MYCELIUM_DIR = path.join(MYCELIUM_HOME, "global");
 
@@ -45,7 +52,7 @@ export async function searchMarketplace(
   query: string,
   source?: MarketplaceSource,
   options?: CacheOptions,
-): Promise<MarketplaceSearchResult[]> {
+): Promise<MarketplaceEntry[]> {
   const registry = await loadMarketplaceRegistry();
   const enabledSources = source
     ? [source]
@@ -77,18 +84,28 @@ export async function searchMarketplace(
   const total = filtered.reduce((n, r) => n + r.entries.length, 0);
   log.info({ scope: "search", op: "done", dur: Date.now() - t0, msg: `${total} entries from ${filtered.length} sources` });
 
-  return enrichWithInstalledStatus(filtered);
+  const enriched = await enrichWithInstalledStatus(filtered);
+  const allEntries = deduplicateEntries(enriched);
+  return enrichWithLatestHashes(allEntries);
 }
 
 // ============================================================================
 // Install
 // ============================================================================
 
+interface InstallResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+  version?: string;
+  contentHash?: string;
+}
+
 export async function installFromMarketplace(
   entry: MarketplaceEntry
-): Promise<{ success: boolean; path?: string; error?: string }> {
+): Promise<InstallResult> {
   try {
-    let result: { success: boolean; path?: string; error?: string };
+    let result: InstallResult;
     switch (entry.source) {
       case MS.OPENSKILLS:
         result = await installOpenSkill(entry); break;
@@ -105,6 +122,11 @@ export async function installFromMarketplace(
         if (config?.url) {
           const gh = parseGitHubUrl(config.url);
           if (gh) {
+            // Plugin type: install all components from the repo
+            if (entry.type === "plugin") {
+              result = await installPlugin(gh.owner, gh.repo, entry);
+              break;
+            }
             result = await installGitHubRepoItem(gh.owner, gh.repo, entry);
             break;
           }
@@ -112,8 +134,9 @@ export async function installFromMarketplace(
         return { success: false, error: `Unknown source: ${entry.source}` };
       }
     }
+    // MCP registry registers in manifest inside installMcpRegistry() directly
     if (result.success && entry.source !== MS.MCP_REGISTRY) {
-      await registerSkillInManifest(entry.name, entry.source);
+      await registerSkillInManifest(entry.name, entry.source, result.version, result.contentHash);
     }
     // Auto-sync to push installed item into tool directories
     if (result.success) {
@@ -133,8 +156,9 @@ async function installOpenSkill(entry: MarketplaceEntry) {
   const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
   await fs.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, "SKILL.md");
-  await fs.writeFile(filePath, `# ${entry.name}\n\n${entry.description}\n\n> Installed from openskills registry\n`, "utf-8");
-  return { success: true, path: filePath };
+  const content = `# ${entry.name}\n\n${entry.description}\n\n> Installed from openskills registry\n`;
+  await fs.writeFile(filePath, content, "utf-8");
+  return { success: true, path: filePath, version: entry.version, contentHash: computeContentHash(content) };
 }
 
 async function installClaudePlugin(entry: MarketplaceEntry) {
@@ -143,7 +167,7 @@ async function installClaudePlugin(entry: MarketplaceEntry) {
   const dest = path.join(MYCELIUM_DIR, "skills", entry.name);
   await fs.mkdir(path.dirname(dest), { recursive: true });
   await fs.symlink(src, dest);
-  return { success: true, path: dest };
+  return { success: true, path: dest, version: entry.version };
 }
 
 async function installMcpRegistry(entry: MarketplaceEntry) {
@@ -153,7 +177,9 @@ async function installMcpRegistry(entry: MarketplaceEntry) {
   const mcpsPath = path.join(MYCELIUM_DIR, "mcps.yaml");
   const yamlLine = `\n${entry.name}:\n  command: ${config.command}\n  args: [${(config.args || []).map((a) => `"${a}"`).join(", ")}]\n  enabled: true\n`;
   await fs.appendFile(mcpsPath, yamlLine, "utf-8");
-  return { success: true, path: mcpsPath };
+  // MCP registry entries store version in manifest directly
+  await registerSkillInManifest(entry.name, entry.source, entry.version);
+  return { success: true, path: mcpsPath, version: entry.version };
 }
 
 async function installAnthropicSkill(entry: MarketplaceEntry) {
@@ -165,14 +191,14 @@ async function installAnthropicSkill(entry: MarketplaceEntry) {
   await fs.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, "SKILL.md");
   await fs.writeFile(filePath, content, "utf-8");
-  return { success: true, path: filePath };
+  return { success: true, path: filePath, contentHash: computeContentHash(content) };
 }
 
 // ============================================================================
 // Popular / Browse
 // ============================================================================
 
-export async function getPopularSkills(options?: CacheOptions): Promise<MarketplaceSearchResult[]> {
+export async function getPopularSkills(options?: CacheOptions): Promise<MarketplaceEntry[]> {
   const results: MarketplaceSearchResult[] = [];
 
   const fetchers: Array<{ name: string; fn: () => Promise<void> }> = [
@@ -208,7 +234,9 @@ export async function getPopularSkills(options?: CacheOptions): Promise<Marketpl
   }
   log.info({ scope: "popular", op: "done", dur: Date.now() - t0, msg: `${results.reduce((n, r) => n + r.entries.length, 0)} entries` });
 
-  return enrichWithInstalledStatus(results);
+  const enriched = await enrichWithInstalledStatus(results);
+  const allEntries = deduplicateEntries(enriched);
+  return enrichWithLatestHashes(allEntries);
 }
 
 async function fetchPopularAnthropicSkills(results: MarketplaceSearchResult[], options?: CacheOptions) {
@@ -264,6 +292,48 @@ async function fetchPopularOpenSkills(results: MarketplaceSearchResult[], option
 }
 
 // ============================================================================
+// Plugin Install (all components from a GitHub repo)
+// ============================================================================
+
+async function installPlugin(
+  owner: string,
+  repo: string,
+  entry: MarketplaceEntry,
+): Promise<{ success: boolean; path?: string; error?: string }> {
+  const items = await fetchGitHubRepoItems(owner, repo);
+  if (items.length === 0) {
+    return { success: false, error: `No installable items found in ${owner}/${repo}` };
+  }
+
+  const results = await Promise.allSettled(
+    items.map(item =>
+      installGitHubRepoItem(owner, repo, {
+        name: item.name,
+        description: item.description || "",
+        source: entry.source,
+        type: item.type,
+      })
+    )
+  );
+
+  const succeeded = results.filter(r => r.status === "fulfilled" && r.value.success).length;
+  const failed = results.length - succeeded;
+
+  // Register each installed item in manifest
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    const r = results[idx];
+    const contentHash = r.status === "fulfilled" ? r.value.contentHash : undefined;
+    await registerSkillInManifest(item.name, entry.source, undefined, contentHash);
+  }
+
+  if (failed > 0) {
+    return { success: true, error: `Installed ${succeeded}/${results.length} components (${failed} failed)` };
+  }
+  return { success: true, path: `${succeeded} components installed from ${owner}/${repo}` };
+}
+
+// ============================================================================
 // Auto-Sync
 // ============================================================================
 
@@ -280,11 +350,14 @@ async function autoSync(): Promise<void> {
 // Manifest Registration
 // ============================================================================
 
-async function registerSkillInManifest(name: string, source: string): Promise<void> {
+async function registerSkillInManifest(name: string, source: string, version?: string, contentHash?: string): Promise<void> {
   const manifestDir = MYCELIUM_HOME;
   const manifest = await loadStateManifest(manifestDir) ?? { version: "1.0.0" };
   if (!manifest.skills) manifest.skills = {};
-  manifest.skills[name] = { state: "enabled", source };
+  const entry: ItemConfig = { state: "enabled", source };
+  if (version) entry.version = version;
+  if (contentHash) entry.contentHash = contentHash;
+  manifest.skills[name] = entry;
   await saveStateManifest(manifestDir, manifest);
 }
 
@@ -292,23 +365,164 @@ async function registerSkillInManifest(name: string, source: string): Promise<vo
 // Installed Status Enrichment
 // ============================================================================
 
-async function getInstalledSkillNames(): Promise<Set<string>> {
+async function getInstalledItems(): Promise<Map<string, { source: string; version?: string; contentHash?: string }>> {
   const manifest = await loadStateManifest(MYCELIUM_HOME);
-  if (!manifest?.skills) return new Set();
-  return new Set(
-    Object.entries(manifest.skills)
-      .filter(([, cfg]) => cfg.state === "enabled")
-      .map(([name]) => name)
-  );
+  if (!manifest?.skills) return new Map();
+  const map = new Map<string, { source: string; version?: string; contentHash?: string }>();
+  let needsSave = false;
+
+  for (const [name, cfg] of Object.entries(manifest.skills)) {
+    if (cfg.state === "enabled") {
+      // Backfill: compute contentHash for items that have none
+      if (!cfg.version && !cfg.contentHash) {
+        const hash = await backfillContentHash(name);
+        if (hash) {
+          cfg.contentHash = hash;
+          needsSave = true;
+        }
+      }
+      map.set(name, { source: cfg.source ?? "", version: cfg.version, contentHash: cfg.contentHash });
+    }
+  }
+
+  if (needsSave) {
+    await saveStateManifest(MYCELIUM_HOME, manifest).catch(() => {});
+  }
+
+  return map;
+}
+
+/** Backfill: compute content hash from already-installed item files */
+async function backfillContentHash(name: string): Promise<string | undefined> {
+  // Try all item type paths — skills use dir/SKILL.md, agents/commands use flat .md
+  const candidates = [
+    path.join(MYCELIUM_DIR, "skills", name, "SKILL.md"),
+    path.join(MYCELIUM_DIR, "agents", `${name}.md`),
+    path.join(MYCELIUM_DIR, "commands", `${name}.md`),
+  ];
+  for (const p of candidates) {
+    try {
+      const content = await fs.readFile(p, "utf-8");
+      return computeContentHash(content);
+    } catch {
+      // Try next path
+    }
+  }
+  return undefined;
+}
+
+// ============================================================================
+// Mycelium Self-Update Check
+// ============================================================================
+
+export async function checkMyceliumUpdate(): Promise<{ current: string; latest: string; hasUpdate: boolean } | null> {
+  try {
+    const pkgPath = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "package.json");
+    const pkgContent = await fs.readFile(pkgPath, "utf-8");
+    const pkg = JSON.parse(pkgContent) as { version: string };
+    const current = pkg.version;
+
+    const res = await fetch("https://registry.npmjs.org/@mycelish/cli/latest", {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { version: string };
+    return { current, latest: data.version, hasUpdate: data.version !== current };
+  } catch {
+    return null;
+  }
 }
 
 async function enrichWithInstalledStatus(results: MarketplaceSearchResult[]): Promise<MarketplaceSearchResult[]> {
-  const installed = await getInstalledSkillNames();
+  const installed = await getInstalledItems();
   if (installed.size === 0) return results;
   return results.map(r => ({
     ...r,
-    entries: r.entries.map(e => installed.has(e.name) ? { ...e, installed: true } : e),
+    entries: r.entries.map(e => {
+      const info = installed.get(e.name);
+      if (!info) return e;
+      const installedVersion = info.version ?? (info.contentHash ? `#${info.contentHash}` : undefined);
+      return { ...e, installed: true, installedVersion };
+    }),
   }));
+}
+
+// ============================================================================
+// Latest Hash Enrichment (for versionless sources)
+// ============================================================================
+
+async function enrichWithLatestHashes(entries: MarketplaceEntry[]): Promise<MarketplaceEntry[]> {
+  const needsHash = entries.filter(e => e.installed && !e.latestVersion && e.url);
+  if (needsHash.length === 0) return entries;
+
+  const hashMap = new Map<string, string>();
+  // Overall timeout: cap total enrichment at 15s regardless of item count
+  const overallController = new AbortController();
+  const overallTimeout = setTimeout(() => overallController.abort(), 15_000);
+
+  try {
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < needsHash.length; i += BATCH_SIZE) {
+      if (overallController.signal.aborted) break;
+      const batch = needsHash.slice(i, i + BATCH_SIZE).map(async (e) => {
+        try {
+          let rawUrl = e.url!;
+          if (rawUrl.includes("github.com") && rawUrl.includes("/tree/main/")) {
+            rawUrl = rawUrl.replace("github.com", "raw.githubusercontent.com").replace("/tree/main/", "/main/");
+            if (e.type === "skill" && !rawUrl.endsWith(".md")) {
+              rawUrl += "/SKILL.md";
+            }
+          }
+          const res = await fetch(rawUrl, { signal: overallController.signal });
+          if (res.ok) {
+            const content = await res.text();
+            hashMap.set(e.name, `#${computeContentHash(content)}`);
+          }
+        } catch {
+          // Non-critical — skip (includes abort)
+        }
+      });
+      await Promise.allSettled(batch);
+    }
+  } finally {
+    clearTimeout(overallTimeout);
+  }
+
+  if (hashMap.size === 0) return entries;
+  return entries.map(e => {
+    const hash = hashMap.get(e.name);
+    return hash ? { ...e, latestVersion: hash } : e;
+  });
+}
+
+// ============================================================================
+// Check for Updates
+// ============================================================================
+
+export async function checkForUpdates(): Promise<{ name: string; source: string; type: string; installedVersion: string; latestVersion: string }[]> {
+  const installed = await getInstalledItems();
+  if (installed.size === 0) return [];
+
+  // Search all sources to get latest versions
+  const results = await searchMarketplace("");
+  const updates: { name: string; source: string; type: string; installedVersion: string; latestVersion: string }[] = [];
+
+  for (const entry of results) {
+    const info = installed.get(entry.name);
+    if (!info) continue;
+    const installedVersion = info.version ?? (info.contentHash ? `#${info.contentHash}` : undefined);
+    if (!installedVersion || !entry.latestVersion) continue;
+    if (installedVersion !== entry.latestVersion) {
+      updates.push({
+        name: entry.name,
+        source: entry.source,
+        type: entry.type,
+        installedVersion,
+        latestVersion: entry.latestVersion,
+      });
+    }
+  }
+  return updates;
 }
 
 // ============================================================================

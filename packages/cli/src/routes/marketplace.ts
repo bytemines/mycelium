@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { searchMarketplace, installFromMarketplace, getPopularSkills, updateSkill } from "../core/marketplace.js";
+import { searchMarketplace, installFromMarketplace, getPopularSkills, updateSkill, checkForUpdates, checkMyceliumUpdate } from "../core/marketplace.js";
 import {
   loadMarketplaceRegistry,
   addMarketplace,
@@ -52,6 +52,64 @@ export function registerMarketplaceRoutes(app: Express): void {
   router.get("/popular", asyncHandler(async (_req, res) => {
     const results = await getPopularSkills();
     res.json(results);
+  }));
+
+  router.get("/updates", asyncHandler(async (_req, res) => {
+    const updates = await checkForUpdates();
+    res.json(updates);
+  }));
+
+  router.get("/self-update", asyncHandler(async (_req, res) => {
+    const result = await checkMyceliumUpdate();
+    res.json(result ?? { current: "unknown", latest: "unknown", hasUpdate: false });
+  }));
+
+  router.get("/content", asyncHandler(async (req, res) => {
+    const url = req.query.url as string;
+    const type = (req.query.type as string) || "skill";
+    if (!url) { res.status(400).json({ error: "Missing url parameter" }); return; }
+
+    const ALLOWED_TYPES = ["skill", "agent", "command", "mcp", "plugin"];
+    if (!ALLOWED_TYPES.includes(type)) {
+      res.status(400).json({ error: "Invalid type parameter" }); return;
+    }
+
+    // Strict URL validation — parse and whitelist hostnames
+    let parsedUrl: URL;
+    try { parsedUrl = new URL(url); } catch {
+      res.status(400).json({ error: "Invalid URL" }); return;
+    }
+    if (parsedUrl.protocol !== "https:") {
+      res.status(400).json({ error: "Only HTTPS URLs are supported" }); return;
+    }
+    const allowedHosts = ["github.com", "raw.githubusercontent.com"];
+    if (!allowedHosts.includes(parsedUrl.hostname)) {
+      res.status(400).json({ error: "Only GitHub URLs are supported" }); return;
+    }
+
+    try {
+      // Build raw URL using parsed components (not string replace) to prevent hostname spoofing
+      let rawUrl: string;
+      if (parsedUrl.hostname === "github.com" && parsedUrl.pathname.includes("/tree/main/")) {
+        const rawPath = parsedUrl.pathname.replace("/tree/main/", "/main/");
+        rawUrl = `https://raw.githubusercontent.com${rawPath}`;
+      } else {
+        rawUrl = parsedUrl.href;
+      }
+      // Append correct file extension based on type
+      if (type === "skill" && !rawUrl.endsWith(".md")) rawUrl += "/SKILL.md";
+      else if (!rawUrl.endsWith(".md")) rawUrl += ".md";
+
+      const ghRes = await fetch(rawUrl, {
+        signal: AbortSignal.timeout(10000),
+        redirect: "manual",  // Block redirects to prevent SSRF via open redirects
+      });
+      if (!ghRes.ok) { res.status(404).json({ error: "Content not found" }); return; }
+      const content = await ghRes.text();
+      res.json({ content });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch content" });
+    }
   }));
 
   router.post("/update", asyncHandler(async (req, res) => {

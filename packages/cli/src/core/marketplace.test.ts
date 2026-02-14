@@ -156,13 +156,13 @@ describe("manifest registration on install", () => {
       expect.any(String),
       expect.objectContaining({
         skills: expect.objectContaining({
-          "openskill-test": { state: "enabled", source: "openskills" },
+          "openskill-test": expect.objectContaining({ state: "enabled", source: "openskills" }),
         }),
       })
     );
   });
 
-  it("does not register MCP registry entries in skill manifest", async () => {
+  it("registers MCP registry entries with version in manifest", async () => {
     mockFs.appendFile.mockResolvedValue(undefined);
     const { saveStateManifest } = await import("./manifest-state.js");
     vi.mocked(saveStateManifest).mockClear();
@@ -174,7 +174,7 @@ describe("manifest registration on install", () => {
       type: "mcp",
     });
 
-    expect(saveStateManifest).not.toHaveBeenCalled();
+    expect(saveStateManifest).toHaveBeenCalled();
   });
 });
 
@@ -200,10 +200,11 @@ describe("dynamic GitHub marketplace", () => {
     });
 
     const results = await searchMarketplace("cool");
-    expect(results.length).toBe(1);
-    expect(results[0].source).toBe("my-github-mp");
-    expect(results[0].entries[0].name).toBe("cool-skill");
-    expect(results[0].entries[0].type).toBe("skill");
+    // Results are now flat MarketplaceEntry[] after deduplication
+    const skillEntry = results.find(e => e.name === "cool-skill");
+    expect(skillEntry).toBeDefined();
+    expect(skillEntry!.source).toBe("my-github-mp");
+    expect(skillEntry!.type).toBe("skill");
   });
 
   it("installs from dynamic GitHub marketplace", async () => {
