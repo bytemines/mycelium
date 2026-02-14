@@ -71,8 +71,18 @@ function parseState(state: any): GraphData {
 
 type TabId = "graph" | "migrate" | "marketplace";
 
+function pathToTab(path: string): TabId | null {
+  const segment = path.replace(/^\//, "").split("/")[0] || "";
+  if (segment === "migrate" || segment === "marketplace") return segment;
+  if (segment === "" || segment === "graph") return "graph";
+  return null;
+}
+
 function getInitialTab(): TabId {
   if (typeof window === "undefined") return "graph";
+  // Support clean paths (/marketplace) and legacy hashes (#marketplace)
+  const fromPath = pathToTab(window.location.pathname);
+  if (fromPath) return fromPath;
   const hash = window.location.hash.replace("#", "");
   if (hash === "graph" || hash === "migrate" || hash === "marketplace") return hash;
   return "graph";
@@ -262,8 +272,11 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   setActiveTab: (tab) => {
-    if (typeof window !== "undefined" && window.location.hash !== `#${tab}`) {
-      window.location.hash = tab;
+    if (typeof window !== "undefined") {
+      const targetPath = tab === "graph" ? "/" : `/${tab}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, "", targetPath);
+      }
     }
     set({ activeTab: tab });
   },
@@ -329,13 +342,24 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 }));
 
 if (typeof window !== "undefined") {
-  window.addEventListener("hashchange", () => {
-    const hash = window.location.hash.replace("#", "");
-    if (hash === "graph" || hash === "migrate" || hash === "marketplace") {
+  // Handle browser back/forward with clean URLs
+  window.addEventListener("popstate", () => {
+    const tab = pathToTab(window.location.pathname);
+    if (tab) {
       const current = useDashboardStore.getState().activeTab;
-      if (current !== hash) {
-        useDashboardStore.setState({ activeTab: hash });
+      if (current !== tab) {
+        useDashboardStore.setState({ activeTab: tab });
       }
     }
   });
+
+  // Migrate legacy hash URLs to clean paths
+  if (window.location.hash) {
+    const hash = window.location.hash.replace("#", "");
+    const tab = pathToTab(hash);
+    if (tab) {
+      const targetPath = tab === "graph" ? "/" : `/${tab}`;
+      window.history.replaceState(null, "", targetPath);
+    }
+  }
 }
