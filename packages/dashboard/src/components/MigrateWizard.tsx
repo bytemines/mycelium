@@ -6,6 +6,7 @@ import { scanTools, applyMigration } from "@/lib/api";
 import { buildGraphData } from "@/lib/graph-builder";
 import type { ScanData, MigrateToggleState } from "@/lib/graph-builder";
 import { cn } from "@/lib/utils";
+import { useDashboardStore } from "@/stores/dashboard-store";
 
 type WizardStep = "scan" | "review" | "apply" | "done";
 
@@ -80,7 +81,6 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
             source: s.toolId,
             config: m.config,
           }))),
-        memory: [],
         components: scans
           .filter(s => enabledTools.has(s.toolId))
           .flatMap(s => (s.components ?? []).map(c => ({
@@ -94,8 +94,10 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
       };
 
       const result = await applyMigration(plan as any);
-      setAppliedCount((result as any).skillsImported + (result as any).mcpsImported + (result as any).memoryImported);
+      setAppliedCount((result as any).skillsImported + (result as any).mcpsImported + ((result as any).memoryImported ?? 0));
       setStep("done");
+      // Refresh dashboard state after successful migration
+      useDashboardStore.getState().fetchState();
     } catch (e: any) {
       setError(e.message ?? "Migration failed");
       setStep("review");

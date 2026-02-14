@@ -9,10 +9,10 @@ import {
 import type { MarketplaceConfig } from "@mycelish/core";
 import { SkillCard } from "./SkillCard";
 import type { MarketplaceItem } from "./SkillCard";
+import { SkillDetailPanel } from "./SkillDetailPanel";
 import { ENTRY_TYPE_META } from "@/lib/entry-type-meta";
 import * as Dialog from "@radix-ui/react-dialog";
-
-const CATEGORIES = ["All", "Testing", "Git", "Debugging", "Frontend", "Backend", "DevOps", "AI", "Code Review", "Documentation"];
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
 type SortOption = "popular" | "recent" | "stars" | "az";
 
@@ -23,26 +23,24 @@ interface MarketplaceBrowserProps {
 export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProps) {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState("all");
-  const [category, setCategory] = useState("All");
   const [sortBy, setSortBy] = useState<SortOption>("popular");
   const [results, setResults] = useState<MarketplaceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<string | null>(null);
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [_removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [typeFilter, setTypeFilter] = useState<"all" | "skill" | "mcp" | "agent" | "plugin">("all");
+  const [selectedItem, setSelectedItem] = useState<MarketplaceItem | null>(null);
 
-  // Registry / marketplace pills state
+  // Registry state
   const [marketplaces, setMarketplaces] = useState<{value: string; label: string}[]>([{ value: "all", label: "All" }]);
   const [registry, setRegistry] = useState<Record<string, MarketplaceConfig>>({});
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newMpName, setNewMpName] = useState("");
   const [newMpUrl, setNewMpUrl] = useState("");
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [confirmRemoveItem, setConfirmRemoveItem] = useState<MarketplaceItem | null>(null);
   const [availableUpdates, setAvailableUpdates] = useState<{ name: string; source: string }[]>([]);
   const [showUpdatesOnly, setShowUpdatesOnly] = useState(false);
@@ -57,13 +55,11 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     }).catch((err) => { console.warn("Failed to load marketplace registry:", err); });
     fetchAvailableUpdates().then(setAvailableUpdates).catch((err) => { console.warn("Failed to check for updates:", err); });
     fetchMyceliumVersion().then(setMyceliumUpdate).catch((err) => { console.warn("Failed to check mycelium version:", err); });
-    // Initial results load is handled by the handleSearch effect
   }, []);
 
   const handleSearch = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError(null);
-    // If no query AND no specific source filter, show popular
     if (!query.trim() && source === "all") {
       setLoading(true);
       setSearched(false);
@@ -72,7 +68,6 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       }).catch(() => setResults([])).finally(() => setLoading(false));
       return;
     }
-    // Search with query and/or source filter
     setLoading(true);
     setSearched(true);
     try {
@@ -85,7 +80,6 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     }
   }, [query, source]);
 
-  // Re-search when source filter changes
   useEffect(() => {
     handleSearch();
   }, [handleSearch]);
@@ -157,13 +151,6 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     }
   }
 
-  async function handleRemoveMarketplace(name: string) {
-    await removeMarketplaceFromRegistry(name);
-    setRegistry(prev => { const next = { ...prev }; delete next[name]; return next; });
-    setMarketplaces(prev => prev.filter(m => m.value !== name));
-    if (source === name) setSource("all");
-  }
-
   async function handleAddMarketplace() {
     if (!newMpName.trim() || !newMpUrl.trim()) return;
     const config: MarketplaceConfig = { type: "remote", enabled: true, url: newMpUrl };
@@ -171,6 +158,18 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     setRegistry(prev => ({ ...prev, [newMpName]: config }));
     setMarketplaces(prev => [...prev, { value: newMpName, label: newMpName }]);
     setNewMpName(""); setNewMpUrl(""); setShowAddDialog(false);
+  }
+
+  async function handleRemoveMarketplace(name: string) {
+    if (!confirm(`Remove marketplace "${name}"?`)) return;
+    try {
+      await removeMarketplaceFromRegistry(name);
+      setRegistry(prev => { const next = { ...prev }; delete next[name]; return next; });
+      setMarketplaces(prev => prev.filter(m => m.value !== name));
+      if (source === name) setSource("all");
+    } catch (e) {
+      setError(`Failed to remove ${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   const displayResults = useMemo(() => {
@@ -185,14 +184,6 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     if (typeFilter !== "all") {
       filtered = filtered.filter(item => item.type === typeFilter);
     }
-    if (category !== "All") {
-      const cat = category.toLowerCase();
-      filtered = filtered.filter(item =>
-        item.category?.toLowerCase() === cat ||
-        item.name.toLowerCase().includes(cat) ||
-        item.description.toLowerCase().includes(cat)
-      );
-    }
     const sorted = [...filtered];
     switch (sortBy) {
       case "popular": sorted.sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0)); break;
@@ -200,67 +191,16 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       case "recent": sorted.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")); break;
       case "az": sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
     }
-    // Installed items float to the top
     sorted.sort((a, b) => {
       if (a.installed && !b.installed) return -1;
       if (!a.installed && b.installed) return 1;
       return 0;
     });
     return sorted;
-  }, [results, source, category, sortBy, typeFilter, showUpdatesOnly, availableUpdates]);
+  }, [results, source, sortBy, typeFilter, showUpdatesOnly, availableUpdates]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {/* Configured Marketplaces */}
-      {Object.keys(registry).length > 0 && (
-        <div className="rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
-          <h3 className="mb-3 text-sm font-medium">Configured Marketplaces</h3>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(registry).map(([name, config]) => (
-              <button key={name}
-                onClick={() => { setSource(name === source ? "all" : name); }}
-                className={cn(
-                  "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm cursor-pointer transition-all hover:border-primary",
-                  source === name ? "border-primary bg-primary/10 ring-1 ring-primary/30" :
-                  config.enabled ? "border-primary/40 bg-primary/5" : "border-muted bg-muted/50 opacity-60"
-                )}
-              >
-                <span className={cn("inline-block w-2 h-2 rounded-full", config.enabled ? "bg-green-500" : "bg-gray-500")} />
-                <span className="font-medium">{name}</span>
-                <span className="text-xs text-muted-foreground">{config.type}</span>
-                {config.discovered && <span className="text-[10px] text-muted-foreground">(auto)</span>}
-                {config.url && (
-                  <a href={config.url} target="_blank" rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()} className="ml-1 text-xs text-muted-foreground hover:text-primary" title={config.url}>&#8599;</a>
-                )}
-                {!config.default && config.type === "remote" && !config.discovered && (
-                  <span onClick={e => { e.stopPropagation(); setConfirmRemove(name); }}
-                    className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-xs text-muted-foreground hover:bg-destructive/20 hover:text-destructive cursor-pointer" title="Remove">x</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Remove Confirmation */}
-      <Dialog.Root open={!!confirmRemove} onOpenChange={(open) => { if (!open) setConfirmRemove(null); }}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-xl">
-            <Dialog.Title className="text-lg font-medium">Remove Marketplace</Dialog.Title>
-            <Dialog.Description className="mt-2 text-sm text-muted-foreground">Remove <strong>{confirmRemove}</strong>?</Dialog.Description>
-            <div className="mt-4 flex justify-end gap-2">
-              <Dialog.Close asChild>
-                <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cancel</button>
-              </Dialog.Close>
-              <button onClick={() => { handleRemoveMarketplace(confirmRemove!); setConfirmRemove(null); }}
-                className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90">Remove</button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-
       {/* Remove Item Confirmation */}
       <Dialog.Root open={!!confirmRemoveItem} onOpenChange={(open) => { if (!open) setConfirmRemoveItem(null); }}>
         <Dialog.Portal>
@@ -305,76 +245,97 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* Search bar + Sort + Add Marketplace */}
-      <div className="space-y-3">
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <input type="text" value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Search skills and MCPs..."
-            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
-          <select value={source} onChange={e => { setSource(e.target.value); }}
-            className="rounded-md border bg-background px-3 py-2 text-sm">
-            {marketplaces.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as SortOption)}
-            className="rounded-md border bg-background px-3 py-2 text-sm">
-            <option value="popular">Popular</option>
-            <option value="stars">Stars</option>
-            <option value="recent">Recent</option>
-            <option value="az">A-Z</option>
-          </select>
-          <button type="submit" disabled={loading}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            {loading ? "..." : "Search"}
-          </button>
-          <button type="button" onClick={() => setShowAddDialog(true)}
-            className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">+ Add</button>
-          <button type="button" onClick={async () => {
-              setRefreshing(true); setError(null);
-              try {
-                const result = await refreshMarketplaceCache();
-                if (result.errors.length > 0) setError(`Refreshed with errors: ${result.errors.join(", ")}`);
-                await handleSearch();
-              } catch (err) {
-                setError(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`);
-              } finally { setRefreshing(false); }
-            }} disabled={refreshing}
-            className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
-            title="Refresh marketplace cache from remote sources">
-            {refreshing ? "Refreshing..." : "\u21bb Refresh"}
-          </button>
-        </form>
+      {/* Detail Modal */}
+      <SkillDetailPanel
+        item={selectedItem}
+        open={!!selectedItem}
+        onOpenChange={(open) => { if (!open) setSelectedItem(null); }}
+        onInstall={(item) => { handleInstall(item); setSelectedItem(null); }}
+        onUpdate={(item) => { handleUpdate(item); setSelectedItem(null); }}
+        onRemove={(item) => { handleRemove(item); setSelectedItem(null); }}
+      />
 
-        {/* Category chips */}
-        <div className="flex flex-wrap gap-1.5">
-          {CATEGORIES.map(cat => (
-            <button key={cat} onClick={() => setCategory(cat)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                category === cat ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
-              )}>
-              {cat}
+      {/* Single-row search bar: [input] [source] [type] [sort] [+ Add] [refresh] */}
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <input type="text" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="Search skills, MCPs, plugins..."
+          className="flex-1 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" className="flex items-center gap-1.5 rounded-md border bg-background pl-3 pr-2.5 py-2 text-sm min-w-[100px] text-left truncate">
+              <span className="flex-1 truncate">{marketplaces.find(m => m.value === source)?.label ?? "All"}</span>
+              <svg className="h-4 w-4 shrink-0 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg>
             </button>
-          ))}
-        </div>
-
-        {/* Type filter chips */}
-        <div className="flex flex-wrap gap-1.5">
-          {(["all", "skill", "mcp", "agent", "plugin"] as const).map(t => {
-            const meta = t === "all"
-              ? { label: "All Types", color: "text-foreground", bgColor: "bg-muted" }
-              : ENTRY_TYPE_META[t] || { label: t, color: "text-gray-400", bgColor: "bg-gray-500/10" };
-            return (
-              <button key={t} onClick={() => setTypeFilter(t)}
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                  typeFilter === t ? `${meta.bgColor} ${meta.color} ring-1 ring-current` : "bg-muted/50 text-muted-foreground hover:text-foreground"
-                )}>
-                {meta.label}
-              </button>
-            );
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="z-50 min-w-[180px] rounded-lg border bg-card p-1 shadow-xl" sideOffset={4}>
+              <DropdownMenu.Item
+                className={cn("flex cursor-pointer items-center rounded-md px-3 py-1.5 text-sm outline-none hover:bg-muted", source === "all" && "font-medium text-primary")}
+                onSelect={() => setSource("all")}>
+                All
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+              {marketplaces.filter(m => m.value !== "all").map(m => {
+                const cfg = registry[m.value];
+                const canRemove = cfg && !cfg.default && !cfg.discovered;
+                return (
+                  <DropdownMenu.Item key={m.value}
+                    className={cn("flex cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-muted", source === m.value && "font-medium text-primary")}
+                    onSelect={() => setSource(m.value)}>
+                    <span className="truncate">{m.label}</span>
+                    <span className="flex shrink-0 items-center gap-1" onClick={e => e.stopPropagation()}>
+                      {cfg?.url && (
+                        <a href={cfg.url} target="_blank" rel="noopener noreferrer"
+                          className="rounded p-0.5 text-muted-foreground hover:text-primary"
+                          onClick={e => e.stopPropagation()} title="Open marketplace">&#8599;</a>
+                      )}
+                      {canRemove && (
+                        <button
+                          className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                          onClick={e => { e.stopPropagation(); handleRemoveMarketplace(m.value); }}
+                          title="Remove marketplace">&times;</button>
+                      )}
+                    </span>
+                  </DropdownMenu.Item>
+                );
+              })}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)}
+          className="appearance-none rounded-md border bg-background pl-3 pr-7 py-2 text-sm bg-[length:16px] bg-[right_6px_center] bg-no-repeat"
+          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E\")" }}>
+          <option value="all">All Types</option>
+          {(["skill", "mcp", "agent", "plugin"] as const).map(t => {
+            const meta = ENTRY_TYPE_META[t];
+            return <option key={t} value={t}>{meta?.label ?? t}</option>;
           })}
-        </div>
-      </div>
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as SortOption)}
+          className="appearance-none rounded-md border bg-background pl-3 pr-7 py-2 text-sm bg-[length:16px] bg-[right_6px_center] bg-no-repeat"
+          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E\")" }}>
+          <option value="popular">Popular</option>
+          <option value="stars">Stars</option>
+          <option value="recent">Recent</option>
+          <option value="az">A-Z</option>
+        </select>
+        <button type="button" onClick={() => setShowAddDialog(true)}
+          className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">+ Add</button>
+        <button type="button" onClick={async () => {
+            setRefreshing(true); setError(null);
+            try {
+              const result = await refreshMarketplaceCache();
+              if (result.errors.length > 0) setError(`Refreshed with errors: ${result.errors.join(", ")}`);
+              await handleSearch();
+            } catch (err) {
+              setError(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+            } finally { setRefreshing(false); }
+          }} disabled={refreshing}
+          className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+          title="Refresh marketplace cache from remote sources">
+          {refreshing ? "..." : "\u21bb"}
+        </button>
+      </form>
 
       {/* Mycelium self-update banner */}
       {myceliumUpdate?.hasUpdate && (
@@ -436,12 +397,9 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
               item={item}
               installing={installing}
               updating={updating}
-              removing={removing}
-              expanded={expandedCard === `${item.source}-${item.name}`}
               onInstall={handleInstall}
               onUpdate={handleUpdate}
-              onRemove={handleRemove}
-              onToggleExpand={setExpandedCard}
+              onSelect={setSelectedItem}
             />
           ))}
         </div>

@@ -303,7 +303,6 @@ describe("migrator integration", () => {
       installed: true,
       skills: [],
       mcps: [],
-      memory: [],
       hooks: [],
       components: [
         { name: "code-reviewer", type: "agent" as const, path: "/p/agent.md", pluginName: "superpowers" },
@@ -328,7 +327,6 @@ describe("migrator integration", () => {
       installed: true,
       skills: [],
       mcps: [],
-      memory: [],
       hooks: [],
       components: [
         { name: "reviewer", type: "agent" as const, path: "/a/reviewer.md" },
@@ -340,7 +338,6 @@ describe("migrator integration", () => {
       installed: true,
       skills: [],
       mcps: [],
-      memory: [],
       hooks: [],
       components: [
         { name: "reviewer", type: "agent" as const, path: "/b/reviewer.md" },
@@ -360,7 +357,6 @@ describe("migrator integration", () => {
       installed: true,
       skills: [],
       mcps: [],
-      memory: [],
       hooks: [],
       components: [
         { name: "brainstorm", type: "agent" as const, path: "/a.md" },

@@ -38,7 +38,6 @@ const { createSnapshot, restoreSnapshot, listSnapshots, deleteSnapshot } =
 async function setupMyceliumDir(): Promise<string> {
   const myceliumDir = path.join(tmpDir, ".mycelium");
   await fs.mkdir(path.join(myceliumDir, "global", "skills"), { recursive: true });
-  await fs.mkdir(path.join(myceliumDir, "memory"), { recursive: true });
 
   await fs.writeFile(
     path.join(myceliumDir, "global", "mcps.yaml"),
@@ -47,10 +46,6 @@ async function setupMyceliumDir(): Promise<string> {
   await fs.writeFile(
     path.join(myceliumDir, "global", "hooks.yaml"),
     "hooks: []\n",
-  );
-  await fs.writeFile(
-    path.join(myceliumDir, "memory", "shared.md"),
-    "# Shared memory\n",
   );
   await fs.writeFile(
     path.join(myceliumDir, "migration-manifest.json"),
@@ -88,7 +83,6 @@ describe("createSnapshot", () => {
     expect(meta.name).toBe("test-snap");
     expect(meta.description).toBe("A test snapshot");
     expect(meta.fileList).toContain("global/mcps.yaml");
-    expect(meta.fileList).toContain("memory/shared.md");
     expect(meta.skillSymlinks["my-skill"]).toBeDefined();
 
     // Verify metadata.json was written
@@ -125,8 +119,6 @@ describe("restoreSnapshot", () => {
     // Delete the originals
     await fs.rm(path.join(myceliumDir, "global", "mcps.yaml"));
     await fs.rm(path.join(myceliumDir, "global", "skills", "my-skill"));
-    await fs.rm(path.join(myceliumDir, "memory"), { recursive: true });
-
     await restoreSnapshot("restore-test");
 
     // Verify restored

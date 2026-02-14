@@ -1,4 +1,7 @@
 import { Router } from "express";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 
 import { searchMarketplace, installFromMarketplace, getPopularSkills, updateSkill, checkForUpdates, checkMyceliumUpdate } from "../core/marketplace.js";
 import {
@@ -90,15 +93,21 @@ export function registerMarketplaceRoutes(app: Express): void {
     try {
       // Build raw URL using parsed components (not string replace) to prevent hostname spoofing
       let rawUrl: string;
-      if (parsedUrl.hostname === "github.com" && parsedUrl.pathname.includes("/tree/main/")) {
-        const rawPath = parsedUrl.pathname.replace("/tree/main/", "/main/");
+      const treeBranchMatch = parsedUrl.pathname.match(/\/tree\/([^/]+)\//);
+      if (parsedUrl.hostname === "github.com" && treeBranchMatch) {
+        const branch = treeBranchMatch[1];
+        const rawPath = parsedUrl.pathname.replace(`/tree/${branch}/`, `/${branch}/`);
         rawUrl = `https://raw.githubusercontent.com${rawPath}`;
+      } else if (parsedUrl.hostname === "github.com" && /^\/[^/]+\/[^/]+\/?$/.test(parsedUrl.pathname)) {
+        // Bare repo URL: github.com/owner/repo → fetch README.md from main branch
+        const repoPath = parsedUrl.pathname.replace(/\/$/, "");
+        rawUrl = `https://raw.githubusercontent.com${repoPath}/main`;
       } else {
         rawUrl = parsedUrl.href;
       }
       // Append correct file extension based on type
       if (type === "skill" && !rawUrl.endsWith(".md")) rawUrl += "/SKILL.md";
-      else if (!rawUrl.endsWith(".md")) rawUrl += ".md";
+      else if (!rawUrl.endsWith(".md")) rawUrl += "/README.md";
 
       const ghRes = await fetch(rawUrl, {
         signal: AbortSignal.timeout(10000),
@@ -110,6 +119,62 @@ export function registerMarketplaceRoutes(app: Express): void {
     } catch {
       res.status(500).json({ error: "Failed to fetch content" });
     }
+  }));
+
+  // Read content for installed items from local disk
+  router.get("/local-content", asyncHandler(async (req, res) => {
+    const name = req.query.name as string;
+    const type = (req.query.type as string) || "skill";
+    if (!name) { res.status(400).json({ error: "Missing name parameter" }); return; }
+
+    // Sanitize name to prevent path traversal
+    const safeName = path.basename(name);
+    const home = os.homedir();
+    const candidates: string[] = [];
+
+    if (type === "skill" || type === "agent" || type === "command") {
+      const dir = type === "skill" ? "skills" : type === "agent" ? "agents" : "commands";
+      candidates.push(
+        path.join(home, ".mycelium", dir, safeName, "SKILL.md"),
+        path.join(home, ".mycelium", dir, safeName, "README.md"),
+        path.join(home, ".mycelium", dir, safeName, "AGENT.md"),
+      );
+    }
+    // Plugin: check the plugin cache
+    if (type === "plugin") {
+      const cacheDir = path.join(home, ".claude", "plugins", "cache");
+      try {
+        const marketplaces = await fs.readdir(cacheDir);
+        for (const mp of marketplaces) {
+          candidates.push(
+            path.join(cacheDir, mp, safeName),  // will check for README.md below
+          );
+        }
+      } catch { /* no cache dir */ }
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const stat = await fs.stat(candidate);
+        if (stat.isFile()) {
+          const content = await fs.readFile(candidate, "utf-8");
+          res.json({ content });
+          return;
+        }
+        if (stat.isDirectory()) {
+          // Try README.md or SKILL.md inside
+          for (const fname of ["README.md", "SKILL.md", "AGENT.md"]) {
+            try {
+              const content = await fs.readFile(path.join(candidate, fname), "utf-8");
+              res.json({ content });
+              return;
+            } catch { /* next */ }
+          }
+        }
+      } catch { /* next candidate */ }
+    }
+
+    res.status(404).json({ error: "No local content found" });
   }));
 
   router.post("/update", asyncHandler(async (req, res) => {

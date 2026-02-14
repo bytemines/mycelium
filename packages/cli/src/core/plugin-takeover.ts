@@ -13,7 +13,7 @@ import { expandPath } from "@mycelish/core";
 import { scanPluginComponents } from "./plugin-scanner.js";
 import { createSkillSymlink, removeSkillSymlink } from "./symlink-manager.js";
 import { readFileIfExists } from "./fs-helpers.js";
-import { getDisabledItems, loadStateManifest } from "./manifest-state.js";
+import { getDisabledItems, loadStateManifest, saveStateManifest, ITEM_SECTIONS } from "./manifest-state.js";
 import { getTracer } from "./global-tracer.js";
 
 // ============================================================================
@@ -73,13 +73,18 @@ export interface TakenOverPlugin {
 // ============================================================================
 
 /** Parse pluginId "{plugin}@{marketplace}" */
-function parsePluginId(pluginId: string): { plugin: string; marketplace: string } {
+export function parsePluginId(pluginId: string): { plugin: string; marketplace: string } {
   const atIdx = pluginId.lastIndexOf("@");
   if (atIdx <= 0) throw new Error(`Invalid plugin ID format: ${pluginId}`);
   return {
     plugin: pluginId.slice(0, atIdx),
     marketplace: pluginId.slice(atIdx + 1),
   };
+}
+
+/** Build a pluginId from name and marketplace. */
+export function buildPluginId(name: string, marketplace: string): string {
+  return `${name}@${marketplace}`;
 }
 
 /** Find the latest version directory for a plugin in the cache. */
@@ -165,7 +170,7 @@ async function findPluginsWithComponent(componentName: string): Promise<TakenOve
         const version = await findLatestVersion(plDir);
         if (!version) continue;
 
-        const pluginId = `${pl.name}@${mp.name}`;
+        const pluginId = buildPluginId(pl.name, mp.name);
         if (enabledPlugins[pluginId] === false) continue;
 
         const versionRoot = path.join(plDir, version);
@@ -290,4 +295,157 @@ export async function syncPluginSymlinks(manifestDir?: string): Promise<{ create
   }
 
   return { created, removed };
+}
+
+/**
+ * Detect and clean up orphaned plugin takeovers — plugins in takenOverPlugins
+ * whose cache no longer exists (e.g. plugin was uninstalled from Claude Code).
+ *
+ * Cleans: manifest entries (skills/agents/commands with pluginOrigin),
+ * takenOverPlugins, enabledPlugins in settings.json, and source files in ~/.mycelium/global/.
+ */
+export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<string[]> {
+  const dir = manifestDir ?? expandPath("~/.mycelium");
+  const manifest = await loadStateManifest(dir);
+  if (!manifest?.takenOverPlugins || Object.keys(manifest.takenOverPlugins).length === 0) {
+    return [];
+  }
+
+  const log = getTracer().createTrace("plugin-cleanup");
+  const cleaned: string[] = [];
+  let manifestDirty = false;
+
+  for (const [pluginId, pluginInfo] of Object.entries(manifest.takenOverPlugins)) {
+    // Check if cache still exists
+    let cacheExists = false;
+    try {
+      await fs.access(pluginInfo.cachePath);
+      cacheExists = true;
+    } catch {
+      // Cache missing
+    }
+
+    // Also check if plugin is still installed in Claude Code
+    let installedInClaude = false;
+    if (cacheExists) {
+      try {
+        const ipPath = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+        const raw = await readFileIfExists(ipPath);
+        if (raw) {
+          const data = JSON.parse(raw) as { version?: number; plugins?: Record<string, unknown> };
+          if (data.version === 2 && data.plugins) {
+            installedInClaude = pluginId in data.plugins;
+          }
+        }
+      } catch { /* no file */ }
+    }
+
+    if (cacheExists && installedInClaude) continue;
+
+    // Orphaned takeover — clean everything
+    log.warn({ scope: "plugin", op: "cleanup", msg: `Cleaning orphaned takeover: ${pluginId} (cache=${cacheExists ? "exists" : "missing"}, installed=${installedInClaude})`, item: pluginId });
+
+    // 1. Remove all manifest entries with this pluginOrigin
+    for (const { key: section } of ITEM_SECTIONS) {
+      const sectionData = manifest[section] as Record<string, { pluginOrigin?: { pluginId?: string } }> | undefined;
+      if (!sectionData) continue;
+      for (const [name, cfg] of Object.entries(sectionData)) {
+        if (cfg.pluginOrigin?.pluginId === pluginId) {
+          delete sectionData[name];
+          manifestDirty = true;
+          log.info({ scope: "plugin", op: "cleanup", msg: `Removed manifest entry: ${section}/${name}`, item: name });
+        }
+      }
+    }
+
+    // 2. Remove from takenOverPlugins
+    delete manifest.takenOverPlugins![pluginId];
+    manifestDirty = true;
+
+    // 3. Clean enabledPlugins in settings.json
+    try {
+      const settings = await readSettings();
+      const ep = settings.enabledPlugins as Record<string, boolean> | undefined;
+      if (ep && pluginId in ep) {
+        delete ep[pluginId];
+        settings.enabledPlugins = ep;
+        await writeSettings(settings);
+        log.info({ scope: "plugin", op: "cleanup", msg: `Removed ${pluginId} from enabledPlugins`, item: pluginId });
+      }
+    } catch { /* best effort */ }
+
+    // 4. Delete source files from ~/.mycelium/global/ for all plugin components
+    const allComponents = [...(pluginInfo.allSkills ?? []), ...(pluginInfo.allComponents ?? [])];
+    const uniqueComponents = [...new Set(allComponents)];
+    for (const name of uniqueComponents) {
+      // Try skills dir (directory), agents/commands (file)
+      for (const [, info] of Object.entries(PLUGIN_COMPONENT_DIRS)) {
+        const globalDir = path.join(dir, "global", info.subdir, name);
+        try { await fs.rm(globalDir, { recursive: true, force: true }); } catch { /* noop */ }
+        if (info.ext) {
+          const globalFile = path.join(dir, "global", info.subdir, name + info.ext);
+          try { await fs.unlink(globalFile); } catch { /* noop */ }
+        }
+      }
+    }
+
+    cleaned.push(pluginId);
+  }
+
+  // Clean up empty takenOverPlugins
+  if (manifest.takenOverPlugins && Object.keys(manifest.takenOverPlugins).length === 0) {
+    delete manifest.takenOverPlugins;
+    manifestDirty = true;
+  }
+
+  // Also clean orphaned manifest entries with pluginOrigin but no matching takenOverPlugins
+  const activePluginIds = new Set(Object.keys(manifest.takenOverPlugins ?? {}));
+  for (const { key: section } of ITEM_SECTIONS) {
+    const sectionData = manifest[section] as Record<string, { pluginOrigin?: { pluginId?: string }; state?: string }> | undefined;
+    if (!sectionData) continue;
+    for (const [name, cfg] of Object.entries(sectionData)) {
+      if (cfg.pluginOrigin?.pluginId && !activePluginIds.has(cfg.pluginOrigin.pluginId)) {
+        delete sectionData[name];
+        manifestDirty = true;
+        log.info({ scope: "plugin", op: "cleanup", msg: `Removed orphaned manifest entry: ${section}/${name} (plugin ${cfg.pluginOrigin.pluginId} not in takenOverPlugins)`, item: name });
+      }
+    }
+  }
+
+  // Clean stale symlinks in ~/.mycelium/global/skills/ that point to plugin cache
+  const globalSkillsDir = path.join(dir, "global", "skills");
+  try {
+    const entries = await fs.readdir(globalSkillsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isSymbolicLink()) continue;
+      const fullPath = path.join(globalSkillsDir, entry.name);
+      try {
+        const target = await fs.readlink(fullPath);
+        // Remove symlinks pointing to plugin cache, tool dirs, or broken symlinks
+        const isStale = target.includes("plugins/cache") || target.includes(".codex/") || target.includes(".config/opencode/") || target.includes(".claude/skills/");
+        // Also check if symlink target actually exists
+        let targetExists = true;
+        if (!isStale) {
+          try { await fs.access(fullPath); } catch { targetExists = false; }
+        }
+        if (isStale || !targetExists) {
+          await fs.unlink(fullPath);
+          manifestDirty = true;
+          log.info({ scope: "plugin", op: "cleanup", msg: `Removed stale symlink from global/skills: ${entry.name} → ${target}`, item: entry.name });
+        }
+      } catch { /* broken symlink */ }
+    }
+  } catch { /* dir doesn't exist */ }
+
+  if (manifestDirty) {
+    await saveStateManifest(dir, manifest);
+  }
+
+  // Run symlink sync to remove any orphaned symlinks
+  if (cleaned.length > 0) {
+    await syncPluginSymlinks(dir);
+    log.info({ scope: "plugin", op: "cleanup", msg: `Cleaned ${cleaned.length} orphaned takeover(s): ${cleaned.join(", ")}` });
+  }
+
+  return cleaned;
 }

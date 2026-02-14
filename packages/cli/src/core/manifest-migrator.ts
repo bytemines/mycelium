@@ -7,7 +7,6 @@ export interface V1ManifestConfig {
   skills?: Record<string, Record<string, unknown>>;
   mcps?: Record<string, Record<string, unknown>>;
   hooks?: Record<string, Record<string, unknown>>;
-  memory?: Record<string, Record<string, unknown>>;
   [key: string]: unknown;
 }
 
@@ -19,7 +18,7 @@ export function migrateManifestV1ToV2(
 ): V1ManifestConfig {
   const result = structuredClone(v1);
 
-  for (const section of ["skills", "mcps", "hooks", "memory"] as const) {
+  for (const section of ["skills", "mcps", "hooks"] as const) {
     const items = result[section];
     if (!items || typeof items !== "object") continue;
     for (const [_name, config] of Object.entries(items as Record<string, Record<string, unknown>>)) {

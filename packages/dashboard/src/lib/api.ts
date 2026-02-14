@@ -139,16 +139,30 @@ export async function fetchMyceliumVersion(): Promise<{ current: string; latest:
   return res.json();
 }
 
-export async function fetchItemContent(url: string, type = "skill", signal?: AbortSignal): Promise<string | null> {
-  try {
-    const params = new URLSearchParams({ url, type });
-    const res = await fetch(`/api/marketplace/content?${params}`, { signal });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { content?: string };
-    return data.content ?? null;
-  } catch {
-    return null;
+export async function fetchItemContent(url: string, type = "skill", signal?: AbortSignal, name?: string): Promise<string | null> {
+  // Try remote content first if URL is available
+  if (url) {
+    try {
+      const params = new URLSearchParams({ url, type });
+      const res = await fetch(`/api/marketplace/content?${params}`, { signal });
+      if (res.ok) {
+        const data = (await res.json()) as { content?: string };
+        if (data.content) return data.content;
+      }
+    } catch { /* fall through to local */ }
   }
+  // Fallback: try local content for installed items
+  if (name) {
+    try {
+      const params = new URLSearchParams({ name, type });
+      const res = await fetch(`/api/marketplace/local-content?${params}`, { signal });
+      if (res.ok) {
+        const data = (await res.json()) as { content?: string };
+        if (data.content) return data.content;
+      }
+    } catch { /* no local content */ }
+  }
+  return null;
 }
 
 export async function fetchAvailableUpdates(): Promise<{ name: string; source: string; type: string; installedVersion: string; latestVersion: string }[]> {

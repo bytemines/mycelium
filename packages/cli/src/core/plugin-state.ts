@@ -1,23 +1,27 @@
 /**
  * Plugin State — merges live cache scan with manifest state at query time.
  *
- * Two sources of truth:
- *   1. Discovery: scanPluginCache() → what components EXIST
- *   2. State: manifest.yaml → what's enabled/disabled
+ * Only shows plugins that are:
+ *   1. Installed in Claude Code (in installed_plugins.json), OR
+ *   2. Actively taken over by Mycelium (in manifest.takenOverPlugins)
  *
- * This replaces the stale buildPluginMap(migration-manifest.json) approach.
+ * Stale takeover cleanup is handled by cleanOrphanedTakeovers() in plugin-takeover.ts.
  */
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { PluginInfo, PluginComponent } from "@mycelish/core";
+import type { PluginInfo } from "@mycelish/core";
 import { scanPluginCache } from "./plugin-scanner.js";
-import { getDisabledItems } from "./manifest-state.js";
+import { getDisabledItems, loadStateManifest } from "./manifest-state.js";
+import { readFileIfExists, MYCELIUM_HOME } from "./fs-helpers.js";
+import { buildPluginId } from "./plugin-takeover.js";
 
 const PLUGIN_CACHE_DIR = path.join(os.homedir(), ".claude", "plugins", "cache");
 
 interface GroupedPlugin {
   marketplace: string;
+  pluginId: string; // "name@marketplace"
   skills: string[];
   agents: string[];
   commands: string[];
@@ -27,19 +31,62 @@ interface GroupedPlugin {
 }
 
 /**
+ * Get the set of plugin IDs that are currently installed OR actively taken over.
+ */
+async function getActivePluginIds(): Promise<Set<string>> {
+  const active = new Set<string>();
+
+  // 1. Installed in Claude Code
+  try {
+    const ipPath = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const raw = await readFileIfExists(ipPath);
+    if (raw) {
+      const data = JSON.parse(raw) as { version?: number; plugins?: Record<string, unknown> };
+      if (data.version === 2 && data.plugins) {
+        for (const pluginId of Object.keys(data.plugins)) {
+          active.add(pluginId);
+        }
+      }
+    }
+  } catch { /* no file */ }
+
+  // 2. Actively taken over by Mycelium
+  try {
+    const manifest = await loadStateManifest(MYCELIUM_HOME);
+    if (manifest?.takenOverPlugins) {
+      for (const pluginId of Object.keys(manifest.takenOverPlugins)) {
+        active.add(pluginId);
+      }
+    }
+  } catch { /* no manifest */ }
+
+  return active;
+}
+
+/**
  * Get live plugin state by scanning the cache and merging with manifest.
  * Returns PluginInfo[] ready for the dashboard API.
  */
 export async function getLivePluginState(projectRoot?: string): Promise<PluginInfo[]> {
-  // 1. Scan live cache for discovery
+  // 1. Get active plugin IDs (installed or taken over)
+  const activePluginIds = await getActivePluginIds();
+
+  // 2. Scan live cache for discovery
   const components = await scanPluginCache(PLUGIN_CACHE_DIR);
 
-  // 2. Group by plugin name
+  // 3. Group by plugin name, skip plugins not in active set
   const pluginMap = new Map<string, GroupedPlugin>();
   for (const comp of components) {
-    const key = comp.pluginName ?? "unknown";
-    const existing = pluginMap.get(key) ?? {
-      marketplace: comp.marketplace ?? "",
+    const name = comp.pluginName ?? "unknown";
+    const marketplace = comp.marketplace ?? "";
+    const pluginId = buildPluginId(name, marketplace);
+
+    // Only include plugins that are installed or taken over
+    if (!activePluginIds.has(pluginId)) continue;
+
+    const existing = pluginMap.get(name) ?? {
+      marketplace,
+      pluginId,
       skills: [],
       agents: [],
       commands: [],
@@ -56,13 +103,13 @@ export async function getLivePluginState(projectRoot?: string): Promise<PluginIn
       case "lib": existing.libs.push(comp.name); break;
     }
 
-    pluginMap.set(key, existing);
+    pluginMap.set(name, existing);
   }
 
-  // 3. Load state from manifest
+  // 4. Load disabled state from manifest
   const disabledItems = await getDisabledItems(projectRoot);
 
-  // 4. Merge: components + state → PluginInfo[]
+  // 5. Merge: components + state → PluginInfo[]
   return Array.from(pluginMap.entries()).map(([name, data]) => {
     const allItems = [...data.skills, ...data.agents, ...data.commands, ...data.hooks, ...data.libs];
     const disabledList = allItems.filter(i => disabledItems.has(i));

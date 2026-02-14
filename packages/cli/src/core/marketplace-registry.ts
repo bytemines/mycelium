@@ -83,12 +83,6 @@ export async function loadMarketplaceRegistry(): Promise<
 > {
   // Start with defaults
   const registry: Record<string, MarketplaceConfig> = {
-    [MS.OPENSKILLS]: {
-      type: "remote",
-      enabled: true,
-      url: "https://registry.npmjs.org",
-      description: "OpenSkills via npm",
-    },
     [MS.CLAUDE_PLUGINS]: {
       type: "local",
       enabled: true,
@@ -99,7 +93,13 @@ export async function loadMarketplaceRegistry(): Promise<
       type: "remote",
       enabled: true,
       url: "https://registry.modelcontextprotocol.io",
-      description: "MCP Registry",
+      description: "Official MCP Registry",
+    },
+    [MS.GLAMA]: {
+      type: "remote",
+      enabled: true,
+      url: "https://glama.ai/api/mcp/v1/servers",
+      description: "Glama MCP Directory",
     },
     [MS.ANTHROPIC_SKILLS]: {
       type: "remote",

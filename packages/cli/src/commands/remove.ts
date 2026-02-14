@@ -1,15 +1,15 @@
 /**
- * Remove command — soft-delete items from mycelium sync.
+ * Remove command — delete items from mycelium sync.
  *
- * mycelium remove <name>              — Find item in manifest, set state: "deleted"
+ * mycelium remove <name>              — Remove item: delete from manifest + purge files/symlinks
  * mycelium remove <name> --type mcp   — Disambiguate when name exists in multiple sections
- * mycelium remove plugin <name>       — Mark all items from that source as deleted
- *
- * After removing, run `mycelium sync` to propagate to tool configs.
+ * mycelium remove <name> --soft       — Only mark as deleted (no file cleanup)
+ * mycelium remove plugin <name>       — Remove all items from a plugin + release takeover
  */
 import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as os from "node:os";
 import { expandPath, TOOL_REGISTRY, resolvePath } from "@mycelish/core";
 import { getTracer } from "../core/global-tracer.js";
 import { MYCELIUM_HOME } from "../core/fs-helpers.js";
@@ -21,8 +21,11 @@ import {
   sectionForType,
   type ManifestConfig,
   type ItemConfig,
-  type ItemType,
 } from "../core/manifest-state.js";
+import {
+  setPluginEnabled,
+  syncPluginSymlinks,
+} from "../core/plugin-takeover.js";
 
 // ============================================================================
 // Types
@@ -92,11 +95,12 @@ function findItemInManifest(
 }
 
 /**
- * Remove (soft-delete) an item by setting state: "deleted" in manifest.
+ * Remove an item: mark as deleted in manifest + purge files/symlinks.
+ * Use --soft to skip file cleanup (old behavior).
  */
 export async function removeItem(
   name: string,
-  opts?: { type?: string; manifestDir?: string; purge?: boolean },
+  opts?: { type?: string; manifestDir?: string; soft?: boolean },
 ): Promise<RemoveResult> {
   const log = getTracer().createTrace("remove");
   log.info({ scope: "manifest", op: "remove", msg: `Removing ${name}`, item: name });
@@ -120,16 +124,16 @@ export async function removeItem(
   }
 
   if (matches.length === 0) {
-    // With --purge, allow removing filesystem-only items not in manifest
-    if (opts?.purge && opts?.type) {
+    // Allow removing filesystem-only items not in manifest
+    if (opts?.type) {
       const section = typeToSection(opts.type);
       if (section) {
         const sectionData = (manifest[section] ?? {}) as Record<string, ItemConfig>;
         sectionData[name] = { state: "deleted" };
         (manifest as any)[section] = sectionData;
         await saveStateManifest(manifestDir, manifest);
-        await purgeItemFiles(name, opts.type, log);
-        const msg = `${opts.type} '${name}' purged`;
+        if (!opts?.soft) await purgeItemFiles(name, opts.type, log);
+        const msg = `${opts.type} '${name}' removed`;
         log.info({ scope: "manifest", op: "remove", msg, item: name });
         return { success: true, name, section: opts.type, message: msg };
       }
@@ -149,32 +153,47 @@ export async function removeItem(
   }
 
   const match = matches[0];
-  match.config.state = "deleted";
+  const itemType = sectionToType(match.section);
 
-  // Write back
+  // Check if item belongs to a taken-over plugin
+  const pluginOrigin = match.config.pluginOrigin;
+
+  // Mark as deleted
+  match.config.state = "deleted";
   const sectionData = manifest[match.section] as Record<string, ItemConfig>;
   sectionData[name] = match.config;
 
-  await saveStateManifest(manifestDir, manifest);
-
-  // Purge: delete source files and symlinks from all tools
-  if (opts?.purge) {
-    await purgeItemFiles(name, sectionToType(match.section), log);
+  // If from a plugin, check if ALL components are now deleted → release plugin
+  if (pluginOrigin?.pluginId && manifest.takenOverPlugins) {
+    await releasePluginIfFullyDeleted(manifest, pluginOrigin.pluginId, manifestDir, log);
   }
 
-  const action = opts?.purge ? "purged" : "marked as deleted";
-  const msg = `${sectionToType(match.section)} '${name}' ${action}`;
+  await saveStateManifest(manifestDir, manifest);
+
+  // Purge files/symlinks (default behavior)
+  if (!opts?.soft) {
+    await purgeItemFiles(name, itemType, log);
+    // Re-sync plugin symlinks to clean up
+    if (pluginOrigin) {
+      await syncPluginSymlinks(manifestDir);
+    }
+  }
+
+  const action = opts?.soft ? "marked as deleted" : "removed";
+  const msg = `${itemType} '${name}' ${action}`;
   log.info({ scope: "manifest", op: "remove", msg, item: name });
-  return { success: true, name, section: sectionToType(match.section), message: msg };
+  return { success: true, name, section: itemType, message: msg };
 }
 
 /**
- * Mark all items from a given source as deleted.
+ * Remove all items from a plugin — marks all components as deleted,
+ * releases plugin takeover, and purges files.
  */
-export async function removeBySource(
-  source: string,
-  opts?: { manifestDir?: string },
+export async function removePlugin(
+  pluginName: string,
+  opts?: { manifestDir?: string; soft?: boolean },
 ): Promise<RemoveBySourceResult> {
+  const log = getTracer().createTrace("remove");
   const manifestDir = opts?.manifestDir ?? await resolveManifestDir();
   const manifest = await loadStateManifest(manifestDir);
   if (!manifest) {
@@ -183,24 +202,148 @@ export async function removeBySource(
 
   const removed: string[] = [];
 
-  for (const { key: section } of ITEM_SECTIONS) {
-    const sectionData = manifest[section] as Record<string, ItemConfig> | undefined;
-    if (!sectionData || typeof sectionData !== "object" || Array.isArray(sectionData)) continue;
+  // Find matching plugin in takenOverPlugins
+  let matchedPluginId: string | null = null;
+  if (manifest.takenOverPlugins) {
+    for (const pluginId of Object.keys(manifest.takenOverPlugins)) {
+      if (pluginId.startsWith(pluginName + "@") || pluginId === pluginName) {
+        matchedPluginId = pluginId;
+        break;
+      }
+    }
+  }
 
-    for (const [name, config] of Object.entries(sectionData)) {
-      if (config.source === source) {
-        config.state = "deleted";
-        removed.push(`${sectionToType(section)}: ${name}`);
+  // 1. Mark all items with this pluginOrigin as deleted
+  if (matchedPluginId) {
+    for (const { key: section } of ITEM_SECTIONS) {
+      const sectionData = manifest[section] as Record<string, ItemConfig> | undefined;
+      if (!sectionData || typeof sectionData !== "object" || Array.isArray(sectionData)) continue;
+      for (const [name, config] of Object.entries(sectionData)) {
+        if (config.pluginOrigin?.pluginId === matchedPluginId) {
+          config.state = "deleted";
+          removed.push(`${sectionToType(section)}: ${name}`);
+          if (!opts?.soft) {
+            await purgeItemFiles(name, sectionToType(section), log);
+          }
+        }
+      }
+    }
+
+    // 2. Release plugin takeover
+    delete manifest.takenOverPlugins![matchedPluginId];
+    if (manifest.takenOverPlugins && Object.keys(manifest.takenOverPlugins).length === 0) {
+      delete manifest.takenOverPlugins;
+    }
+
+    // 3. Re-enable plugin in Claude Code settings
+    try {
+      await setPluginEnabled(matchedPluginId, true);
+    } catch { /* best effort */ }
+
+    // 4. Remove from installed_plugins.json
+    try {
+      const ipPath = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+      const raw = await fs.readFile(ipPath, "utf-8");
+      const data = JSON.parse(raw) as { version?: number; plugins?: Record<string, unknown> };
+      if (data.version === 2 && data.plugins && matchedPluginId in data.plugins) {
+        delete data.plugins[matchedPluginId];
+        await fs.writeFile(ipPath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+        log.info({ scope: "plugin", op: "cleanup", msg: `Removed ${matchedPluginId} from installed_plugins.json`, item: matchedPluginId });
+      }
+    } catch { /* best effort */ }
+
+    // 5. Delete plugin cache directory
+    try {
+      const atIdx = matchedPluginId.lastIndexOf("@");
+      if (atIdx > 0) {
+        const pluginPart = matchedPluginId.slice(0, atIdx);
+        const marketplacePart = matchedPluginId.slice(atIdx + 1);
+        const cacheDir = path.join(os.homedir(), ".claude", "plugins", "cache", marketplacePart, pluginPart);
+        await fs.rm(cacheDir, { recursive: true, force: true });
+        log.info({ scope: "plugin", op: "cleanup", msg: `Deleted cache: ${cacheDir}`, item: matchedPluginId });
+      }
+    } catch { /* best effort */ }
+
+    log.info({ scope: "plugin", op: "release", msg: `Released plugin takeover: ${matchedPluginId}`, item: matchedPluginId });
+  }
+
+  // 2b. Also mark items by source name (for non-plugin items)
+  if (removed.length === 0) {
+    for (const { key: section } of ITEM_SECTIONS) {
+      const sectionData = manifest[section] as Record<string, ItemConfig> | undefined;
+      if (!sectionData || typeof sectionData !== "object" || Array.isArray(sectionData)) continue;
+      for (const [name, config] of Object.entries(sectionData)) {
+        if (config.source === pluginName) {
+          config.state = "deleted";
+          removed.push(`${sectionToType(section)}: ${name}`);
+          if (!opts?.soft) {
+            await purgeItemFiles(name, sectionToType(section), log);
+          }
+        }
       }
     }
   }
 
   if (removed.length === 0) {
-    return { removed: [], errors: [`No items found with source '${source}'`] };
+    return { removed: [], errors: [`No items found for plugin '${pluginName}'`] };
   }
 
   await saveStateManifest(manifestDir, manifest);
+
+  // Sync plugin symlinks to clean up
+  if (matchedPluginId) {
+    await syncPluginSymlinks(manifestDir);
+  }
+
   return { removed, errors: [] };
+}
+
+/**
+ * Legacy: mark all items from a source as deleted (soft only).
+ */
+export async function removeBySource(
+  source: string,
+  opts?: { manifestDir?: string },
+): Promise<RemoveBySourceResult> {
+  return removePlugin(source, { manifestDir: opts?.manifestDir });
+}
+
+// ============================================================================
+// Plugin release helper
+// ============================================================================
+
+/**
+ * If ALL components from a plugin are now deleted, release the plugin takeover.
+ */
+async function releasePluginIfFullyDeleted(
+  manifest: ManifestConfig,
+  pluginId: string,
+  manifestDir: string,
+  log: ReturnType<ReturnType<typeof getTracer>["createTrace"]>,
+): Promise<void> {
+  if (!manifest.takenOverPlugins?.[pluginId]) return;
+
+  // Check if any component from this plugin is still NOT deleted
+  for (const { key: section } of ITEM_SECTIONS) {
+    const sectionData = manifest[section] as Record<string, ItemConfig> | undefined;
+    if (!sectionData) continue;
+    for (const [, config] of Object.entries(sectionData)) {
+      if (config.pluginOrigin?.pluginId === pluginId && config.state !== "deleted") {
+        return; // Still has active components — don't release
+      }
+    }
+  }
+
+  // All components deleted — release plugin
+  delete manifest.takenOverPlugins[pluginId];
+  if (manifest.takenOverPlugins && Object.keys(manifest.takenOverPlugins).length === 0) {
+    delete manifest.takenOverPlugins;
+  }
+
+  try {
+    await setPluginEnabled(pluginId, true);
+    log.info({ scope: "plugin", op: "release", msg: `Released plugin takeover: ${pluginId} (all components deleted)`, item: pluginId });
+  } catch { /* best effort */ }
 }
 
 // ============================================================================
@@ -215,10 +358,9 @@ async function purgeItemFiles(
   type: string,
   log: ReturnType<ReturnType<typeof getTracer>["createTrace"]>,
 ): Promise<void> {
-  // Map item type to directory name
   const DIR_MAP: Record<string, string> = {
     skill: "skills", mcp: "mcps", agent: "agents",
-    command: "commands", rule: "rules", hook: "hooks", memory: "memory",
+    command: "commands", rule: "rules", hook: "hooks",
   };
   const dirName = DIR_MAP[type] || `${type}s`;
 
@@ -248,7 +390,6 @@ async function purgeItemFiles(
       if (!itemPath) continue;
       const resolved = resolvePath(itemPath);
       if (!resolved) continue;
-      // Try as directory (skill dirs, agent dirs) and as single file
       for (const candidate of [name, `${name}.md`, `${name}.yaml`, `${name}.yml`]) {
         const targetPath = path.join(resolved, candidate);
         try {
@@ -271,16 +412,16 @@ async function purgeItemFiles(
 // ============================================================================
 
 const pluginCmd = new Command("plugin")
-  .description("Remove all items from a plugin/source")
-  .argument("<name>", "Plugin/source name")
-  .action(async (name: string) => {
-    const result = await removeBySource(name);
+  .description("Remove all items from a plugin and release takeover")
+  .argument("<name>", "Plugin name (e.g., 'superpowers' or 'superpowers@marketplace')")
+  .option("--soft", "Only mark as deleted in manifest (no file cleanup)")
+  .action(async (name: string, options: { soft?: boolean }) => {
+    const result = await removePlugin(name, { soft: options.soft });
     if (result.removed.length > 0) {
-      console.log("Marked as deleted:");
+      console.log("Removed:");
       for (const r of result.removed) {
         console.log(`  - ${r}`);
       }
-      console.log("Run `mycelium sync` to propagate to all tools.");
     }
     if (result.errors.length > 0) {
       for (const e of result.errors) {
@@ -293,15 +434,14 @@ const pluginCmd = new Command("plugin")
   });
 
 export const removeCommand = new Command("remove")
-  .description("Remove (soft-delete) an item from mycelium sync")
+  .description("Remove an item from mycelium sync (deletes files + symlinks)")
   .argument("<name>", "Name of the item to remove")
   .option("--type <type>", "Item type if name is ambiguous")
-  .option("--purge", "Permanently delete files and symlinks (not just soft-delete)")
-  .action(async (name: string, options: { type?: string; purge?: boolean }) => {
-    const result = await removeItem(name, { type: options.type, purge: options.purge });
+  .option("--soft", "Only mark as deleted in manifest (no file cleanup)")
+  .action(async (name: string, options: { type?: string; soft?: boolean }) => {
+    const result = await removeItem(name, { type: options.type, soft: options.soft });
     if (result.success) {
       console.log(`✓ ${result.message}`);
-      if (!options.purge) console.log("Run `mycelium sync` to propagate to all tools.");
     } else {
       console.error(`✗ Error: ${result.error}`);
       process.exit(1);

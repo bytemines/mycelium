@@ -20,11 +20,14 @@ import {
   fetchAnthropicSkillsList,
   fetchMcpServers,
   mcpServerToEntry,
-  fetchNpmDownloads,
+  fetchGlamaServers,
+  glamaServerToEntry,
   parseGitHubUrl,
   searchGitHubRepo,
   installGitHubRepoItem,
   fetchGitHubRepoItems,
+  enrichWithGitHubStars,
+  enrichWithNpmDownloads,
 } from "./marketplace-sources.js";
 import type { CacheOptions } from "./marketplace-cache.js";
 import { getTracer } from "./global-tracer.js";
@@ -36,6 +39,12 @@ import { MYCELIUM_HOME } from "./fs-helpers.js";
 import { loadStateManifest, saveStateManifest } from "./manifest-state.js";
 import type { ItemConfig } from "./manifest-state.js";
 import { computeContentHash } from "./content-hash.js";
+import {
+  POPULAR_ITEMS_LIMIT,
+  ENRICHMENT_OVERALL_TIMEOUT,
+  BATCH_HASH,
+  TIMEOUT_GITHUB,
+} from "./marketplace-constants.js";
 
 // Re-export so existing consumers don't break
 export { computeContentHash } from "./content-hash.js";
@@ -85,8 +94,17 @@ export async function searchMarketplace(
   const total = filtered.reduce((n, r) => n + r.entries.length, 0);
   log.info({ scope: "search", op: "done", dur: Date.now() - t0, msg: `${total} entries from ${filtered.length} sources` });
 
-  const enriched = await enrichWithInstalledStatus(filtered);
+  return normalizeAndEnrich(filtered);
+}
+
+// ============================================================================
+// Shared Enrichment Pipeline
+// ============================================================================
+
+async function normalizeAndEnrich(results: MarketplaceSearchResult[]): Promise<MarketplaceEntry[]> {
+  const enriched = await enrichWithInstalledStatus(results);
   const allEntries = deduplicateEntries(enriched);
+  await Promise.allSettled([enrichWithGitHubStars(allEntries), enrichWithNpmDownloads(allEntries)]);
   return enrichWithLatestHashes(allEntries);
 }
 
@@ -108,8 +126,6 @@ export async function installFromMarketplace(
   try {
     let result: InstallResult;
     switch (entry.source) {
-      case MS.OPENSKILLS:
-        result = await installOpenSkill(entry); break;
       case MS.CLAUDE_PLUGINS:
         result = await installClaudePlugin(entry); break;
       case MS.MCP_REGISTRY:
@@ -153,15 +169,6 @@ export async function installFromMarketplace(
   }
 }
 
-async function installOpenSkill(entry: MarketplaceEntry) {
-  const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, "SKILL.md");
-  const content = `# ${entry.name}\n\n${entry.description}\n\n> Installed from openskills registry\n`;
-  await fs.writeFile(filePath, content, "utf-8");
-  return { success: true, path: filePath, version: entry.version, contentHash: computeContentHash(content) };
-}
-
 async function installClaudePlugin(entry: MarketplaceEntry) {
   const cacheDir = path.join(os.homedir(), ".claude", "plugins", "cache");
   const src = path.join(cacheDir, entry.name);
@@ -203,10 +210,54 @@ export async function getPopularSkills(options?: CacheOptions): Promise<Marketpl
   const results: MarketplaceSearchResult[] = [];
 
   const fetchers: Array<{ name: string; fn: () => Promise<void> }> = [
-    { name: "anthropic-skills", fn: () => fetchPopularAnthropicSkills(results, options) },
-    { name: "claude-plugins", fn: () => fetchPopularClaudePlugins(results) },
-    { name: "mcp-registry", fn: () => fetchPopularMcpServers(results, options) },
-    { name: "openskills", fn: () => fetchPopularOpenSkills(results, options) },
+    {
+      name: "anthropic-skills",
+      fn: () => fetchPopularSource({
+        source: MS.ANTHROPIC_SKILLS,
+        fetch: async () => {
+          const skills = await fetchAnthropicSkillsList(options);
+          return skills.map(name => ({
+            name,
+            description: `Official Anthropic skill: ${name}`,
+            author: "anthropics",
+            source: MS.ANTHROPIC_SKILLS,
+            type: "skill" as const,
+            url: `https://github.com/anthropics/skills/tree/main/skills/${name}`,
+          }));
+        },
+      }, results),
+    },
+    {
+      name: "claude-plugins",
+      fn: () => fetchPopularSource({
+        source: MS.CLAUDE_PLUGINS,
+        fetch: async () => {
+          const plugins = await listInstalledPlugins();
+          if (plugins.length > 0) await enrichPluginsWithLatestVersions(plugins);
+          return plugins;
+        },
+      }, results),
+    },
+    {
+      name: "mcp-registry",
+      fn: () => fetchPopularSource({
+        source: MS.MCP_REGISTRY,
+        fetch: async () => {
+          const servers = await cachedFetch("mcp-registry", () => fetchMcpServers(""), options);
+          return servers.map(mcpServerToEntry);
+        },
+      }, results),
+    },
+    {
+      name: "glama",
+      fn: () => fetchPopularSource({
+        source: MS.GLAMA,
+        fetch: async () => {
+          const servers = await cachedFetch("glama", () => fetchGlamaServers(""), options);
+          return servers.map(glamaServerToEntry);
+        },
+      }, results),
+    },
   ];
 
   // Add dynamic GitHub marketplaces
@@ -235,63 +286,22 @@ export async function getPopularSkills(options?: CacheOptions): Promise<Marketpl
   }
   log.info({ scope: "popular", op: "done", dur: Date.now() - t0, msg: `${results.reduce((n, r) => n + r.entries.length, 0)} entries` });
 
-  const enriched = await enrichWithInstalledStatus(results);
-  const allEntries = deduplicateEntries(enriched);
-  return enrichWithLatestHashes(allEntries);
+  return normalizeAndEnrich(results);
 }
 
-async function fetchPopularAnthropicSkills(results: MarketplaceSearchResult[], options?: CacheOptions) {
-  const skills = await fetchAnthropicSkillsList(options);
-  if (skills.length > 0) {
-    const entries: MarketplaceEntry[] = skills.slice(0, 12).map(name => ({
-      name,
-      description: `Official Anthropic skill: ${name}`,
-      author: "anthropics",
-      source: MS.ANTHROPIC_SKILLS,
-      type: "skill" as const,
-      url: `https://github.com/anthropics/skills/tree/main/skills/${name}`,
-    }));
-    results.push({ entries, total: entries.length, source: MS.ANTHROPIC_SKILLS });
+/** Config-driven popular fetcher — collapses 4 near-identical functions. */
+async function fetchPopularSource(
+  config: {
+    source: string;
+    fetch: () => Promise<MarketplaceEntry[]>;
+  },
+  results: MarketplaceSearchResult[],
+): Promise<void> {
+  const entries = await config.fetch();
+  if (entries.length > 0) {
+    const sliced = entries.slice(0, POPULAR_ITEMS_LIMIT);
+    results.push({ entries: sliced, total: entries.length, source: config.source });
   }
-}
-
-async function fetchPopularClaudePlugins(results: MarketplaceSearchResult[]) {
-  const plugins = await listInstalledPlugins();
-  if (plugins.length > 0) {
-    await enrichPluginsWithLatestVersions(plugins);
-    results.push({ entries: plugins.slice(0, 12), total: plugins.length, source: MS.CLAUDE_PLUGINS });
-  }
-}
-
-async function fetchPopularMcpServers(results: MarketplaceSearchResult[], options?: CacheOptions) {
-  const servers = await cachedFetch("mcp-registry", () => fetchMcpServers(""), options);
-  if (servers.length > 0) {
-    const entries = servers.slice(0, 12).map(mcpServerToEntry);
-    results.push({ entries, total: entries.length, source: MS.MCP_REGISTRY });
-  }
-}
-
-async function fetchPopularOpenSkills(results: MarketplaceSearchResult[], options?: CacheOptions) {
-  const data = await cachedFetch("openskills", async () => {
-    const res = await fetch("https://registry.npmjs.org/-/v1/search?text=openskills&size=12");
-    if (!res.ok) throw new Error(`openskills browse failed: ${res.statusText}`);
-    return (await res.json()) as {
-      objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
-    };
-  }, options);
-  const names = data.objects.map(o => o.package.name);
-  const downloads = await fetchNpmDownloads(names);
-  const entries: MarketplaceEntry[] = data.objects.map((o) => ({
-    name: o.package.name,
-    description: o.package.description || "",
-    author: o.package.author?.name,
-    version: o.package.version,
-    latestVersion: o.package.version,
-    downloads: downloads[o.package.name],
-    source: MS.OPENSKILLS,
-    type: "skill" as const,
-  }));
-  results.push({ entries, total: entries.length, source: MS.OPENSKILLS });
 }
 
 // ============================================================================
@@ -435,7 +445,7 @@ export async function checkMyceliumUpdate(): Promise<{ current: string; latest: 
     const current = pkg.version;
 
     const res = await fetch("https://registry.npmjs.org/@mycelish/cli/latest", {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(TIMEOUT_GITHUB),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { version: string };
@@ -470,10 +480,10 @@ async function enrichWithLatestHashes(entries: MarketplaceEntry[]): Promise<Mark
   const hashMap = new Map<string, string>();
   // Overall timeout: cap total enrichment at 15s regardless of item count
   const overallController = new AbortController();
-  const overallTimeout = setTimeout(() => overallController.abort(), 15_000);
+  const overallTimeout = setTimeout(() => overallController.abort(), ENRICHMENT_OVERALL_TIMEOUT);
 
   try {
-    const BATCH_SIZE = 5;
+    const BATCH_SIZE = BATCH_HASH;
     for (let i = 0; i < needsHash.length; i += BATCH_SIZE) {
       if (overallController.signal.aborted) break;
       const batch = needsHash.slice(i, i + BATCH_SIZE).map(async (e) => {

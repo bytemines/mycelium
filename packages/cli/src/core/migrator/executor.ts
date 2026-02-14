@@ -186,7 +186,6 @@ export async function clearMigration(
       path.join(MYCELIUM_DIR, "global", "commands"),
       path.join(MYCELIUM_DIR, "global", "hooks"),
       path.join(MYCELIUM_DIR, "global", "libs"),
-      path.join(MYCELIUM_DIR, "global", "memory"),
     ];
     for (const dir of dirs) {
       try {

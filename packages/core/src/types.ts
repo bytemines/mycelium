@@ -285,9 +285,9 @@ export type MarketplaceSource = string;
 
 /** Well-known marketplace source identifiers */
 export const MARKETPLACE_SOURCES = {
-  OPENSKILLS: "openskills" as const,
   CLAUDE_PLUGINS: "claude-plugins" as const,
   MCP_REGISTRY: "mcp-registry" as const,
+  GLAMA: "glama" as const,
   ANTHROPIC_SKILLS: "anthropic-skills" as const,
 };
 

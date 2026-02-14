@@ -46,7 +46,6 @@ export interface ManifestConfig {
   skills?: Record<string, ItemConfig>;
   mcps?: Record<string, ItemConfig>;
   hooks?: Record<string, ItemConfig>;
-  memory?: Record<string, ItemConfig> | unknown;
   agents?: Record<string, ItemConfig>;
   commands?: Record<string, ItemConfig>;
   takenOverPlugins?: Record<string, {

@@ -146,20 +146,20 @@ describe("remove command", () => {
       expect(saved.skills["shared-name"].state).toBeUndefined();
     });
 
-    it("purges files and sets state: deleted with --purge", async () => {
+    it("removes files by default (purge is now default)", async () => {
       const yaml = await import("yaml");
       const manifest = {
         version: "1",
-        skills: { "my-skill": { state: "enabled", source: "openskills" } },
+        skills: { "my-skill": { state: "enabled", source: "anthropic-skills" } },
       };
       vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify(manifest));
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
       const { removeItem } = await import("./remove.js");
-      const result = await removeItem("my-skill", { manifestDir: MANIFEST_DIR, purge: true });
+      const result = await removeItem("my-skill", { manifestDir: MANIFEST_DIR });
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain("purged");
+      expect(result.message).toContain("removed");
 
       // Verify fs.rm was called to delete source files
       expect(fs.rm).toHaveBeenCalled();

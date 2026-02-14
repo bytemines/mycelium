@@ -71,7 +71,7 @@ describe("loadMarketplaceRegistry", () => {
   it("returns defaults when no saved config or plugins", async () => {
     mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
     const registry = await loadMarketplaceRegistry();
-    expect(registry["openskills"]).toBeDefined();
+    expect(registry["glama"]).toBeDefined();
     expect(registry["mcp-registry"]).toBeDefined();
     expect(registry["anthropic-skills"]).toBeDefined();
     expect(registry["awesome-mcp-servers"]).toBeDefined();
@@ -94,7 +94,7 @@ describe("loadMarketplaceRegistry", () => {
     expect(registry["custom-source"]).toBeDefined();
     expect(registry["custom-source"].url).toBe("https://example.com");
     // Defaults still present
-    expect(registry["openskills"]).toBeDefined();
+    expect(registry["glama"]).toBeDefined();
   });
 
   it("merges discovered marketplaces", async () => {
@@ -164,10 +164,10 @@ describe("removeMarketplace", () => {
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.writeFile.mockResolvedValue(undefined);
 
-    await removeMarketplace("openskills");
+    await removeMarketplace("glama");
 
     const written = mockFs.writeFile.mock.calls[0][1] as string;
-    expect(written).not.toContain("openskills:");
+    expect(written).not.toContain("glama:");
   });
 });
 

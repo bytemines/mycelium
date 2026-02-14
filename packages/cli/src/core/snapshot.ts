@@ -101,15 +101,6 @@ export async function createSnapshot(
     }
   }
 
-  // Copy memory directory
-  const memoryFiles = await copyDirRecursive(
-    path.join(getMyceliumDir(), "memory"),
-    path.join(snapshotDir, "memory"),
-  );
-  for (const f of memoryFiles) {
-    fileList.push(`memory/${f}`);
-  }
-
   // Read symlinks in global/skills/
   const skillSymlinks: Record<string, string> = {};
   const skillsDir = path.join(getMyceliumDir(), "global", "skills");
@@ -160,7 +151,6 @@ export async function restoreSnapshot(name: string): Promise<void> {
   for (const relPath of SNAPSHOT_FILES) {
     await fs.rm(path.join(getMyceliumDir(), relPath), { force: true });
   }
-  await rmrf(path.join(getMyceliumDir(), "memory"));
   await rmrf(path.join(getMyceliumDir(), "global", "skills"));
 
   // Restore files

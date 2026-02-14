@@ -6,7 +6,6 @@ describe("presets", () => {
     const config = {
       skills: ["tdd", "debugging"],
       mcps: ["git-mcp", "postgres-mcp"],
-      memory: { scopes: ["shared", "coding"] },
     };
     const preset = createPreset("python-backend", config);
     expect(preset.name).toBe("python-backend");
@@ -18,7 +17,6 @@ describe("presets", () => {
       name: "python-backend",
       skills: ["tdd"],
       mcps: ["git-mcp"],
-      memory: { scopes: ["shared"] },
     };
     const actions = applyPreset(preset, {
       allSkills: ["tdd", "debugging", "frontend"],
@@ -33,7 +31,6 @@ describe("presets", () => {
       name: "test",
       skills: ["a"],
       mcps: ["b"],
-      memory: { scopes: ["shared"] },
     };
     const yaml = exportPreset(preset);
     expect(yaml).toContain("name: test");

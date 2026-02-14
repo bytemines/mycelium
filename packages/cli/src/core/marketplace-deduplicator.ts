@@ -10,7 +10,7 @@ const SOURCE_PRIORITY: string[] = [
   MS.ANTHROPIC_SKILLS,
   MS.CLAUDE_PLUGINS,
   MS.MCP_REGISTRY,
-  MS.OPENSKILLS,
+  MS.GLAMA,
   // Everything else (custom GitHub repos) falls after these
 ];
 

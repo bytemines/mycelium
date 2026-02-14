@@ -43,7 +43,7 @@ import {
 } from "../core/machine-overrides.js";
 import { getDisabledItems, loadStateManifest } from "../core/manifest-state.js";
 import { scanPluginComponents } from "../core/plugin-scanner.js";
-import { PLUGIN_COMPONENT_DIRS } from "../core/plugin-takeover.js";
+import { PLUGIN_COMPONENT_DIRS, cleanOrphanedTakeovers } from "../core/plugin-takeover.js";
 
 // ============================================================================
 // Types
@@ -224,6 +224,13 @@ export async function syncAll(
 
   const tracer = getTracer();
   const log = tracer.createTrace("sync");
+
+  // Clean up orphaned plugin takeovers (plugins uninstalled from Claude Code)
+  const cleaned = await cleanOrphanedTakeovers();
+  if (cleaned.length > 0) {
+    result.warnings.push(`Cleaned orphaned plugin takeovers: ${cleaned.join(", ")}`);
+    log.info({ scope: "plugin", op: "cleanup", msg: `Cleaned ${cleaned.length} orphaned takeover(s)` });
+  }
 
   // Load and merge all configs
   const mergedConfig = await loadAndMergeAllConfigs(projectRoot);

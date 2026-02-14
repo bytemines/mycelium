@@ -12,7 +12,6 @@ import cursorSvg from "./svg/cursor.svg?raw";
 import vscodeSvg from "./svg/vscode.svg?raw";
 import antigravitySvg from "./svg/antigravity.svg?raw";
 import githubSvg from "./svg/github.svg?raw";
-import npmSvg from "./svg/npm.svg?raw";
 import mcpSvg from "./svg/mcp.svg?raw";
 import { TOOL_REGISTRY } from "@mycelish/core";
 
@@ -81,7 +80,6 @@ export const TOOL_ICONS: Record<string, React.ReactNode> = Object.fromEntries(
 );
 
 export const SOURCE_ICON_MAP: Record<string, string> = {
-  openskills: npmSvg,
   "mcp-registry": mcpSvg,
   "anthropic-skills": githubSvg,
   "claude-plugins": claudeSvg,

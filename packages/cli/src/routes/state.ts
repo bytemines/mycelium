@@ -14,13 +14,33 @@ import { detectInstalledTools } from "../core/tool-detector.js";
 import { enableSkillOrMcp } from "../commands/enable.js";
 import { disableSkillOrMcp } from "../commands/disable.js";
 import { MYCELIUM_HOME } from "../core/fs-helpers.js";
-import { getDisabledItems, getDeletedItems, ALL_ITEM_TYPES } from "../core/manifest-state.js";
+import { getDisabledItems, getDeletedItems, ALL_ITEM_TYPES, loadStateManifest, ITEM_SECTIONS } from "../core/manifest-state.js";
 import { verifyItemState } from "../core/state-verifier.js";
 import { getLivePluginState } from "../core/plugin-state.js";
 import { asyncHandler } from "./async-handler.js";
 
-import type { ToolId } from "@mycelish/core";
+import type { ItemConfig } from "../core/manifest-state.js";
+import type { ToolId, Capability } from "@mycelish/core";
+import { TOOL_REGISTRY } from "@mycelish/core";
 import type { Express } from "express";
+
+/** Get installed tools that have a specific capability. */
+function toolsWithCap(installedToolIds: ToolId[], cap: Capability): ToolId[] {
+  return installedToolIds.filter(id => {
+    const desc = TOOL_REGISTRY[id];
+    return desc?.capabilities.includes(cap);
+  });
+}
+
+/** Compute which installed tools an item targets based on capability + tools/excludeTools config. */
+function computeConnectedTools(cfg: ItemConfig | undefined, installedToolIds: ToolId[], capability: Capability): ToolId[] {
+  // First filter by capability
+  const capableTools = toolsWithCap(installedToolIds, capability);
+  if (!cfg) return capableTools;
+  if (cfg.tools?.length) return capableTools.filter(id => cfg.tools!.includes(id));
+  if (cfg.excludeTools?.length) return capableTools.filter(id => !cfg.excludeTools!.includes(id));
+  return capableTools;
+}
 
 export function registerStateRoutes(app: Express): void {
   const stateRouter = Router();
@@ -41,18 +61,40 @@ export function registerStateRoutes(app: Express): void {
     const disabledItems = await getDisabledItems(process.cwd());
     const deletedItems = await getDeletedItems(process.cwd());
 
+    const stateManifest = await loadStateManifest(MYCELIUM_HOME);
+
     const skillsDir = path.join(MYCELIUM_HOME, "global", "skills");
     let skills: Array<{ name: string; status: "synced" | "disabled"; enabled: boolean; connectedTools: ToolId[] }> = [];
     try {
       const entries = await fs.readdir(skillsDir);
       skills = entries
         .filter((name) => !deletedItems.has(name))
-        .map((name) => ({
-          name,
-          status: disabledItems.has(name) ? "disabled" as const : "synced" as const,
-          enabled: !disabledItems.has(name),
-          connectedTools: installedToolIds,
-        }));
+        .filter((name) => {
+          // Exclude plugin-origin skills (shown under their plugin node)
+          const cfg = stateManifest?.skills?.[name] as ItemConfig | undefined;
+          if (cfg?.pluginOrigin) return false;
+          return true;
+        })
+        .filter((name) => {
+          // Exclude items registered as non-skill types in manifest
+          if (!stateManifest) return true;
+          for (const { key, type } of ITEM_SECTIONS) {
+            if (type === "skill") continue;
+            const section = stateManifest[key] as Record<string, ItemConfig> | undefined;
+            if (section?.[name]) return false;
+          }
+          return true;
+        })
+        .map((name) => {
+          const cfg = stateManifest?.skills?.[name] as ItemConfig | undefined;
+          const connTools = computeConnectedTools(cfg, installedToolIds, "skills");
+          return {
+            name,
+            status: disabledItems.has(name) ? "disabled" as const : "synced" as const,
+            enabled: !disabledItems.has(name),
+            connectedTools: connTools,
+          };
+        });
     } catch {
       // directory doesn't exist yet
     }
@@ -66,11 +108,13 @@ export function registerStateRoutes(app: Express): void {
           .filter((name) => !deletedItems.has(name))
           .map((name) => {
             const enabled = !disabledItems.has(name);
+            const mcpCfg = stateManifest?.mcps?.[name] as ItemConfig | undefined;
+            const tools = computeConnectedTools(mcpCfg, installedToolIds, "mcp");
             return {
               name,
               status: enabled ? "synced" as const : "disabled" as const,
               enabled,
-              connectedTools: installedToolIds,
+              connectedTools: tools,
             };
           });
       }

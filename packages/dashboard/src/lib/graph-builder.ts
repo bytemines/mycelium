@@ -25,6 +25,17 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
     }
   }
 
+  // Resolve connected tools by capability (matching state.ts computeConnectedTools)
+  const installedToolIds = Array.from(toolSet.keys());
+  const skillCapableTools = installedToolIds.filter(id => {
+    const desc = TOOL_REGISTRY[id];
+    return desc?.capabilities.includes("skills");
+  });
+  const mcpCapableTools = installedToolIds.filter(id => {
+    const desc = TOOL_REGISTRY[id];
+    return desc?.capabilities.includes("mcp");
+  });
+
   const tools = Array.from(toolSet.values()).map(t => ({
     id: t.id,
     name: t.name,
@@ -55,7 +66,7 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
           name: skill.name,
           status: "pending",
           enabled: toggleState.skills[skill.name] !== false,
-          connectedTools: [scan.toolId],
+          connectedTools: skillCapableTools,
         });
       }
     }
@@ -83,7 +94,7 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
           name: mcp.name,
           status: "pending",
           enabled: toggleState.mcps[mcp.name] !== false,
-          connectedTools: [scan.toolId],
+          connectedTools: mcpCapableTools,
         });
       }
     }
@@ -218,7 +229,18 @@ export function buildDashboardGraph(
       },
     });
 
-    visibleTools.filter(t => t.installed).forEach((tool) => {
+    // Connect plugin to tools that support at least one of its component types
+    const pluginCaps = new Set<string>();
+    if (plugin.skills?.length) pluginCaps.add("skills");
+    if (plugin.agents?.length) pluginCaps.add("agents");
+    if (plugin.commands?.length) pluginCaps.add("commands");
+    if (plugin.hooks?.length) pluginCaps.add("hooks");
+    visibleTools.filter(t => {
+      if (!t.installed) return false;
+      const desc = TOOL_REGISTRY[t.id];
+      if (!desc) return false;
+      return desc.capabilities.some(c => pluginCaps.has(c));
+    }).forEach((tool) => {
       edges.push({
         id: `${nodeId}-to-tool-${tool.id}`,
         source: nodeId,

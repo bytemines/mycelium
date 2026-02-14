@@ -10,68 +10,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { cachedFetch, type CacheOptions } from "./marketplace-cache.js";
 import { computeContentHash } from "./content-hash.js";
-
-// ============================================================================
-// npm download counts
-// ============================================================================
-
-export async function fetchNpmDownloads(names: string[]): Promise<Record<string, number>> {
-  const result: Record<string, number> = {};
-  if (names.length === 0) return result;
-  const fetches = names.slice(0, 20).map(async (name) => {
-    try {
-      const res = await fetch(`https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(name)}`);
-      if (res.ok) {
-        const data = (await res.json()) as { downloads?: number };
-        if (data.downloads) result[name] = data.downloads;
-      }
-    } catch {
-      // Non-critical
-    }
-  });
-  await Promise.allSettled(fetches);
-  return result;
-}
-
-// ============================================================================
-// OpenSkills (npm registry)
-// ============================================================================
-
-export async function searchOpenSkills(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
-  const data = query
-    ? await fetchOpenSkillsRaw(query)  // user search: live
-    : await cachedFetch("openskills", () => fetchOpenSkillsRaw(""), options);  // browse: cached
-  return transformNpmResponse(data);
-}
-
-interface NpmSearchResponse {
-  objects: { package: { name: string; description: string; author?: { name: string }; version: string } }[];
-}
-
-async function fetchOpenSkillsRaw(query: string): Promise<NpmSearchResponse> {
-  const res = await fetch(
-    `https://registry.npmjs.org/-/v1/search?text=openskills+${encodeURIComponent(query)}&size=12`
-  );
-  if (!res.ok) throw new Error(`openskills search failed: ${res.statusText}`);
-  return (await res.json()) as NpmSearchResponse;
-}
-
-async function transformNpmResponse(data: NpmSearchResponse): Promise<MarketplaceSearchResult> {
-  const names = data.objects.map(o => o.package.name);
-  const downloads = await fetchNpmDownloads(names);
-  const entries: MarketplaceEntry[] = data.objects.map((o) => ({
-    name: o.package.name,
-    description: o.package.description || "",
-    author: o.package.author?.name,
-    version: o.package.version,
-    latestVersion: o.package.version,
-    downloads: downloads[o.package.name],
-    source: MS.OPENSKILLS,
-    type: "skill" as const,
-    url: `https://www.npmjs.com/package/${o.package.name}`,
-  }));
-  return { entries, total: entries.length, source: MS.OPENSKILLS };
-}
+import {
+  MARKETPLACE_FETCH_LIMIT,
+  TIMEOUT_GITHUB,
+  TIMEOUT_NPM,
+  TIMEOUT_GLAMA,
+  BATCH_NPM,
+  BATCH_GITHUB,
+} from "./marketplace-constants.js";
 
 // ============================================================================
 // Claude Plugins (local installed_plugins.json v2)
@@ -90,22 +36,10 @@ export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
         installedAt?: string;
         lastUpdated?: string;
       }>>;
-    } | Array<{ name: string; description?: string; version?: string; author?: string }>;
+    };
 
-    if (!Array.isArray(data) && data.version === 2 && data.plugins) {
+    if (data.version === 2 && data.plugins) {
       return parseV2Plugins(data.plugins);
-    }
-
-    if (Array.isArray(data)) {
-      return data.map((p) => ({
-        name: p.name,
-        description: p.description || "",
-        version: p.version,
-        author: p.author,
-        installed: true,
-        source: MS.CLAUDE_PLUGINS,
-        type: "plugin" as const,
-      }));
     }
 
     return [];
@@ -117,6 +51,7 @@ export async function listInstalledPlugins(): Promise<MarketplaceEntry[]> {
   }
 }
 
+/** Pure parser — no filtering. Visibility policy is handled by getLivePluginState. */
 function parseV2Plugins(
   plugins: Record<string, Array<{ scope: string; installPath: string; version: string; installedAt?: string; lastUpdated?: string }>>
 ): MarketplaceEntry[] {
@@ -136,6 +71,7 @@ function parseV2Plugins(
       updatedAt: latest.lastUpdated ? new Date(latest.lastUpdated).toISOString().slice(0, 10) : undefined,
       source: MS.CLAUDE_PLUGINS,
       type: "plugin" as const,
+      category: marketplace,
     });
   }
   return entries;
@@ -174,33 +110,55 @@ export async function enrichPluginsWithLatestVersions(plugins: MarketplaceEntry[
     if (repoMap.size === 0) return;
 
     // Fetch marketplace.json from each GitHub repo (cached)
-    const versionMap = new Map<string, string>();
+    // Track per-marketplace: plugin name → { version, url }
+    interface PluginMeta { version?: string; url?: string }
+    const marketplacePlugins = new Map<string, Map<string, PluginMeta>>();
     const fetches = [...repoMap.entries()].map(async ([marketplace, { owner, repo }]) => {
       try {
-        const data = await cachedFetch(`plugin-versions-${marketplace}`, async () => {
+        const data = await cachedFetch(`plugin-meta-${marketplace}`, async () => {
           const headers: Record<string, string> = {};
           const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
           if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
           const res = await fetch(
             `https://raw.githubusercontent.com/${owner}/${repo}/main/.claude-plugin/marketplace.json`,
-            { headers, signal: AbortSignal.timeout(5000) },
+            { headers, signal: AbortSignal.timeout(TIMEOUT_GITHUB) },
           );
-          if (!res.ok) return { plugins: [] as Array<{ name: string; version: string }> };
-          return (await res.json()) as { plugins?: Array<{ name: string; version?: string }> };
+          if (!res.ok) return { plugins: [] as Array<{ name: string; version?: string; source?: { url?: string } }> };
+          return (await res.json()) as { plugins?: Array<{ name: string; version?: string; source?: { source?: string; url?: string } }> };
         });
+        const meta = new Map<string, PluginMeta>();
         for (const p of data.plugins ?? []) {
-          if (p.name && p.version) versionMap.set(p.name, p.version);
+          if (!p.name) continue;
+          // Extract the actual plugin repo URL from the source field
+          let pluginUrl: string | undefined;
+          if (p.source?.url) {
+            pluginUrl = p.source.url.replace(/\.git$/, "");
+          }
+          meta.set(p.name, { version: p.version, url: pluginUrl });
         }
+        marketplacePlugins.set(marketplace, meta);
       } catch {
         // Non-critical
       }
     });
     await Promise.allSettled(fetches);
 
-    // Enrich entries
+    // Enrich entries with latest versions and correct plugin URLs
     for (const plugin of plugins) {
-      const latest = versionMap.get(plugin.name);
-      if (latest) plugin.latestVersion = latest;
+      const mpName = plugin.category;
+      const mpMeta = mpName ? marketplacePlugins.get(mpName) : undefined;
+      const meta = mpMeta?.get(plugin.name)
+        ?? [...marketplacePlugins.values()].find(m => m.has(plugin.name))?.get(plugin.name);
+      if (meta?.version) plugin.latestVersion = meta.version;
+      // Use the actual plugin repo URL, not the marketplace repo
+      if (!plugin.url && meta?.url) {
+        plugin.url = meta.url;
+      }
+      // Fallback: marketplace repo if no per-plugin URL
+      if (!plugin.url && mpName && repoMap.has(mpName)) {
+        const { owner, repo } = repoMap.get(mpName)!;
+        plugin.url = `https://github.com/${owner}/${repo}`;
+      }
     }
   } catch {
     // known_marketplaces.json missing or unreadable — skip
@@ -224,8 +182,8 @@ const MCP_REGISTRY_URL = "https://registry.modelcontextprotocol.io";
 
 export async function fetchMcpServers(query: string): Promise<McpRegistryServer[]> {
   const url = query
-    ? `${MCP_REGISTRY_URL}/v0.1/servers?q=${encodeURIComponent(query)}&limit=20`
-    : `${MCP_REGISTRY_URL}/v0.1/servers?limit=20`;
+    ? `${MCP_REGISTRY_URL}/v0.1/servers?search=${encodeURIComponent(query)}&limit=${MARKETPLACE_FETCH_LIMIT}`
+    : `${MCP_REGISTRY_URL}/v0.1/servers?limit=${MARKETPLACE_FETCH_LIMIT}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`MCP Registry failed: ${res.statusText}`);
   const data = (await res.json()) as { servers: McpRegistryServer[] };
@@ -251,6 +209,51 @@ export async function searchMcpRegistry(query: string, options?: CacheOptions): 
     : await cachedFetch("mcp-registry", () => fetchMcpServers(""), options);  // browse: cached
   const entries = servers.map(mcpServerToEntry);
   return { entries, total: entries.length, source: MS.MCP_REGISTRY };
+}
+
+// ============================================================================
+// Glama MCP Registry (https://glama.ai/api/mcp/v1/servers)
+// ============================================================================
+
+interface GlamaServer {
+  id: string;
+  name: string;
+  namespace?: string;
+  slug?: string;
+  description?: string;
+  repository?: { url?: string };
+  url?: string;
+  attributes?: string[];
+  spdxLicense?: { name?: string };
+}
+
+const GLAMA_API = "https://glama.ai/api/mcp/v1/servers";
+
+export async function fetchGlamaServers(query: string): Promise<GlamaServer[]> {
+  const params = new URLSearchParams({ limit: String(MARKETPLACE_FETCH_LIMIT) });
+  if (query) params.set("query", query);
+  const res = await fetch(`${GLAMA_API}?${params}`, { signal: AbortSignal.timeout(TIMEOUT_GLAMA) });
+  if (!res.ok) throw new Error(`Glama API failed: ${res.statusText}`);
+  const data = (await res.json()) as { servers: GlamaServer[] };
+  return data.servers || [];
+}
+
+export function glamaServerToEntry(s: GlamaServer): MarketplaceEntry {
+  return {
+    name: s.name,
+    description: s.description || "",
+    source: MS.GLAMA,
+    type: "mcp" as const,
+    url: s.repository?.url || s.url || undefined,
+  };
+}
+
+export async function searchGlama(query: string, options?: CacheOptions): Promise<MarketplaceSearchResult> {
+  const servers = query
+    ? await fetchGlamaServers(query)
+    : await cachedFetch("glama", () => fetchGlamaServers(""), options);
+  const entries = servers.map(glamaServerToEntry);
+  return { entries, total: entries.length, source: MS.GLAMA };
 }
 
 // ============================================================================
@@ -342,8 +345,9 @@ async function fetchGitHubRepoStars(owner: string, repo: string, options?: Cache
       const headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
       const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
       if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
-      if (!res.ok) return { stars: undefined };
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers, signal: AbortSignal.timeout(TIMEOUT_GITHUB) });
+      // Throw on failure so cachedFetch doesn't cache empty results
+      if (!res.ok) throw new Error(`GitHub API ${res.status} for ${owner}/${repo}`);
       const json = (await res.json()) as { stargazers_count?: number };
       return { stars: json.stargazers_count };
     }, options);
@@ -467,6 +471,100 @@ export async function installGitHubRepoItem(
 }
 
 // ============================================================================
+// npm Download Enrichment
+// ============================================================================
+
+/**
+ * Enrich marketplace entries with npm weekly download counts.
+ * Tries the entry name as an npm package name (works for most MCP servers).
+ * Uses cachedFetch to avoid redundant API calls.
+ */
+export async function enrichWithNpmDownloads(entries: MarketplaceEntry[]): Promise<void> {
+  // Only enrich MCP-type entries (not plugins — plugin names don't match npm packages)
+  const candidates = entries.filter(e => e.downloads == null && e.type === "mcp");
+  if (candidates.length === 0) return;
+
+  // Batch: max BATCH_NPM concurrent
+  const batch = candidates.slice(0, BATCH_NPM);
+  await Promise.allSettled(
+    batch.map(async (entry) => {
+      try {
+        // Use the npm package name — for scoped names like @modelcontextprotocol/server-*
+        // the entry name is usually the npm package name for MCP entries
+        const pkgName = entry.name;
+        const data = await cachedFetch(`npm-dl-${pkgName}`, async () => {
+          // First verify the package exists and is MCP-related (check keywords)
+          const metaRes = await fetch(
+            `https://registry.npmjs.org/${encodeURIComponent(pkgName)}`,
+            { signal: AbortSignal.timeout(TIMEOUT_NPM), headers: { Accept: "application/vnd.npm.install-v1+json" } },
+          );
+          if (!metaRes.ok) return { downloads: undefined as number | undefined };
+          const meta = (await metaRes.json()) as { keywords?: string[]; description?: string };
+          // Validate it's actually an MCP package (description or keywords mention "mcp")
+          const desc = (meta.description || "").toLowerCase();
+          const kw = (meta.keywords || []).join(" ").toLowerCase();
+          if (!desc.includes("mcp") && !kw.includes("mcp") && !desc.includes("model context protocol")) {
+            return { downloads: undefined };
+          }
+          const dlRes = await fetch(
+            `https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(pkgName)}`,
+            { signal: AbortSignal.timeout(TIMEOUT_NPM) },
+          );
+          if (!dlRes.ok) return { downloads: undefined };
+          const json = (await dlRes.json()) as { downloads?: number };
+          return { downloads: json.downloads };
+        });
+        if (data.downloads != null && data.downloads > 0) {
+          entry.downloads = data.downloads;
+        }
+      } catch {
+        // Non-critical
+      }
+    })
+  );
+}
+
+// ============================================================================
+// GitHub Stars Enrichment (for entries with GitHub URLs)
+// ============================================================================
+
+/**
+ * Enrich marketplace entries with GitHub star counts.
+ * Targets entries that have a github.com URL but no stars yet.
+ * Uses GITHUB_TOKEN/GH_TOKEN if available for higher rate limits.
+ */
+export async function enrichWithGitHubStars(entries: MarketplaceEntry[]): Promise<void> {
+  const needsStars = entries.filter(e => e.url && e.stars == null && e.url.includes("github.com"));
+  if (needsStars.length === 0) return;
+
+  // Extract owner/repo from URL, dedupe repos
+  const repoMap = new Map<string, MarketplaceEntry[]>();
+  for (const entry of needsStars) {
+    const parsed = parseGitHubUrl(entry.url!);
+    if (!parsed) continue;
+    const key = `${parsed.owner}/${parsed.repo}`;
+    if (!repoMap.has(key)) repoMap.set(key, []);
+    repoMap.get(key)!.push(entry);
+  }
+
+  // Fetch stars in parallel (max BATCH_GITHUB repos per batch to be polite)
+  const repos = [...repoMap.entries()].slice(0, BATCH_GITHUB);
+  await Promise.allSettled(
+    repos.map(async ([repo, repoEntries]) => {
+      try {
+        const [owner, repoName] = repo.split("/");
+        const stars = await fetchGitHubRepoStars(owner, repoName);
+        if (stars != null) {
+          for (const entry of repoEntries) entry.stars = stars;
+        }
+      } catch {
+        // Non-critical — skip enrichment for failed repos
+      }
+    })
+  );
+}
+
+// ============================================================================
 // Searcher map
 // ============================================================================
 
@@ -474,8 +572,8 @@ export const KNOWN_SEARCHERS: Record<
   string,
   (q: string, options?: CacheOptions) => Promise<MarketplaceSearchResult>
 > = {
-  [MS.OPENSKILLS]: searchOpenSkills,
   [MS.CLAUDE_PLUGINS]: searchClaudePlugins,
   [MS.MCP_REGISTRY]: searchMcpRegistry,
+  [MS.GLAMA]: searchGlama,
   [MS.ANTHROPIC_SKILLS]: searchAnthropicSkills,
 };

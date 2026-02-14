@@ -7,7 +7,6 @@ import * as fs from "node:fs/promises";
 vi.mock("node:fs/promises");
 vi.mock("./marketplace-registry.js", () => ({
   loadMarketplaceRegistry: vi.fn().mockResolvedValue({
-    openskills: { type: "remote", enabled: true },
     "claude-plugins": { type: "local", enabled: true },
     "mcp-registry": { type: "remote", enabled: true },
     "anthropic-skills": { type: "remote", enabled: true },
@@ -55,10 +54,9 @@ beforeEach(() => {
 
 describe("searchMarketplace", () => {
   it("searches enabled sources and returns results", async () => {
-    // npm search for openskills
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ objects: [{ package: { name: "openskills", description: "desc", version: "1.0.0" } }] }),
+      json: async () => ({ servers: [{ server: { name: "test-mcp", description: "desc", version: "1.0.0" } }] }),
     });
     mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
 
@@ -81,19 +79,6 @@ describe("searchMarketplace", () => {
 });
 
 describe("installFromMarketplace", () => {
-  it("installs from openskills", async () => {
-    mockFs.mkdir.mockResolvedValue(undefined);
-    mockFs.writeFile.mockResolvedValue(undefined);
-
-    const result = await installFromMarketplace({
-      name: "openskill-test",
-      description: "Open skill",
-      source: "openskills",
-      type: "skill",
-    });
-    expect(result.success).toBe(true);
-  });
-
   it("symlinks claude plugins", async () => {
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.symlink.mockResolvedValue(undefined);
@@ -141,14 +126,18 @@ describe("installFromMarketplace", () => {
 
 describe("manifest registration on install", () => {
   it("registers skill in manifest after successful install", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => "# Skill\nBody",
+    });
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.writeFile.mockResolvedValue(undefined);
     const { saveStateManifest } = await import("./manifest-state.js");
 
     await installFromMarketplace({
-      name: "openskill-test",
-      description: "Open skill",
-      source: "openskills",
+      name: "canvas-test",
+      description: "Anthropic skill",
+      source: "anthropic-skills",
       type: "skill",
     });
 
@@ -156,7 +145,7 @@ describe("manifest registration on install", () => {
       expect.any(String),
       expect.objectContaining({
         skills: expect.objectContaining({
-          "openskill-test": expect.objectContaining({ state: "enabled", source: "openskills" }),
+          "canvas-test": expect.objectContaining({ state: "enabled", source: "anthropic-skills" }),
         }),
       })
     );
@@ -259,16 +248,14 @@ describe("listInstalledPlugins", () => {
     expect(result[1].name).toBe("superpowers");
   });
 
-  it("reads v1 format (plain array) as fallback", async () => {
+  it("returns empty for non-v2 format", async () => {
     const v1Data = [
       { name: "plugin1", description: "Plugin 1", version: "1.0.0" },
     ];
     mockFs.readFile.mockResolvedValue(JSON.stringify(v1Data));
 
     const result = await listInstalledPlugins();
-    expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("plugin1");
-    expect(result[0].type).toBe("plugin");
+    expect(result).toHaveLength(0);
   });
 
   it("returns empty array when file does not exist", async () => {
