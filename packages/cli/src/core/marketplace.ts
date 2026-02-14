@@ -16,6 +16,7 @@ import { loadMarketplaceRegistry } from "./marketplace-registry.js";
 import {
   KNOWN_SEARCHERS,
   listInstalledPlugins,
+  enrichPluginsWithLatestVersions,
   fetchAnthropicSkillsList,
   fetchMcpServers,
   mcpServerToEntry,
@@ -248,6 +249,7 @@ async function fetchPopularAnthropicSkills(results: MarketplaceSearchResult[], o
       author: "anthropics",
       source: MS.ANTHROPIC_SKILLS,
       type: "skill" as const,
+      url: `https://github.com/anthropics/skills/tree/main/skills/${name}`,
     }));
     results.push({ entries, total: entries.length, source: MS.ANTHROPIC_SKILLS });
   }
@@ -256,6 +258,7 @@ async function fetchPopularAnthropicSkills(results: MarketplaceSearchResult[], o
 async function fetchPopularClaudePlugins(results: MarketplaceSearchResult[]) {
   const plugins = await listInstalledPlugins();
   if (plugins.length > 0) {
+    await enrichPluginsWithLatestVersions(plugins);
     results.push({ entries: plugins.slice(0, 12), total: plugins.length, source: MS.CLAUDE_PLUGINS });
   }
 }

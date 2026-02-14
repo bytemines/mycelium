@@ -131,7 +131,6 @@ function parseV2Plugins(
       name: pluginName,
       description: marketplace ? `From ${marketplace}` : "",
       version: latest.version,
-      latestVersion: latest.version,
       installedVersion: latest.version,
       installed: true,
       updatedAt: latest.lastUpdated ? new Date(latest.lastUpdated).toISOString().slice(0, 10) : undefined,
@@ -144,11 +143,68 @@ function parseV2Plugins(
 
 export async function searchClaudePlugins(query: string): Promise<MarketplaceSearchResult> {
   const plugins = await listInstalledPlugins();
+  await enrichPluginsWithLatestVersions(plugins);
   const q = query.toLowerCase();
   const entries = plugins.filter(
     (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
   );
   return { entries, total: entries.length, source: MS.CLAUDE_PLUGINS };
+}
+
+/**
+ * Enrich installed plugins with latest versions from their marketplace repos.
+ * Reads known_marketplaces.json → fetches marketplace.json from GitHub → extracts latest versions.
+ */
+export async function enrichPluginsWithLatestVersions(plugins: MarketplaceEntry[]): Promise<void> {
+  try {
+    const knownPath = path.join(os.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const raw = await fs.readFile(knownPath, "utf-8");
+    const known = JSON.parse(raw) as Record<string, {
+      source?: { source?: string; repo?: string };
+    }>;
+
+    // Build a map: marketplace name → GitHub owner/repo
+    const repoMap = new Map<string, { owner: string; repo: string }>();
+    for (const [name, info] of Object.entries(known)) {
+      if (info.source?.source === "github" && info.source.repo) {
+        const parts = info.source.repo.split("/");
+        if (parts.length === 2) repoMap.set(name, { owner: parts[0], repo: parts[1] });
+      }
+    }
+    if (repoMap.size === 0) return;
+
+    // Fetch marketplace.json from each GitHub repo (cached)
+    const versionMap = new Map<string, string>();
+    const fetches = [...repoMap.entries()].map(async ([marketplace, { owner, repo }]) => {
+      try {
+        const data = await cachedFetch(`plugin-versions-${marketplace}`, async () => {
+          const headers: Record<string, string> = {};
+          const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+          if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
+          const res = await fetch(
+            `https://raw.githubusercontent.com/${owner}/${repo}/main/.claude-plugin/marketplace.json`,
+            { headers, signal: AbortSignal.timeout(5000) },
+          );
+          if (!res.ok) return { plugins: [] as Array<{ name: string; version: string }> };
+          return (await res.json()) as { plugins?: Array<{ name: string; version?: string }> };
+        });
+        for (const p of data.plugins ?? []) {
+          if (p.name && p.version) versionMap.set(p.name, p.version);
+        }
+      } catch {
+        // Non-critical
+      }
+    });
+    await Promise.allSettled(fetches);
+
+    // Enrich entries
+    for (const plugin of plugins) {
+      const latest = versionMap.get(plugin.name);
+      if (latest) plugin.latestVersion = latest;
+    }
+  } catch {
+    // known_marketplaces.json missing or unreadable — skip
+  }
 }
 
 // ============================================================================
