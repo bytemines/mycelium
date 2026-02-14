@@ -44,7 +44,7 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
   }));
 
   // Group skills by plugin
-  const pluginMap = new Map<string, { marketplace: string; skills: string[]; enabled: boolean }>();
+  const pluginMap = new Map<string, { marketplace: string; skills: string[]; agents: string[]; commands: string[]; hooks: string[]; libs: string[]; enabled: boolean }>();
   const standaloneSkills: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }> = [];
 
   for (const scan of scans) {
@@ -58,6 +58,10 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
           pluginMap.set(key, {
             marketplace: skill.marketplace,
             skills: [skill.name],
+            agents: [],
+            commands: [],
+            hooks: [],
+            libs: [],
             enabled: toggleState.skills[skill.name] !== false,
           });
         }
@@ -70,16 +74,46 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
         });
       }
     }
+
+    // Group components by plugin
+    for (const comp of scan.components) {
+      if (comp.marketplace && comp.pluginName) {
+        const key = `${comp.marketplace}/${comp.pluginName}`;
+        const existing = pluginMap.get(key);
+        const bucket = comp.type === "agent" ? "agents" : comp.type === "command" ? "commands" : comp.type === "hook" ? "hooks" : "libs";
+        if (existing) {
+          if (!existing[bucket].includes(comp.name)) existing[bucket].push(comp.name);
+        } else {
+          const entry = { marketplace: comp.marketplace, skills: [] as string[], agents: [] as string[], commands: [] as string[], hooks: [] as string[], libs: [] as string[], enabled: true };
+          entry[bucket].push(comp.name);
+          pluginMap.set(key, entry);
+        }
+      }
+    }
   }
+
+  // Build set of skill names that belong to any plugin (for deduplication)
+  const pluginSkillNames = new Set<string>();
+  for (const val of pluginMap.values()) {
+    for (const s of val.skills) pluginSkillNames.add(s);
+  }
+
+  // Filter out standalone skills that are duplicates of plugin skills
+  const dedupedStandaloneSkills = standaloneSkills.filter(s => !pluginSkillNames.has(s.name));
 
   const plugins = Array.from(pluginMap.entries()).map(([key, val]) => {
     const pluginName = key.split("/")[1] || key;
+    const componentCount = val.skills.length + val.agents.length + val.commands.length + val.hooks.length + val.libs.length;
     return {
       name: pluginName,
       marketplace: val.marketplace,
-      componentCount: val.skills.length,
+      componentCount,
       enabled: val.skills.some(s => toggleState.skills[s] !== false),
       skills: val.skills,
+      agents: val.agents,
+      commands: val.commands,
+      hooks: val.hooks,
+      libs: val.libs,
     };
   });
 
@@ -100,7 +134,7 @@ export function buildGraphData(scans: ScanData[], toggleState: MigrateToggleStat
     }
   }
 
-  return { tools, skills: standaloneSkills, mcps, plugins };
+  return { tools, skills: dedupedStandaloneSkills, mcps, plugins };
 }
 
 // ── Dashboard graph builder (extracted from Graph.tsx useMemo) ──

@@ -102,7 +102,7 @@ export function registerStateRoutes(app: Express): void {
     let mcps: Array<{ name: string; status: "synced" | "disabled"; enabled: boolean; connectedTools: ToolId[] }> = [];
     try {
       const mcpContent = await fs.readFile(path.join(MYCELIUM_HOME, "global", "mcps.yaml"), "utf-8");
-      const parsed = parseYaml(mcpContent) as Record<string, unknown> | null;
+      const parsed = parseYaml(mcpContent, { uniqueKeys: false }) as Record<string, unknown> | null;
       if (parsed && typeof parsed === "object") {
         mcps = Object.keys(parsed)
           .filter((name) => !deletedItems.has(name))

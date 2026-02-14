@@ -1,5 +1,44 @@
 # @mycelish/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- # v0.3.0
+
+  ## ⭐ Star Enrichment & Smart URL Resolution
+  - **ungh.cc priority chain** — fetch GitHub stars via free ungh.cc API first, falling back to GitHub API (with token → unauth). No more silent rate-limit failures.
+  - **npm → GitHub URL resolution** — MCP Registry entries with npm packages but no repository URL now get their GitHub repo resolved automatically via npm registry metadata.
+  - **Batch limit bumped** from 10 → 30 repos per enrichment pass, so more items get stars.
+  - **Path traversal protection** — owner/repo validation in `parseGitHubUrl` rejects crafted URLs.
+
+  ## 🔒 Secret Protection
+  - **Auto-extract hardcoded API keys** from `mcps.yaml` — detects secrets in MCP config values, moves them to `.env.local`, and replaces with `${ENV_VAR}` references.
+
+  ## 🛒 Marketplace UX v2
+  - **Deep refactor** of marketplace browse, search, and remove commands with improved output formatting.
+  - **Plugin update detection** from marketplace repos + URL display for popular skills.
+  - **Generic marketplace cache** with 48h TTL for faster repeated searches.
+  - **Generic GitHub marketplace searcher** with auto-sync for community skill repos.
+  - **Trust badges** and security scanner for marketplace entries.
+
+  ## 🔄 Version Tracking & Updates
+  - **Version tracking** with update notifications — `mycelium status` shows when newer versions are available.
+  - **Plugin-origin version tracking** with hash-based migration for existing installs.
+
+  ## 🎨 Dashboard
+  - **Clean URL routing** — switched from hash URLs to clean paths (`/migrate`, `/marketplace`, etc.).
+
+  ## 🐛 Fixes
+  - Plugin skill toggle now shows partial state instead of incorrectly disabling the whole plugin.
+  - Plugin update detection from marketplace repos works correctly.
+  - Purge support added to `remove` command.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @mycelish/core@0.3.0
+
 ## 0.2.8
 
 ### Patch Changes

@@ -123,10 +123,10 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
         description: `${plugin.componentCount} components from ${plugin.marketplace}`,
         enabled: plugin.enabled,
         skills: plugin.skills,
-        agents: [],
-        commands: [],
-        hooks: [],
-        libs: [],
+        agents: plugin.agents ?? [],
+        commands: plugin.commands ?? [],
+        hooks: plugin.hooks ?? [],
+        libs: plugin.libs ?? [],
       });
     }
   }, [scans, toggleState]);
