@@ -18,6 +18,8 @@ import {
   fetchMcpFromRegistry,
 } from "../core/add-helpers.js";
 import { getTracer } from "../core/global-tracer.js";
+import { ALL_TOOL_IDS } from "@mycelish/core";
+import { syncAll } from "./sync.js";
 
 // Re-export types and functions for backward compatibility
 export type {
@@ -49,6 +51,10 @@ const skillCommand = new Command("skill")
     if (result.success) {
       log.info({ scope: "skill", op: "add", msg: result.message ?? "Added", item: source });
       console.log(result.message);
+      try {
+        const enabledTools = Object.fromEntries(ALL_TOOL_IDS.map(id => [id, { enabled: true }]));
+        await syncAll(process.cwd(), enabledTools);
+      } catch { /* sync failure shouldn't break add */ }
     } else {
       log.error({ scope: "skill", op: "add", msg: result.error ?? "Failed", item: source, error: result.error });
       console.error(`Error: ${result.error}`);
@@ -125,6 +131,10 @@ const mcpCommand = new Command("mcp")
       if (result.success) {
         log.info({ scope: "mcp", op: "add", msg: result.message ?? "Added", item: name });
         console.log(result.message);
+        try {
+          const enabledTools = Object.fromEntries(ALL_TOOL_IDS.map(id => [id, { enabled: true }]));
+          await syncAll(process.cwd(), enabledTools);
+        } catch { /* sync failure shouldn't break add */ }
       } else {
         log.error({ scope: "mcp", op: "add", msg: result.error ?? "Failed", item: name, error: result.error });
         console.error(`Error: ${result.error}`);

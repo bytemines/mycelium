@@ -46,7 +46,20 @@ vi.mock("node:child_process", () => ({
     }
     return {};
   }),
+  execFile: vi.fn((cmd, args, callback) => {
+    if (typeof args === "function") {
+      args(null, "", "");
+    } else if (callback) {
+      callback(null, "", "");
+    }
+    return {};
+  }),
   execSync: vi.fn(),
+}));
+
+// Mock sync command to prevent auto-sync during tests
+vi.mock("./sync.js", () => ({
+  syncAll: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock @mycelish/core
