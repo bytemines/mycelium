@@ -53,8 +53,9 @@ type Category = "plugin" | "skill" | "tool" | "mcp" | "other";
 function getCategory(node: Node): Category {
   if (node.type === "tool" || node.type === "addTool") return "tool";
   if (node.type === "plugin") return "plugin";
-  if (node.data?.type === "skill") return "skill";
-  if (node.data?.type === "mcp") return "mcp";
+  const dataType = node.data?.type;
+  if (dataType === "skill" || dataType === "agent" || dataType === "command" || dataType === "rule") return "skill";
+  if (dataType === "mcp") return "mcp";
   return "other";
 }
 
@@ -506,7 +507,7 @@ const nodeTypes = {
 };
 
 interface ToggleInfo {
-  type: "skill" | "mcp";
+  type: "skill" | "mcp" | "agent" | "command" | "rule";
   name: string;
   enabled: boolean;
 }
@@ -592,7 +593,7 @@ export function Graph({
   onAddToolRef.current = onAddTool;
 
   const handleToggle = useCallback(
-    (type: "skill" | "mcp", name: string, enabled: boolean) => {
+    (type: "skill" | "mcp" | "agent" | "command" | "rule", name: string, enabled: boolean) => {
       onToggleRef.current?.({ type, name, enabled });
     },
     []
@@ -779,7 +780,7 @@ export function Graph({
       } else if (node.type === "resource") {
         const rd = node.data as unknown as ResourceNodeData;
         if (rd.type === "mcp") onMcpClick?.(rd.name);
-        else if (rd.type === "skill") onSkillClick?.(rd.name);
+        else if (rd.type === "skill" || rd.type === "agent" || rd.type === "command" || rd.type === "rule") onSkillClick?.(rd.name);
       }
     },
     [onNodeClick, onMcpClick, onSkillClick]
@@ -906,6 +907,9 @@ export function Graph({
             if (nodeData?.status === "error") return STATUS_COLORS.error;
             if (nodeData?.status === "not_installed") return STATUS_COLORS.not_installed;
             if (nodeData?.type === "skill") return EDGE_COLORS.skill;
+            if (nodeData?.type === "agent") return EDGE_COLORS.agent;
+            if (nodeData?.type === "command") return EDGE_COLORS.command;
+            if (nodeData?.type === "rule") return EDGE_COLORS.rule;
             if (nodeData?.type === "mcp") return EDGE_COLORS.mcp;
             return STATUS_COLORS.fallback;
           }}

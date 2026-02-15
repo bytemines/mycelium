@@ -4,12 +4,14 @@ import { cn } from "@/lib/utils";
 import type { Status } from "@/types";
 import { StatusDot } from "./StatusDot";
 
+export type ResourceType = "skill" | "mcp" | "memory" | "agent" | "command" | "rule";
+
 export interface ResourceNodeData {
   name: string;
-  type: "skill" | "mcp" | "memory";
+  type: ResourceType;
   status: Status;
   enabled?: boolean;
-  onToggle?: (type: "skill" | "mcp" | "memory", name: string, enabled: boolean) => void;
+  onToggle?: (type: ResourceType, name: string, enabled: boolean) => void;
 }
 
 function ResourceNodeInner({ data, sourcePosition, targetPosition }: { data: ResourceNodeData; sourcePosition?: Position; targetPosition?: Position }) {
@@ -18,6 +20,9 @@ function ResourceNodeInner({ data, sourcePosition, targetPosition }: { data: Res
     skill: { border: "border-blue-500/60", bg: "bg-[#0c1529]" },
     mcp: { border: "border-purple-500/60", bg: "bg-[#150c29]" },
     memory: { border: "border-amber-500/60", bg: "bg-[#1a1408]" },
+    agent: { border: "border-amber-500/60", bg: "bg-[#1a1408]" },
+    command: { border: "border-cyan-500/60", bg: "bg-[#0c1a29]" },
+    rule: { border: "border-violet-500/60", bg: "bg-[#150c29]" },
   };
 
   const style = typeStyles[data.type] || typeStyles.skill;

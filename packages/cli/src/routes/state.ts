@@ -122,6 +122,34 @@ export function registerStateRoutes(app: Express): void {
       // file doesn't exist yet
     }
 
+    // Load file-based items (agents, commands, rules) from filesystem
+    async function loadFileItems(dirName: string, manifestKey: string, capability: Capability) {
+      try {
+        const dir = path.join(MYCELIUM_HOME, "global", dirName);
+        const entries = await fs.readdir(dir);
+        const section = (stateManifest as Record<string, unknown> | null)?.[manifestKey] as Record<string, ItemConfig> | undefined;
+        return entries
+          .filter((f) => f.endsWith(".md"))
+          .map((f) => f.replace(/\.md$/, ""))
+          .filter((name) => !deletedItems.has(name))
+          .filter((name) => !section?.[name]?.pluginOrigin)
+          .map((name) => ({
+            name,
+            status: disabledItems.has(name) ? "disabled" as const : "synced" as const,
+            enabled: !disabledItems.has(name),
+            connectedTools: computeConnectedTools(section?.[name], installedToolIds, capability),
+          }));
+      } catch {
+        return [];
+      }
+    }
+
+    const [agents, commands, rules] = await Promise.all([
+      loadFileItems("agents", "agents", "agents"),
+      loadFileItems("commands", "commands", "commands"),
+      loadFileItems("rules", "rules", "rules"),
+    ]);
+
     let memory: Array<{ name: string; scope: "global"; status: "synced" }> = [];
     try {
       const memEntries = await fs.readdir(path.join(MYCELIUM_HOME, "memory"));
@@ -141,7 +169,18 @@ export function registerStateRoutes(app: Express): void {
 
     const plugins = await getLivePluginState(process.cwd());
 
-    res.json({ tools, skills, mcps, memory, migrated, plugins, version: CLI_VERSION });
+    // Filter out standalone items that belong to a plugin (avoid duplicates in graph)
+    const pluginOwnedItems = new Set<string>();
+    for (const p of plugins) {
+      for (const s of p.skills ?? []) pluginOwnedItems.add(s);
+      for (const a of p.agents ?? []) pluginOwnedItems.add(a);
+      for (const c of p.commands ?? []) pluginOwnedItems.add(c);
+    }
+    const filteredSkills = skills.filter(s => !pluginOwnedItems.has(s.name));
+    const filteredAgents = agents.filter(a => !pluginOwnedItems.has(a.name));
+    const filteredCommands = commands.filter(c => !pluginOwnedItems.has(c.name));
+
+    res.json({ tools, skills: filteredSkills, mcps, agents: filteredAgents, commands: filteredCommands, rules, memory, migrated, plugins, version: CLI_VERSION });
   }));
 
   // GET /api/state/status

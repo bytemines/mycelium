@@ -48,6 +48,7 @@ export interface ManifestConfig {
   hooks?: Record<string, ItemConfig>;
   agents?: Record<string, ItemConfig>;
   commands?: Record<string, ItemConfig>;
+  rules?: Record<string, ItemConfig>;
   takenOverPlugins?: Record<string, {
     version: string;
     cachePath: string;
@@ -60,7 +61,7 @@ export interface ManifestConfig {
 // Central Registry
 // ============================================================================
 
-export type ItemType = "skill" | "mcp" | "hook" | "agent" | "command";
+export type ItemType = "skill" | "mcp" | "hook" | "agent" | "command" | "rule";
 
 /**
  * Central registry of item sections. To add a new item type:
@@ -74,6 +75,7 @@ export const ITEM_SECTIONS: { key: keyof ManifestConfig; type: ItemType }[] = [
   { key: "hooks", type: "hook" },
   { key: "agents", type: "agent" },
   { key: "commands", type: "command" },
+  { key: "rules", type: "rule" },
 ];
 
 export const ALL_ITEM_TYPES: ItemType[] = ITEM_SECTIONS.map(s => s.type);

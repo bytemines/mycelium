@@ -13,6 +13,9 @@ interface GraphData {
   tools: Array<{ id: string; name: string; status: Status; installed: boolean }>;
   skills: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
   mcps: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
+  agents: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
+  commands: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
+  rules: Array<{ name: string; status: Status; enabled: boolean; connectedTools: string[] }>;
   plugins: Array<{ name: string; marketplace: string; componentCount: number; enabled: boolean; skills: string[]; agents?: string[]; commands?: string[]; hooks?: string[]; libs?: string[]; disabledItems?: string[] }>;
   migrated: boolean;
 }
@@ -60,10 +63,16 @@ function parseState(state: any): GraphData {
       disabledItems: p.disabledItems ?? [],
     };
   });
+  const agents = (state.agents ?? []).map((a: any) => ({ ...a, enabled: a.enabled ?? true }));
+  const commands = (state.commands ?? []).map((c: any) => ({ ...c, enabled: c.enabled ?? true }));
+  const rules = (state.rules ?? []).map((r: any) => ({ ...r, enabled: r.enabled ?? true }));
   return {
     tools: state.tools ?? [],
     skills,
     mcps,
+    agents,
+    commands,
+    rules,
     plugins,
     migrated: state.migrated ?? false,
   };
@@ -319,19 +328,25 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     });
   },
 
-  openSkillPanel: (skillName) => {
-    // Show panel immediately as standalone skill
+  openSkillPanel: (itemName) => {
+    // Show panel immediately as standalone item
     set({
       selectedPlugin: {
-        name: skillName, marketplace: "standalone", version: "",
-        description: `Standalone skill: ${skillName}`, author: undefined, enabled: true,
-        skills: [skillName], agents: [], commands: [], hooks: [], libs: [], installPath: "",
+        name: itemName, marketplace: "standalone", version: "",
+        description: `Standalone item: ${itemName}`, author: undefined, enabled: true,
+        skills: [itemName], agents: [], commands: [], hooks: [], libs: [], installPath: "",
       },
     });
     // Then check if it belongs to a plugin and upgrade the panel
     fetchDashboardState().then((state) => {
-      if (get().selectedPlugin?.name !== skillName) return; // panel closed or switched
-      const ownerPlugin = ((state as any).plugins ?? []).find((p: any) => (p.skills ?? []).includes(skillName));
+      if (get().selectedPlugin?.name !== itemName) return; // panel closed or switched
+      const ownerPlugin = ((state as any).plugins ?? []).find((p: any) =>
+        (p.skills ?? []).includes(itemName) ||
+        (p.agents ?? []).includes(itemName) ||
+        (p.commands ?? []).includes(itemName) ||
+        (p.hooks ?? []).includes(itemName) ||
+        (p.libs ?? []).includes(itemName)
+      );
       if (ownerPlugin) {
         get().openPluginPanel(ownerPlugin.name);
       }

@@ -20,6 +20,9 @@ export const EDGE_COLORS = {
   skill: "#3b82f6",
   mcp: "#a855f7",
   plugin: "#14b8a6",
+  agent: "#f59e0b",
+  command: "#06b6d4",
+  rule: "#8b5cf6",
   custom: "#6b7280",
   disabled: "#ef4444",
 } as const;

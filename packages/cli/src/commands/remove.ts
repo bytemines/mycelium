@@ -213,8 +213,28 @@ export async function removePlugin(
     }
   }
 
+  // If not found in takenOverPlugins, check installed_plugins.json for native plugins
+  if (!matchedPluginId) {
+    try {
+      const ipPath = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+      const raw = await fs.readFile(ipPath, "utf-8");
+      const data = JSON.parse(raw) as { version?: number; plugins?: Record<string, unknown> };
+      if (data.version === 2 && data.plugins) {
+        for (const pluginId of Object.keys(data.plugins)) {
+          if (pluginId.startsWith(pluginName + "@") || pluginId === pluginName) {
+            matchedPluginId = pluginId;
+            break;
+          }
+        }
+      }
+    } catch { /* best effort */ }
+  }
+
   // 1. Mark all items with this pluginOrigin as deleted
+  const isTakenOver = !!(manifest.takenOverPlugins && matchedPluginId && manifest.takenOverPlugins[matchedPluginId]);
+
   if (matchedPluginId) {
+    // Mark manifest items as deleted (for taken-over plugins)
     for (const { key: section } of ITEM_SECTIONS) {
       const sectionData = manifest[section] as Record<string, ItemConfig> | undefined;
       if (!sectionData || typeof sectionData !== "object" || Array.isArray(sectionData)) continue;
@@ -229,16 +249,24 @@ export async function removePlugin(
       }
     }
 
-    // 2. Release plugin takeover
-    delete manifest.takenOverPlugins![matchedPluginId];
-    if (manifest.takenOverPlugins && Object.keys(manifest.takenOverPlugins).length === 0) {
-      delete manifest.takenOverPlugins;
+    // 2. Release plugin takeover (if taken over)
+    if (isTakenOver) {
+      delete manifest.takenOverPlugins![matchedPluginId];
+      if (manifest.takenOverPlugins && Object.keys(manifest.takenOverPlugins).length === 0) {
+        delete manifest.takenOverPlugins;
+      }
+      // Re-enable plugin natively when releasing takeover
+      try {
+        await setPluginEnabled(matchedPluginId, true);
+      } catch { /* best effort */ }
     }
 
-    // 3. Re-enable plugin in Claude Code settings
-    try {
-      await setPluginEnabled(matchedPluginId, true);
-    } catch { /* best effort */ }
+    // 3. Disable plugin in Claude Code settings (for native plugins being removed)
+    if (!isTakenOver) {
+      try {
+        await setPluginEnabled(matchedPluginId, false);
+      } catch { /* best effort */ }
+    }
 
     // 4. Remove from installed_plugins.json
     try {
@@ -264,7 +292,12 @@ export async function removePlugin(
       }
     } catch { /* best effort */ }
 
-    log.info({ scope: "plugin", op: "release", msg: `Released plugin takeover: ${matchedPluginId}`, item: matchedPluginId });
+    // For native plugins, report removal even without manifest items
+    if (!isTakenOver && removed.length === 0) {
+      removed.push(`plugin: ${matchedPluginId} (disabled + uninstalled)`);
+    }
+
+    log.info({ scope: "plugin", op: "remove", msg: `Removed plugin: ${matchedPluginId}${isTakenOver ? " (released takeover)" : " (native)"}`, item: matchedPluginId });
   }
 
   // 2b. Also mark items by source name (for non-plugin items)

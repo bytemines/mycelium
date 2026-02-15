@@ -176,10 +176,20 @@ interface PluginDataDash {
   disabledItems?: string[];
 }
 
+interface ResourceItemData {
+  name: string;
+  status: Status;
+  enabled?: boolean;
+  connectedTools?: string[];
+}
+
 export interface DashboardGraphData {
   tools?: ToolDataDash[];
   skills: SkillData[];
   mcps: McpData[];
+  agents?: ResourceItemData[];
+  commands?: ResourceItemData[];
+  rules?: ResourceItemData[];
   plugins?: PluginDataDash[];
 }
 
@@ -191,8 +201,8 @@ export const ALL_TOOLS: ToolDataDash[] = Object.values(TOOL_REGISTRY).map(desc =
 }));
 
 export interface DashboardGraphHandlers {
-  handleToggle: (type: "skill" | "mcp", name: string, enabled: boolean) => void;
-  onToggle?: (toggle: { type: "skill" | "mcp"; name: string; enabled: boolean }) => void;
+  handleToggle: (type: "skill" | "mcp" | "agent" | "command" | "rule", name: string, enabled: boolean) => void;
+  onToggle?: (toggle: { type: "skill" | "mcp" | "agent" | "command" | "rule"; name: string; enabled: boolean }) => void;
   onPluginToggle?: (name: string, enabled: boolean) => void;
   onPluginClick?: (pluginName: string) => void;
   onAddTool?: () => void;
@@ -309,6 +319,39 @@ export function buildDashboardGraph(
       }
     });
   });
+
+  // Agent, command, rule nodes — top layer (FIRST), edges flow down into tools
+  let resourceOffset = data?.skills.length ?? 0;
+  const resourceTypes: { items: ResourceItemData[] | undefined; type: string; color: string }[] = [
+    { items: data?.agents, type: "agent", color: EDGE_COLORS.agent },
+    { items: data?.commands, type: "command", color: EDGE_COLORS.command },
+    { items: data?.rules, type: "rule", color: EDGE_COLORS.rule },
+  ];
+  for (const { items, type, color } of resourceTypes) {
+    items?.forEach((item, index) => {
+      const nodeId = `${type}-${item.name}`;
+      nodes.push({
+        id: nodeId,
+        type: "resource",
+        position: { x: (resourceOffset + index) * INITIAL_LAYOUT.horizontalSpacing, y: INITIAL_LAYOUT.layers.top },
+        data: { name: item.name, type, status: item.status, enabled: item.enabled, onToggle: handlers.handleToggle, __elkLayer: "FIRST" },
+      });
+      const isEnabled = item.enabled !== false;
+      const targetTools = item.connectedTools || visibleTools.filter(t => t.installed).map((t) => t.id);
+      targetTools.forEach((toolId) => {
+        if (visibleTools.some(t => t.id === toolId)) {
+          edges.push({
+            id: `${nodeId}-to-${toolId}`,
+            source: nodeId,
+            target: `tool-${toolId}`,
+            animated: isEnabled && item.status === "synced",
+            style: edgeStyle(color, isEnabled),
+          });
+        }
+      });
+    });
+    resourceOffset += items?.length ?? 0;
+  }
 
   // MCP nodes — bottom layer (LAST), edges from tool down to MCP
   data?.mcps.forEach((mcp, index) => {

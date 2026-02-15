@@ -134,14 +134,15 @@ describe("manifest-state", () => {
   });
 
   describe("ITEM_SECTIONS extensibility", () => {
-    it("ALL_ITEM_TYPES includes all 5 types", async () => {
+    it("ALL_ITEM_TYPES includes all 6 types", async () => {
       const { ALL_ITEM_TYPES } = await import("./manifest-state.js");
       expect(ALL_ITEM_TYPES).toContain("skill");
       expect(ALL_ITEM_TYPES).toContain("mcp");
       expect(ALL_ITEM_TYPES).toContain("hook");
       expect(ALL_ITEM_TYPES).toContain("agent");
       expect(ALL_ITEM_TYPES).toContain("command");
-      expect(ALL_ITEM_TYPES).toHaveLength(5);
+      expect(ALL_ITEM_TYPES).toContain("rule");
+      expect(ALL_ITEM_TYPES).toHaveLength(6);
     });
   });
 });

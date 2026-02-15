@@ -14,9 +14,13 @@ vi.mock("./marketplace-registry.js", () => ({
 }));
 vi.mock("./manifest-state.js", () => {
   let stored: Record<string, any> | null = null;
+  const TYPE_TO_SECTION: Record<string, string> = {
+    skill: "skills", mcp: "mcps", agent: "agents", command: "commands", hook: "hooks", rule: "rules",
+  };
   return {
     loadStateManifest: vi.fn(async () => stored),
     saveStateManifest: vi.fn(async (_dir: string, manifest: Record<string, any>) => { stored = manifest; }),
+    sectionForType: vi.fn((type: string) => TYPE_TO_SECTION[type] ?? null),
     __resetStore: () => { stored = null; },
   };
 });

@@ -36,7 +36,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { MYCELIUM_HOME } from "./fs-helpers.js";
-import { loadStateManifest, saveStateManifest } from "./manifest-state.js";
+import { loadStateManifest, saveStateManifest, sectionForType } from "./manifest-state.js";
 import type { ItemConfig } from "./manifest-state.js";
 import { computeContentHash } from "./content-hash.js";
 import {
@@ -152,8 +152,9 @@ export async function installFromMarketplace(
       }
     }
     // MCP registry registers in manifest inside installMcpRegistry() directly
-    if (result.success && entry.source !== MS.MCP_REGISTRY) {
-      await registerSkillInManifest(entry.name, entry.source, result.version, result.contentHash);
+    // Skip "plugin" type — installPlugin() already registers individual components
+    if (result.success && entry.source !== MS.MCP_REGISTRY && entry.type !== "plugin") {
+      await registerItemInManifest(entry.name, entry.source, result.version, result.contentHash, entry.type);
     }
     // Auto-sync to push installed item into tool directories
     if (result.success) {
@@ -186,7 +187,7 @@ async function installMcpRegistry(entry: MarketplaceEntry) {
   const yamlLine = `\n${entry.name}:\n  command: ${config.command}\n  args: [${(config.args || []).map((a) => `"${a}"`).join(", ")}]\n  enabled: true\n`;
   await fs.appendFile(mcpsPath, yamlLine, "utf-8");
   // MCP registry entries store version in manifest directly
-  await registerSkillInManifest(entry.name, entry.source, entry.version);
+  await registerItemInManifest(entry.name, entry.source, entry.version, undefined, "mcp");
   return { success: true, path: mcpsPath, version: entry.version };
 }
 
@@ -337,7 +338,7 @@ async function installPlugin(
     const item = items[idx];
     const r = results[idx];
     const contentHash = r.status === "fulfilled" ? r.value.contentHash : undefined;
-    await registerSkillInManifest(item.name, entry.source, undefined, contentHash);
+    await registerItemInManifest(item.name, entry.source, undefined, contentHash, item.type);
   }
 
   if (failed > 0) {
@@ -363,14 +364,16 @@ async function autoSync(): Promise<void> {
 // Manifest Registration
 // ============================================================================
 
-async function registerSkillInManifest(name: string, source: string, version?: string, contentHash?: string): Promise<void> {
+async function registerItemInManifest(name: string, source: string, version?: string, contentHash?: string, itemType?: string): Promise<void> {
   const manifestDir = MYCELIUM_HOME;
   const manifest = await loadStateManifest(manifestDir) ?? { version: "1.0.0" };
-  if (!manifest.skills) manifest.skills = {};
+  const sectionKey = (itemType && sectionForType(itemType)) || "skills";
+  if (!manifest[sectionKey]) (manifest as unknown as Record<string, unknown>)[sectionKey] = {};
+  const section = manifest[sectionKey] as Record<string, ItemConfig>;
   const entry: ItemConfig = { state: "enabled", source };
   if (version) entry.version = version;
   if (contentHash) entry.contentHash = contentHash;
-  manifest.skills[name] = entry;
+  section[name] = entry;
   await saveStateManifest(manifestDir, manifest);
 }
 
