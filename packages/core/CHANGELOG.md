@@ -1,5 +1,24 @@
 # @mycelish/core
 
+## 0.3.1
+
+### Patch Changes
+
+- ## 🔌 Native Plugin Removal & Type-Aware Registration
+
+  **Plugin removal now works for all plugin types** — both native Claude Code plugins and Mycelium-managed takeover plugins. Previously, removing a native plugin like GLM silently failed because it only checked `takenOverPlugins`.
+
+  **Marketplace installs register items in the correct manifest section.** Skills go to `manifest.skills`, agents to `manifest.agents`, MCPs to `manifest.mcps` — no more phantom entries from bundle-type installs.
+
+  ## 📊 Agents, Commands & Rules in Dashboard Graph
+
+  The dashboard graph now renders **agents** (amber), **commands** (cyan), and **rules** (violet) as first-class nodes with distinct edge colors, toggle switches, and sidebar click handling. Marketplace-sourced item groups (e.g., SherpAI) appear as plugin nodes even when they're not Claude Code plugins.
+
+  ## 🧹 DRY Refactors
+  - Extracted `loadFileItems()` helper in `state.ts` (3 copy-paste blocks → 1 function + `Promise.all`)
+  - Consolidated agent/command/rule graph node generation into a single loop
+  - Added `rules` to `ManifestConfig`, `ItemType`, and `ITEM_SECTIONS`
+
 ## 0.3.0
 
 ### Minor Changes
