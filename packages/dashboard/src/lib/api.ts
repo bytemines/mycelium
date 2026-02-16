@@ -40,11 +40,11 @@ export async function searchMarketplace(query: string, source?: string): Promise
   return res.json();
 }
 
-export async function installMarketplaceEntry(name: string, source: string, type?: string): Promise<{ success: boolean; error?: string }> {
+export async function installMarketplaceEntry(name: string, source: string, type?: string, url?: string): Promise<{ success: boolean; error?: string }> {
   const res = await fetch(`/api/marketplace/install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, source, type }),
+    body: JSON.stringify({ name, source, type, url }),
   });
   return res.json();
 }

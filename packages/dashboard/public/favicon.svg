@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Shadow base -->
+  <ellipse cx="64" cy="120" rx="30" ry="6" fill="#2a1a0a" opacity="0.3"/>
+  <!-- Stem -->
+  <path d="M50 72 Q48 95 52 112 Q56 118 64 118 Q72 118 76 112 Q80 95 78 72 Z" fill="#F2DCC0"/>
+  <path d="M50 72 Q48 95 52 112 Q56 118 64 118 Q64 118 64 112 Q60 95 62 72 Z" fill="#E8CEAA"/>
+  <!-- Stem ring detail -->
+  <ellipse cx="64" cy="76" rx="15" ry="3" fill="#E0C49A" opacity="0.5"/>
+  <!-- Cap main shape (dome) -->
+  <path d="M10 68 Q10 20 64 10 Q118 20 118 68 Q118 76 64 76 Q10 76 10 68 Z" fill="#E23030"/>
+  <!-- Cap shading (darker bottom edge) -->
+  <path d="M14 66 Q14 72 64 74 Q114 72 114 66 Q114 70 64 76 Q14 70 14 66 Z" fill="#C42828"/>
+  <!-- Cap highlight (top shine) -->
+  <path d="M36 24 Q50 14 72 16 Q60 12 36 24 Z" fill="#F25555" opacity="0.6"/>
+  <!-- Spots -->
+  <ellipse cx="42" cy="36" rx="10" ry="9" fill="#FFFFFF" transform="rotate(-10 42 36)"/>
+  <ellipse cx="76" cy="28" rx="12" ry="10" fill="#FFFFFF" transform="rotate(8 76 28)"/>
+  <ellipse cx="56" cy="58" rx="8" ry="7" fill="#FFFFFF" transform="rotate(-5 56 58)"/>
+  <ellipse cx="86" cy="52" rx="7" ry="6" fill="#FFFFFF" transform="rotate(12 86 52)"/>
+  <ellipse cx="32" cy="56" rx="6" ry="5.5" fill="#FFFFFF" transform="rotate(-8 32 56)"/>
+  <ellipse cx="98" cy="42" rx="5" ry="4.5" fill="#FFFFFF" transform="rotate(5 98 42)"/>
+  <ellipse cx="64" cy="22" rx="5" ry="4" fill="#FFFFFF"/>
+  <!-- Spot shadows for depth -->
+  <ellipse cx="42" cy="38" rx="10" ry="4" fill="#D42828" opacity="0.15" transform="rotate(-10 42 38)"/>
+  <ellipse cx="76" cy="30" rx="12" ry="4" fill="#D42828" opacity="0.15" transform="rotate(8 76 30)"/>
+  <!-- Cap rim (underside visible) -->
+  <path d="M18 68 Q18 74 64 76 Q110 74 110 68 Q110 72 64 74 Q18 72 18 68 Z" fill="#D4A76A" opacity="0.6"/>
+</svg>

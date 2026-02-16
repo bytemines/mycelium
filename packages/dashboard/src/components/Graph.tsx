@@ -880,7 +880,7 @@ export function Graph({
             </>
           )}
           <span className="mx-1 text-muted-foreground/40">|</span>
-          {(["smoothstep", "default", "straight", "step"] as EdgeType[]).map((t) => (
+          {(["default", "smoothstep", "straight", "step"] as EdgeType[]).map((t) => (
             <button
               key={t}
               onClick={() => setEdgeType(t)}

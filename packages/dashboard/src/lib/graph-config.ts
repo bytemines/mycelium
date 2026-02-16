@@ -69,7 +69,7 @@ export const BACKGROUND_GRID = {
 
 // ── Defaults ──
 
-export const DEFAULT_EDGE_TYPE = "smoothstep" as const;
+export const DEFAULT_EDGE_TYPE = "default" as const;
 export const DEFAULT_LAYOUT_DIRECTION = "DOWN" as const;
 
 // ── Persistence ──

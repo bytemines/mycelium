@@ -9,7 +9,8 @@ vi.mock("./marketplace-cache.js", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-import { parseGitHubUrl, searchGitHubRepo, fetchGitHubRepoItems, enrichWithGitHubStars } from "./marketplace-sources.js";
+import { parseGitHubUrl, searchGitHubRepo, fetchGitHubRepoItems, installGitHubRepoItem, enrichWithGitHubStars } from "./marketplace-sources.js";
+import * as fs from "node:fs/promises";
 import { cachedFetch } from "./marketplace-cache.js";
 
 beforeEach(() => {
@@ -67,6 +68,39 @@ describe("fetchGitHubRepoItems", () => {
     );
   });
 
+  it("detects root-level SKILL.md when no subdirectory items found", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tree: [
+          { path: "SKILL.md", type: "blob" },
+          { path: "README.md", type: "blob" },
+          { path: "WARP.md", type: "blob" },
+        ],
+      }),
+    });
+
+    const items = await fetchGitHubRepoItems("blader", "humanizer");
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual({ name: "humanizer", type: "skill", path: "SKILL.md" });
+  });
+
+  it("prefers subdirectory items over root-level SKILL.md", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tree: [
+          { path: "SKILL.md", type: "blob" },
+          { path: "skills/debugging/SKILL.md", type: "blob" },
+        ],
+      }),
+    });
+
+    const items = await fetchGitHubRepoItems("owner", "repo");
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("debugging");
+  });
+
   it("returns empty on API failure", async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
     await expect(fetchGitHubRepoItems("owner", "repo")).rejects.toThrow("GitHub API 500");
@@ -104,6 +138,75 @@ describe("searchGitHubRepo", () => {
 
     const result = await searchGitHubRepo("owner", "repo", "", "src");
     expect(result.entries).toHaveLength(2);
+  });
+});
+
+describe("installGitHubRepoItem", () => {
+  beforeEach(() => {
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+  });
+
+  it("installs root-level SKILL.md using URL-derived path", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, text: async () => "# Humanizer skill" });
+
+    const result = await installGitHubRepoItem("blader", "humanizer", {
+      name: "humanizer",
+      description: "Humanizer skill",
+      source: "test-marketplace",
+      type: "skill",
+      url: "https://github.com/blader/humanizer/tree/main/SKILL.md",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/blader/humanizer/main/SKILL.md"
+    );
+  });
+
+  it("falls back to skills/{name}/SKILL.md when no URL", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, text: async () => "# Debug skill" });
+
+    const result = await installGitHubRepoItem("owner", "repo", {
+      name: "debugging",
+      description: "",
+      source: "test",
+      type: "skill",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/owner/repo/main/skills/debugging/SKILL.md"
+    );
+  });
+
+  it("installs agents from agents/{name}.md", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, text: async () => "# Agent" });
+
+    const result = await installGitHubRepoItem("owner", "repo", {
+      name: "reviewer",
+      description: "",
+      source: "test",
+      type: "agent",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/owner/repo/main/agents/reviewer.md"
+    );
+  });
+
+  it("throws on download failure", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, statusText: "Not Found" });
+
+    await expect(
+      installGitHubRepoItem("owner", "repo", {
+        name: "missing",
+        description: "",
+        source: "test",
+        type: "skill",
+      })
+    ).rejects.toThrow("Download failed: Not Found");
   });
 });
 

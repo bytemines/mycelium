@@ -451,7 +451,27 @@ export async function fetchGitHubRepoItems(owner: string, repo: string, options?
       }
     }
   }
+
+  // Fallback: detect root-level SKILL.md (repo IS the skill, e.g. blader/humanizer)
+  if (items.length === 0) {
+    const hasRootSkill = tree.some(t => t.type === "blob" && t.path === "SKILL.md");
+    if (hasRootSkill) {
+      items.push({ name: repo, type: "skill", path: "SKILL.md" });
+    }
+  }
+
   return items;
+}
+
+/**
+ * Extract the remote file path from a marketplace entry URL.
+ * URLs from searchGitHubRepo look like: https://github.com/owner/repo/tree/main/path/to/file
+ */
+function extractRemotePath(url: string | undefined, owner: string, repo: string): string | undefined {
+  if (!url) return undefined;
+  const prefix = `https://github.com/${owner}/${repo}/tree/main/`;
+  if (url.startsWith(prefix)) return url.slice(prefix.length);
+  return undefined;
 }
 
 /**
@@ -469,7 +489,8 @@ export async function installGitHubRepoItem(
   const globalDir = path.join(os.homedir(), ".mycelium", "global");
 
   if (itemType === "skill") {
-    remotePath = `skills/${encodeURIComponent(entry.name)}/SKILL.md`;
+    // Derive remote path from entry URL if available (handles root-level SKILL.md)
+    remotePath = extractRemotePath(entry.url, owner, repo) ?? `skills/${encodeURIComponent(entry.name)}/SKILL.md`;
     localDir = path.join(globalDir, "skills", entry.name);
     fileName = "SKILL.md";
   } else if (itemType === "agent") {

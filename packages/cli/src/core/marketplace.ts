@@ -36,7 +36,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { MYCELIUM_HOME } from "./fs-helpers.js";
-import { loadStateManifest, saveStateManifest, sectionForType } from "./manifest-state.js";
+import { loadStateManifest, saveStateManifest, sectionForType, ITEM_SECTIONS } from "./manifest-state.js";
 import type { ItemConfig } from "./manifest-state.js";
 import { computeContentHash } from "./content-hash.js";
 import {
@@ -326,6 +326,7 @@ async function installPlugin(
         description: item.description || "",
         source: entry.source,
         type: item.type,
+        url: `https://github.com/${owner}/${repo}/tree/main/${item.path}`,
       })
     )
   );
@@ -383,19 +384,24 @@ async function registerItemInManifest(name: string, source: string, version?: st
 
 async function getInstalledItems(): Promise<Map<string, { source: string; version?: string; contentHash?: string }>> {
   const manifest = await loadStateManifest(MYCELIUM_HOME);
-  if (!manifest?.skills) return new Map();
+  if (!manifest) return new Map();
   const map = new Map<string, { source: string; version?: string; contentHash?: string }>();
   let needsSave = false;
 
-  for (const [name, cfg] of Object.entries(manifest.skills)) {
-    if (cfg.state === "enabled") {
-      // Backfill: compute contentHash for items that have none, or migrate short hashes
-      const needsBackfill = !cfg.version && (!cfg.contentHash || cfg.contentHash.length < 12);
-      if (needsBackfill) {
-        const hash = await backfillContentHash(name, cfg);
-        if (hash) {
-          cfg.contentHash = hash;
-          needsSave = true;
+  for (const { key } of ITEM_SECTIONS) {
+    const section = manifest[key];
+    if (!section || typeof section !== "object" || Array.isArray(section)) continue;
+    for (const [name, cfg] of Object.entries(section as Record<string, ItemConfig>)) {
+      if (cfg.state !== "enabled") continue;
+      // Backfill: compute contentHash for skills that have none, or migrate short hashes
+      if (key === "skills") {
+        const needsBackfill = !cfg.version && (!cfg.contentHash || cfg.contentHash.length < 12);
+        if (needsBackfill) {
+          const hash = await backfillContentHash(name, cfg);
+          if (hash) {
+            cfg.contentHash = hash;
+            needsSave = true;
+          }
         }
       }
       map.set(name, { source: cfg.source ?? "", version: cfg.version, contentHash: cfg.contentHash });
@@ -464,10 +470,20 @@ async function enrichWithInstalledStatus(results: MarketplaceSearchResult[]): Pr
   return results.map(r => ({
     ...r,
     entries: r.entries.map(e => {
+      // Direct match: item name exists in manifest
       const info = installed.get(e.name);
-      if (!info) return e;
-      const installedVersion = info.version ?? (info.contentHash ? `#${info.contentHash}` : undefined);
-      return { ...e, installed: true, installedVersion };
+      if (info) {
+        const installedVersion = info.version ?? (info.contentHash ? `#${info.contentHash}` : undefined);
+        return { ...e, installed: true, installedVersion };
+      }
+      // Plugin bundle: mark as installed if all non-plugin siblings from the same source are installed
+      if (e.type === "plugin") {
+        const siblings = r.entries.filter(s => s.type !== "plugin" && s.source === e.source);
+        if (siblings.length > 0 && siblings.every(s => installed.has(s.name))) {
+          return { ...e, installed: true };
+        }
+      }
+      return e;
     }),
   }));
 }

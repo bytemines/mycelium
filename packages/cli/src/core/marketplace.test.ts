@@ -17,10 +17,12 @@ vi.mock("./manifest-state.js", () => {
   const TYPE_TO_SECTION: Record<string, string> = {
     skill: "skills", mcp: "mcps", agent: "agents", command: "commands", hook: "hooks", rule: "rules",
   };
+  const ITEM_SECTIONS = Object.entries(TYPE_TO_SECTION).map(([type, key]) => ({ key, type }));
   return {
     loadStateManifest: vi.fn(async () => stored),
     saveStateManifest: vi.fn(async (_dir: string, manifest: Record<string, any>) => { stored = manifest; }),
     sectionForType: vi.fn((type: string) => TYPE_TO_SECTION[type] ?? null),
+    ITEM_SECTIONS,
     __resetStore: () => { stored = null; },
   };
 });

@@ -57,10 +57,9 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     fetchMyceliumVersion().then(setMyceliumUpdate).catch((err) => { console.warn("Failed to check mycelium version:", err); });
   }, []);
 
-  const handleSearch = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const doSearch = useCallback(async (q: string, src: string) => {
     setError(null);
-    if (!query.trim() && source === "all") {
+    if (!q.trim() && src === "all") {
       setLoading(true);
       setSearched(false);
       fetchPopularSkills().then(entries => {
@@ -71,25 +70,39 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     setLoading(true);
     setSearched(true);
     try {
-      const searchResults = await apiSearch(query, source !== "all" ? source : undefined);
+      const searchResults = await apiSearch(q, src !== "all" ? src : undefined);
       setResults(searchResults as MarketplaceItem[]);
     } catch {
       setResults([]);
     } finally {
       setLoading(false);
     }
-  }, [query, source]);
+  }, []);
 
+  const handleSearch = useCallback((e?: React.FormEvent) => {
+    e?.preventDefault();
+    doSearch(query, source);
+  }, [query, source, doSearch]);
+
+  // Initial load on mount
   useEffect(() => {
-    handleSearch();
-  }, [handleSearch]);
+    doSearch("", "all");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced search on query/source change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      doSearch(query, source);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, source, doSearch]);
 
   async function handleInstall(item: MarketplaceItem) {
     const key = `${item.source}-${item.name}`;
     setInstalling(key);
     setError(null);
     try {
-      const result = await installMarketplaceEntry(item.name, item.source, item.type);
+      const result = await installMarketplaceEntry(item.name, item.source, item.type, item.url);
       if (result.success) {
         setResults(prev => prev.map(r => (r.name === item.name && r.source === item.source ? { ...r, installed: true } : r)));
       } else {
@@ -200,7 +213,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
   }, [results, source, sortBy, typeFilter, showUpdatesOnly, availableUpdates]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6 min-h-full bg-background">
       {/* Remove Item Confirmation */}
       <Dialog.Root open={!!confirmRemoveItem} onOpenChange={(open) => { if (!open) setConfirmRemoveItem(null); }}>
         <Dialog.Portal>
@@ -256,7 +269,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
       />
 
       {/* Single-row search bar: [input] [source] [type] [sort] [+ Add] [refresh] */}
-      <form onSubmit={handleSearch} className="flex gap-2">
+      <form onSubmit={handleSearch} className="flex gap-2 bg-background">
         <input type="text" value={query} onChange={e => setQuery(e.target.value)}
           placeholder="Search skills, MCPs, plugins..."
           className="flex-1 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
@@ -320,7 +333,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
           <option value="az">A-Z</option>
         </select>
         <button type="button" onClick={() => setShowAddDialog(true)}
-          className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">+ Add</button>
+          className="rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-muted">+ Add</button>
         <button type="button" onClick={async () => {
             setRefreshing(true); setError(null);
             try {
@@ -331,7 +344,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
               setError(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`);
             } finally { setRefreshing(false); }
           }} disabled={refreshing}
-          className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+          className="rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
           title="Refresh marketplace cache from remote sources">
           {refreshing ? "..." : "\u21bb"}
         </button>

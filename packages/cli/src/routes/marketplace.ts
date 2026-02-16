@@ -26,12 +26,12 @@ export function registerMarketplaceRoutes(app: Express): void {
   }));
 
   router.post("/install", asyncHandler(async (req, res) => {
-    const { name, source, description, type } = req.body || {};
+    const { name, source, description, type, url } = req.body || {};
     if (!name || !source) {
       res.status(400).json({ success: false, error: "Missing required fields: name, source" });
       return;
     }
-    const entry: MarketplaceEntry = { name, source, description: description || "", type: type || "skill" };
+    const entry: MarketplaceEntry = { name, source, description: description || "", type: type || "skill", url };
     const result = await installFromMarketplace(entry);
     res.json(result);
   }));

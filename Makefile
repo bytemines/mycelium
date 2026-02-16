@@ -3,7 +3,7 @@
 # ── Development (full HMR: tsx watch for API, Vite HMR for dashboard) ──
 
 dev: stop ## Start dev servers with auto-reload
-	@pnpm build --filter=@mycelish/core 2>/dev/null
+	@pnpm build --filter=@mycelish/core --filter=@mycelish/dashboard 2>/dev/null
 	@npx tsx watch packages/cli/src/commands/serve-entry.ts > /tmp/mycelium-api.log 2>&1 &
 	@cd packages/dashboard && pnpm dev > /tmp/mycelium-ui.log 2>&1 &
 	@cd packages/core && pnpm tsc --watch --preserveWatchOutput > /tmp/mycelium-tsc.log 2>&1 &

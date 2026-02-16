@@ -121,7 +121,7 @@ useEffect(() => {
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Navbar with tabs */}
-      <header className="relative flex items-center border-b px-4 py-2">
+      <header className="relative flex items-center border-b bg-background px-4 py-2">
         {/* Left: branding */}
         <div className="flex items-center gap-2">
           <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight">
@@ -187,7 +187,7 @@ useEffect(() => {
       )}
 
       {/* Full-height content */}
-      <div className="flex-1 overflow-hidden p-2">
+      <div className="flex-1 overflow-hidden bg-background">
         {activeTab === "graph" && (
           <section className="h-full">
             <GraphContainer />
@@ -195,16 +195,14 @@ useEffect(() => {
         )}
 
         {activeTab === "migrate" && (
-          <div className="h-full overflow-y-auto p-4">
+          <div className="h-full overflow-y-auto bg-background p-4">
             <MigrateWizard />
           </div>
         )}
 
-        {activeTab === "marketplace" && (
-          <div className="h-full overflow-y-auto p-4">
-            <MarketplaceBrowser />
-          </div>
-        )}
+        <div className={cn("h-full overflow-y-auto bg-background p-4", activeTab !== "marketplace" && "hidden")}>
+          <MarketplaceBrowser />
+        </div>
       </div>
 
       <PluginDetailPanel
