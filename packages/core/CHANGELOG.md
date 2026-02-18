@@ -1,5 +1,22 @@
 # @mycelish/core
 
+## 0.3.2
+
+### Patch Changes
+
+- ## v0.3.2
+
+  ### New Features
+  - **Root-level SKILL.md support** — single-skill repos (e.g., `blader/humanizer`) are now detected and installable directly
+  - **Installed status tracking** extended to all item types (agents, commands, rules, hooks) + plugin bundle detection
+  - **Dashboard improvements** — Bezier default edges, persistent MarketplaceBrowser state across tab switches, favicon, Brave browser compositing fix
+  - **Auto-sync** after `mycelium add skill` and `mycelium add mcp`
+
+  ### Fixes
+  - **Complete memory system removal** — cleaned 20 files with leftover memory references in API routes, dashboard components, CLI init scaffolding, descriptions, MCP tool metadata, and test fixtures
+  - Debounced search and initial load on mount in MarketplaceBrowser
+  - URL pass-through in install flow for proper path resolution
+
 ## 0.3.1
 
 ### Patch Changes
