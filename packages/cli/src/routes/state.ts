@@ -150,20 +150,6 @@ export function registerStateRoutes(app: Express): void {
       loadFileItems("rules", "rules", "rules"),
     ]);
 
-    let memory: Array<{ name: string; scope: "global"; status: "synced" }> = [];
-    try {
-      const memEntries = await fs.readdir(path.join(MYCELIUM_HOME, "memory"));
-      memory = memEntries
-        .filter((f) => f.endsWith(".md"))
-        .map((f) => ({
-          name: f.replace(/\.md$/, "").replace(/^(?:claude-code|codex|gemini|opencode|openclaw)-/, ""),
-          scope: "global" as const,
-          status: "synced" as const,
-        }));
-    } catch {
-      // directory doesn't exist yet
-    }
-
     const manifest = await loadManifest();
     const migrated = manifest.entries.length > 0;
 
@@ -180,7 +166,7 @@ export function registerStateRoutes(app: Express): void {
     const filteredAgents = agents.filter(a => !pluginOwnedItems.has(a.name));
     const filteredCommands = commands.filter(c => !pluginOwnedItems.has(c.name));
 
-    res.json({ tools, skills: filteredSkills, mcps, agents: filteredAgents, commands: filteredCommands, rules, memory, migrated, plugins, version: CLI_VERSION });
+    res.json({ tools, skills: filteredSkills, mcps, agents: filteredAgents, commands: filteredCommands, rules, migrated, plugins, version: CLI_VERSION });
   }));
 
   // GET /api/state/status

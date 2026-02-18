@@ -59,7 +59,7 @@ vi.mock("@mycelish/core", () => ({
       },
       mcp: { format: "json", key: "mcpServers", entryShape: "standard" },
       scopes: ["shared", "coding"],
-      capabilities: ["mcp", "skills", "memory", "hooks"],
+      capabilities: ["mcp", "skills", "hooks"],
       enabled: true,
       memoryMaxLines: 200,
     },
@@ -82,7 +82,7 @@ vi.mock("@mycelish/core", () => ({
       },
       mcp: { format: "toml", key: "mcp.servers", entryShape: "standard" },
       scopes: ["shared", "coding"],
-      capabilities: ["mcp", "skills", "memory"],
+      capabilities: ["mcp", "skills"],
       enabled: true,
       memoryMaxLines: null,
     },
@@ -105,7 +105,7 @@ vi.mock("@mycelish/core", () => ({
       },
       mcp: { format: "json", key: "mcpServers", entryShape: "standard" },
       scopes: ["shared", "coding"],
-      capabilities: ["mcp", "skills", "memory"],
+      capabilities: ["mcp", "skills"],
       enabled: true,
       memoryMaxLines: null,
     },
@@ -128,7 +128,7 @@ vi.mock("@mycelish/core", () => ({
       },
       mcp: { format: "json", key: "mcp", entryShape: "opencode" },
       scopes: ["shared", "coding"],
-      capabilities: ["mcp", "skills", "memory"],
+      capabilities: ["mcp", "skills"],
       enabled: true,
       memoryMaxLines: null,
     },
@@ -151,7 +151,7 @@ vi.mock("@mycelish/core", () => ({
       },
       mcp: { format: "json", key: "plugins.entries", entryShape: "openclaw" },
       scopes: ["shared", "personal"],
-      capabilities: ["mcp", "skills", "memory"],
+      capabilities: ["mcp", "skills"],
 
       enabled: true,
       memoryMaxLines: null,
@@ -249,11 +249,6 @@ version: "1.0"
 tools:
   claude-code:
     enabled: true
-memory:
-  scopes:
-    shared:
-      sync_to: [claude-code]
-      path: global/memory/shared/
 `);
 
       const { checkManifestValid } = await import("./doctor.js");
@@ -543,13 +538,7 @@ version: "1.0"
 tools:
   claude-code:
     enabled: true
-memory:
-  scopes:
-    shared:
-      sync_to: [claude-code]
-      path: global/memory/shared/
 `);
-      vi.mocked(fs.readdir).mockResolvedValue(["memory1.md"] as any);
       vi.mocked(fs.stat).mockResolvedValue({ isDirectory: () => true } as any);
 
       const { runAllChecks } = await import("./doctor.js");

@@ -6,7 +6,6 @@ const mockMergedConfig = {
     "global-mcp": { command: "global-cmd", state: "enabled" },
   },
   skills: { "test-skill": { name: "test-skill", state: "enabled" } },
-  memory: { scopes: {} },
   sources: { "test-mcp": "global", "global-mcp": "global" },
 };
 
@@ -134,7 +133,6 @@ describe("mycelium_status handler", () => {
         "included-mcp": { command: "y" } as any,
       },
       skills: {},
-      memory: { scopes: {} },
       sources: {},
     } as any);
 

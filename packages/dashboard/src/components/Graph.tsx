@@ -1,6 +1,6 @@
 /**
  * Graph - Interactive React Flow visualization with ELK auto-layout
- * Layout: Skills/Plugins (top) → Tools (middle) → MCPs/Memory (bottom)
+ * Layout: Skills/Plugins (top) → Tools (middle) → MCPs (bottom)
  * Features: collision resolution, per-edge toggle, direction switch
  */
 
@@ -86,7 +86,7 @@ function getLayeredLayout(
   const layerSpacing = 120;
   const result: Node[] = [];
 
-  // Merge plugins + skills into one row, keep tools, mcps, memory separate
+  // Merge plugins + skills into one row, keep tools, mcps separate
   const rows: Node[][] = [
     [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
     groups.get("tool") ?? [],
@@ -263,7 +263,7 @@ function getRadialHybrid(nodes: Node[], edges: Edge[], spacing = 60, center = 15
 }
 
 // ── Radial Mode: Sectors — each CATEGORY gets a quadrant of the circle ──
-// Plugins top-left, Skills bottom-left, MCPs top-right, Memory bottom-right.
+// Plugins top-left, Skills bottom-left, MCPs top-right.
 // Tools in center. Within each quadrant, nodes fan out in arcs sorted by
 // their primary tool connection so related nodes cluster.
 

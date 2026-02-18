@@ -407,7 +407,7 @@ describe("Enable Command", () => {
       });
     });
 
-    describe("hook and memory enabling", () => {
+    describe("hook enabling", () => {
       it("enables a hook", async () => {
         const options: EnableOptions = {
           name: "pre-commit",

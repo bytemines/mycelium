@@ -155,31 +155,6 @@ describe("status command", () => {
       expect(status.mcpsCount).toBe(8);
     });
 
-    it("counts memory files correctly", async () => {
-      const { getToolStatusFromPath } = await import("./status.js");
-
-      // Create memory files
-      const toolDir = `${mockToolsDir}/claude`;
-      await createMockStructure(mockMyceliumDir, {
-        "global/memory/shared/memory1.md": "# Memory 1",
-        "global/memory/shared/memory2.md": "# Memory 2",
-        "global/memory/coding/coding1.md": "# Coding 1",
-        "mcps.json": JSON.stringify({ mcps: {} }),
-      });
-      await createMockStructure(toolDir, {
-        "CLAUDE.md": "# Concatenated memory",
-        "skills/.gitkeep": "",
-      });
-
-      const status = await getToolStatusFromPath("claude-code", {
-        myceliumPath: mockMyceliumDir,
-        toolSkillsPath: `${toolDir}/skills`,
-        toolMcpPath: `${toolDir}/mcp.json`,
-      });
-
-      expect(status.status).toBeDefined();
-    });
-
     it("returns 'disabled' for disabled tools", async () => {
       const { getToolStatusFromPath } = await import("./status.js");
 

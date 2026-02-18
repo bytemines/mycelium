@@ -94,7 +94,7 @@ export function MigrateWizard({ onClose }: MigrateWizardProps) {
       };
 
       const result = await applyMigration(plan as any);
-      setAppliedCount((result as any).skillsImported + (result as any).mcpsImported + ((result as any).memoryImported ?? 0));
+      setAppliedCount((result as any).skillsImported + (result as any).mcpsImported);
       setStep("done");
       // Refresh dashboard state after successful migration
       useDashboardStore.getState().fetchState();

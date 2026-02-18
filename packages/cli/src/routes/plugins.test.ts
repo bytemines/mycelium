@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../core/migrator/index.js", () => ({
-  loadManifest: vi.fn().mockResolvedValue({ skills: {}, mcpServers: {}, hooks: {}, memory: {} }),
+  loadManifest: vi.fn().mockResolvedValue({ skills: {}, mcpServers: {}, hooks: {} }),
 }));
 vi.mock("../core/marketplace-registry.js", () => ({
   togglePlugin: vi.fn().mockResolvedValue(undefined),

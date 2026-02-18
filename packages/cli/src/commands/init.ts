@@ -59,27 +59,6 @@ export const DEFAULT_MANIFEST_CONFIG = {
     "opencode": { enabled: true },
     "openclaw": { enabled: true },
   },
-  memory: {
-    scopes: {
-      shared: {
-        sync_to: ["claude-code", "codex", "gemini-cli", "opencode", "openclaw"],
-        path: "global/memory/shared/",
-        files: [],
-      },
-      coding: {
-        sync_to: ["claude-code", "codex", "gemini-cli", "opencode"],
-        exclude_from: ["openclaw"],
-        path: "global/memory/coding/",
-        files: [],
-      },
-      personal: {
-        sync_to: ["openclaw"],
-        exclude_from: ["claude-code", "codex", "gemini-cli", "opencode"],
-        path: "global/memory/personal/",
-        files: [],
-      },
-    },
-  },
 };
 
 /**
@@ -154,9 +133,6 @@ export async function initGlobal(options: InitGlobalOptions): Promise<InitResult
   // Create directory structure
   await ensureDir(globalPath);
   await ensureDir(path.join(globalPath, "global/skills"));
-  await ensureDir(path.join(globalPath, "global/memory/shared"));
-  await ensureDir(path.join(globalPath, "global/memory/coding"));
-  await ensureDir(path.join(globalPath, "global/memory/personal"));
   await ensureDir(path.join(globalPath, "machines"));
 
   // Write manifest.yaml
@@ -218,7 +194,6 @@ export async function initProject(options: InitProjectOptions): Promise<InitResu
 
   // Create directory structure
   await ensureDir(projectPath);
-  await ensureDir(path.join(projectPath, "memory"));
 
   // Write mcps.yaml
   await fs.writeFile(mcpsPath, PROJECT_MCPS_YAML_CONTENT, "utf-8");

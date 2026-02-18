@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import type { Status } from "@/types";
 import { StatusDot } from "./StatusDot";
 
-export type ResourceType = "skill" | "mcp" | "memory" | "agent" | "command" | "rule";
+export type ResourceType = "skill" | "mcp" | "agent" | "command" | "rule";
 
 export interface ResourceNodeData {
   name: string;
@@ -19,7 +19,6 @@ function ResourceNodeInner({ data, sourcePosition, targetPosition }: { data: Res
   const typeStyles: Record<string, { border: string; bg: string }> = {
     skill: { border: "border-blue-500/60", bg: "bg-[#0c1529]" },
     mcp: { border: "border-purple-500/60", bg: "bg-[#150c29]" },
-    memory: { border: "border-amber-500/60", bg: "bg-[#1a1408]" },
     agent: { border: "border-amber-500/60", bg: "bg-[#1a1408]" },
     command: { border: "border-cyan-500/60", bg: "bg-[#0c1a29]" },
     rule: { border: "border-violet-500/60", bg: "bg-[#150c29]" },

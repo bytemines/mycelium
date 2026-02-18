@@ -1,7 +1,7 @@
 /**
  * Disable Command Module
  *
- * Disable a skill, MCP, hook, or memory item globally or for a specific tool:
+ * Disable a skill, MCP, agent, rule, command, or hook globally or for a specific tool:
  * - mycelium disable <name>              # Disable item at project level
  * - mycelium disable <name> --global     # Disable item globally
  * - mycelium disable <name> --tool <id>  # Disable item for specific tool only
@@ -53,7 +53,7 @@ export interface DisableResult {
 // ============================================================================
 
 /**
- * Disable a skill, MCP, hook, or memory item
+ * Disable a skill, MCP, agent, rule, command, or hook
  */
 export async function disableSkillOrMcp(options: DisableOptions): Promise<DisableResult> {
   const { name, tool, global: isGlobal } = options;
@@ -223,7 +223,7 @@ function isAlreadyDisabled(config: ItemConfig, tool?: ToolId): boolean {
 // ============================================================================
 
 export const disableCommand = new Command("disable")
-  .description("Disable a skill, MCP, hook, or memory item")
+  .description("Disable a skill, MCP, agent, rule, command, or hook")
   .argument("<name>", "Name of the item to disable")
   .option("-t, --tool <tool>", "Disable only for a specific tool")
   .option("-g, --global", "Disable in global configuration (~/.mycelium/)")

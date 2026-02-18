@@ -9,7 +9,6 @@ vi.mock("../core/config-merger.js", () => ({
   loadAndMergeAllConfigs: vi.fn().mockResolvedValue({
     mcps: {},
     skills: {},
-    memory: { scopes: {} },
     sources: {},
   }),
   loadGlobalConfig: vi.fn().mockResolvedValue({ mcps: {} }),

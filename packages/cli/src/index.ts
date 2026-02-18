@@ -2,7 +2,7 @@
 /**
  * Mycelium CLI - Universal AI Tool Orchestrator
  *
- * Sync skills, MCPs, and memory across AI coding tools:
+ * Sync skills, MCPs, agents, rules, and commands across AI coding tools:
  * Claude Code, Codex CLI, Gemini CLI, OpenCode, OpenClaw, Cursor, VS Code, Antigravity
  */
 
@@ -30,7 +30,7 @@ program
   .name("mycelium")
   .alias("myc")
   .description(
-    "Universal AI Tool Orchestrator - Sync skills, MCPs, and memory across AI coding tools"
+    "Universal AI Tool Orchestrator - Sync skills, MCPs, agents, rules, and commands across AI coding tools"
   )
   .version("0.0.1");
 

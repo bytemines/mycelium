@@ -86,7 +86,7 @@ describe("savePreset / loadPreset / listPresets", () => {
   it("loadPreset returns parsed preset", async () => {
     const fs = await import("node:fs/promises");
     vi.mocked(fs.readFile).mockResolvedValue(
-      "name: loaded\nskills:\n  - s1\nmcps: []\nmemory:\n  scopes: []\n",
+      "name: loaded\nskills:\n  - s1\nmcps: []\n",
     );
 
     const { loadPreset } = await import("../core/presets.js");

@@ -63,9 +63,6 @@ describe("initGlobal", () => {
 
     // Should create subdirectories
     expect(ensureDir).toHaveBeenCalledWith("/mock/home/.mycelium/global/skills");
-    expect(ensureDir).toHaveBeenCalledWith("/mock/home/.mycelium/global/memory/shared");
-    expect(ensureDir).toHaveBeenCalledWith("/mock/home/.mycelium/global/memory/coding");
-    expect(ensureDir).toHaveBeenCalledWith("/mock/home/.mycelium/global/memory/personal");
     expect(ensureDir).toHaveBeenCalledWith("/mock/home/.mycelium/machines");
   });
 
@@ -97,8 +94,6 @@ describe("initGlobal", () => {
     expect(content).toContain("version:");
     expect(content).toContain("tools:");
     expect(content).toContain("claude-code:");
-    expect(content).toContain("memory:");
-    expect(content).toContain("scopes:");
   });
 
   it("creates .env.example template", async () => {
@@ -235,7 +230,6 @@ describe("initProject", () => {
 
     // Should create project .mycelium directory
     expect(ensureDir).toHaveBeenCalledWith("/my/project/.mycelium");
-    expect(ensureDir).toHaveBeenCalledWith("/my/project/.mycelium/memory");
   });
 
   it("creates project mcps.yaml", async () => {
@@ -347,30 +341,6 @@ describe("DEFAULT_MANIFEST_CONFIG", () => {
     expect(DEFAULT_MANIFEST_CONFIG.tools["gemini-cli"]).toEqual({ enabled: true });
     expect(DEFAULT_MANIFEST_CONFIG.tools["opencode"]).toEqual({ enabled: true });
     expect(DEFAULT_MANIFEST_CONFIG.tools["openclaw"]).toEqual({ enabled: true });
-
-  });
-
-  it("has correct memory scopes", async () => {
-    const { DEFAULT_MANIFEST_CONFIG } = await import("./init.js");
-
-    const { memory } = DEFAULT_MANIFEST_CONFIG;
-    expect(memory.scopes).toBeDefined();
-
-    // Shared scope
-    expect(memory.scopes.shared.sync_to).toContain("claude-code");
-    expect(memory.scopes.shared.sync_to).toContain("codex");
-    expect(memory.scopes.shared.sync_to).toContain("openclaw");
-    expect(memory.scopes.shared.path).toBe("global/memory/shared/");
-
-    // Coding scope
-    expect(memory.scopes.coding.sync_to).toContain("claude-code");
-    expect(memory.scopes.coding.exclude_from).toContain("openclaw");
-    expect(memory.scopes.coding.path).toBe("global/memory/coding/");
-
-    // Personal scope (OpenClaw only)
-    expect(memory.scopes.personal.sync_to).toEqual(["openclaw"]);
-    expect(memory.scopes.personal.exclude_from).toContain("claude-code");
-    expect(memory.scopes.personal.path).toBe("global/memory/personal/");
   });
 });
 

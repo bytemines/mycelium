@@ -1,7 +1,7 @@
 /**
  * Enable Command Module
  *
- * Enable a skill, MCP, hook, or memory scope globally or for a specific tool:
+ * Enable a skill, MCP, agent, rule, command, or hook globally or for a specific tool:
  * - mycelium enable <name>              # Enable item at project level
  * - mycelium enable <name> --global     # Enable item globally
  * - mycelium enable <name> --tool <id>  # Enable item for specific tool only
@@ -53,7 +53,7 @@ export interface EnableResult {
 // ============================================================================
 
 /**
- * Enable a skill, MCP, hook, or memory scope
+ * Enable a skill, MCP, agent, rule, command, or hook
  */
 export async function enableSkillOrMcp(options: EnableOptions): Promise<EnableResult> {
   const { name, tool, global: isGlobal } = options;

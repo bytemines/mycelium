@@ -85,7 +85,7 @@ function GraphContainer() {
   }
 
   const debugData = getDebugMockData();
-  const data = debugData ?? graphData ?? { tools: [], skills: [], mcps: [], memory: [], plugins: [] };
+  const data = debugData ?? graphData ?? { tools: [], skills: [], mcps: [], plugins: [] };
 
   return (
     <div data-testid="graph-container" className="h-full rounded-lg border bg-card/50">

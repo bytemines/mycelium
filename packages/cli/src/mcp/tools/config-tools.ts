@@ -6,7 +6,7 @@ export function registerConfigTools(server: McpServer): void {
   server.registerTool("mycelium_status", {
     title: "Mycelium Status",
     description:
-      "Show current config state: all MCPs, skills, and memory scopes with their state (enabled/disabled) and source (global/machine/project).",
+      "Show current config state: all MCPs, skills, agents, rules, and commands with their state (enabled/disabled) and source (global/machine/project).",
     inputSchema: {
       tool: z
         .string()
@@ -31,7 +31,7 @@ export function registerConfigTools(server: McpServer): void {
   server.registerTool("mycelium_sync", {
     title: "Sync Config",
     description:
-      "Push mycelium config (MCPs, skills, memory) to detected AI tools. Performs overlay sync — only touches mycelium-managed sections.",
+      "Push mycelium config (MCPs, skills, agents, rules, commands) to detected AI tools. Performs overlay sync — only touches mycelium-managed sections.",
     inputSchema: {
       tool: z
         .string()
@@ -72,7 +72,7 @@ export function registerConfigTools(server: McpServer): void {
   server.registerTool("mycelium_doctor", {
     title: "Doctor",
     description:
-      "Run health checks: tool detection, MCP connectivity, config integrity, memory size, self-registration status.",
+      "Run health checks: tool detection, MCP connectivity, config integrity, self-registration status.",
     inputSchema: {},
   }, async () => {
     const { runAllChecks, formatDoctorJson } = await import(

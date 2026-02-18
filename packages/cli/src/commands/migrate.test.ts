@@ -32,14 +32,12 @@ const emptyScan = {
   installed: true,
   skills: [],
   mcps: [],
-  memory: [],
   hooks: [],
 };
 
 const emptyPlan = {
   skills: [],
   mcps: [],
-  memory: [],
   conflicts: [],
 };
 
@@ -49,7 +47,7 @@ describe("migrateCommand", () => {
     vi.resetModules();
     mockScanAllTools.mockResolvedValue([emptyScan]);
     mockGenerateMigrationPlan.mockReturnValue(emptyPlan);
-    mockExecuteMigration.mockResolvedValue({ skillsImported: 0, mcpsImported: 0, memoryImported: 0, errors: [] });
+    mockExecuteMigration.mockResolvedValue({ skillsImported: 0, mcpsImported: 0, errors: [] });
   });
 
   it("exports a Command named 'migrate'", async () => {

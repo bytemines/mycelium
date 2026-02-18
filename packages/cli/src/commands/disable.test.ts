@@ -344,7 +344,7 @@ describe("Disable Command", () => {
       });
     });
 
-    describe("hook and memory disabling", () => {
+    describe("hook disabling", () => {
       it("disables a hook globally", async () => {
         const options: DisableOptions = {
           name: "pre-commit",
