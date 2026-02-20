@@ -24,7 +24,7 @@ const fsDirs = new Set([
   "/Users/conrado/code",
   "/Users/conrado/code/mycelium",
   "/Users/conrado/code/bytemines-io",
-  "/Users/conrado/code/Argusito",
+  "/Users/conrado/code/SampleApp",
   "/Users/conrado/work",
   "/Users/conrado/work/clients",
   "/Users/conrado/work/clients/acme-app",
@@ -95,8 +95,8 @@ describe("decodeProjectName", () => {
     expect(decodeProjectName("-Users-conrado-unknown-project")).toBe("unknown-project");
   });
 
-  it("resolves Argusito correctly", () => {
-    expect(decodeProjectName("-Users-conrado-code-Argusito")).toBe("Argusito");
+  it("resolves PascalCase project names correctly", () => {
+    expect(decodeProjectName("-Users-conrado-code-SampleApp")).toBe("SampleApp");
   });
 });
 
