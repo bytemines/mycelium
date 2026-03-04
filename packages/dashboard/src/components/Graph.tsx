@@ -657,22 +657,27 @@ export function Graph({
         hasMeasuredLayout.current = false; // reset on structural change
       }
 
+      // Data-only change (e.g. toggling a skill inside a plugin): update node data in place
+      // without recalculating layout. Re-layout with initialNodes (which lack .measured
+      // dimensions) would produce positions based on fallback sizes, shifting the graph.
+      if (!isStructuralChange) {
+        setNodes((currentNodes) => {
+          if (currentNodes.length === 0) return currentNodes;
+          return currentNodes.map((existing) => {
+            const updated = initialNodes.find(n => n.id === existing.id);
+            if (!updated) return existing;
+            // Only update if data actually changed
+            if (JSON.stringify(existing.data) === JSON.stringify(updated.data)) return existing;
+            return { ...existing, data: updated.data };
+          });
+        });
+        setEdges(initialEdges);
+        return;
+      }
+
       getLayoutedElements(initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
         ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-          // Preserve node references when only data changed (prevents flicker)
-          setNodes((currentNodes) => {
-            if (currentNodes.length !== layoutedNodes.length || isStructuralChange) return layoutedNodes;
-            return layoutedNodes.map((newNode) => {
-              const existing = currentNodes.find(n => n.id === newNode.id);
-              if (!existing) return newNode;
-              if (existing.position.x === newNode.position.x &&
-                  existing.position.y === newNode.position.y &&
-                  JSON.stringify(existing.data) === JSON.stringify(newNode.data)) {
-                return existing;
-              }
-              return newNode;
-            });
-          });
+          setNodes(layoutedNodes);
           setEdges(layoutedEdges);
           if (!hasInitialFit.current) {
             hasInitialFit.current = true;
