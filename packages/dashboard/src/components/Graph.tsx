@@ -9,7 +9,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   Node,
   Edge,
   Position,
@@ -27,8 +26,6 @@ import type { DashboardGraphData } from "@/lib/graph-builder";
 import {
   NODE_SIZES,
   DEFAULT_SIZE,
-  EDGE_COLORS,
-  STATUS_COLORS,
   BACKGROUND_GRID,
   LOCALSTORAGE_KEYS,
   DEFAULT_EDGE_TYPE,
@@ -40,7 +37,6 @@ import type { Direction, EdgeType, RadialMode } from "@/lib/graph-config";
 // Re-export node components for backwards compatibility
 export { ToolNode, ResourceNode, PluginNode, AddToolNode };
 
-import type { Status } from "@/types";
 
 // ── Category classifier ──
 
@@ -730,6 +726,8 @@ export function Graph({
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
         onNodeDragStop={onNodeDragStop}
+        edgesFocusable={false}
+        proOptions={{ hideAttribution: true }}
         onInit={(instance) => { fitViewRef.current = () => instance.fitView({ padding: 0.2, duration: 300 }); }}
         fitView
         minZoom={0.3}
@@ -829,23 +827,6 @@ export function Graph({
         </Panel>
         <Background color={BACKGROUND_GRID.color} gap={BACKGROUND_GRID.gap} />
         <Controls className="!bg-card !border-border [&>button]:!bg-card [&>button]:!border-border" />
-        <MiniMap
-          className="!bg-card/80 !border-border"
-          maskColor="rgba(0,0,0,0.8)"
-          nodeColor={(node) => {
-            const nodeData = node.data as { status?: Status; type?: string };
-            if (nodeData?.status === "synced") return STATUS_COLORS.synced;
-            if (nodeData?.status === "pending") return STATUS_COLORS.pending;
-            if (nodeData?.status === "error") return STATUS_COLORS.error;
-            if (nodeData?.status === "not_installed") return STATUS_COLORS.not_installed;
-            if (nodeData?.type === "skill") return EDGE_COLORS.skill;
-            if (nodeData?.type === "agent") return EDGE_COLORS.agent;
-            if (nodeData?.type === "command") return EDGE_COLORS.command;
-            if (nodeData?.type === "rule") return EDGE_COLORS.rule;
-            if (nodeData?.type === "mcp") return EDGE_COLORS.mcp;
-            return STATUS_COLORS.fallback;
-          }}
-        />
       </ReactFlow>
     </div>
   );
