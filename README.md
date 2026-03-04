@@ -15,6 +15,10 @@
 <p align="center">
   <a href="#-quick-start">Quick Start</a> · <a href="#-why-mycelium">Why Mycelium</a> · <a href="#-features">Features</a> · <a href="#-dashboard">Dashboard</a> · <a href="docs/MCP-SERVER.md">MCP Server</a></p>
 
+<p align="center">
+  <img src="demo.gif" alt="Mycelium demo" width="720" />
+</p>
+
 ---
 
 ## The Problem
