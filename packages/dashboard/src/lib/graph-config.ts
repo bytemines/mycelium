@@ -23,8 +23,6 @@ export const EDGE_COLORS = {
   agent: "#f59e0b",
   command: "#06b6d4",
   rule: "#8b5cf6",
-  custom: "#6b7280",
-  disabled: "#ef4444",
 } as const;
 
 export const STATUS_COLORS = {
@@ -41,15 +39,6 @@ export const EDGE_STYLE = {
   strokeWidth: 1.5,
   disabledDashArray: "5,5",
   disabledOpacity: 0.4,
-} as const;
-
-export const DISABLED_EDGE_STYLE = {
-  strokeDasharray: "6,4",
-  opacity: 0.55,
-  fontSize: 13,
-  labelBgOpacity: 0.9,
-  labelBgRadius: 8,
-  labelPadding: [5, 5] as [number, number],
 } as const;
 
 // ── Initial (pre-layout) Positions ──

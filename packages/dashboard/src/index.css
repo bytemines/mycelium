@@ -77,11 +77,3 @@
 .react-flow__edge-path {
   stroke-width: 1.5;
 }
-
-.react-flow__edge {
-  cursor: pointer;
-}
-
-.react-flow__edge:hover .react-flow__edge-path {
-  stroke-width: 3;
-}

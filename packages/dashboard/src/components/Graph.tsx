@@ -1,7 +1,7 @@
 /**
- * Graph - Interactive React Flow visualization with ELK auto-layout
+ * Graph - Interactive React Flow visualization with manual layered/radial layout
  * Layout: Skills/Plugins (top) → Tools (middle) → MCPs (bottom)
- * Features: collision resolution, per-edge toggle, direction switch
+ * Features: direction switch (vertical/horizontal/radial), edge type picker
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,8 +17,6 @@ import {
   useEdgesState,
   useNodesInitialized,
   Panel,
-  addEdge,
-  Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { cn } from "@/lib/utils";
@@ -31,8 +29,6 @@ import {
   DEFAULT_SIZE,
   EDGE_COLORS,
   STATUS_COLORS,
-  EDGE_STYLE,
-  DISABLED_EDGE_STYLE,
   BACKGROUND_GRID,
   LOCALSTORAGE_KEYS,
   DEFAULT_EDGE_TYPE,
@@ -522,8 +518,6 @@ interface GraphProps {
   onMcpClick?: (mcpName: string) => void;
   onSkillClick?: (skillName: string) => void;
   onAddTool?: () => void;
-  onEdgeToggle?: (edgeId: string, enabled: boolean) => void;
-  disabledEdges?: Set<string>;
   showUninstalledTools?: boolean;
 }
 
@@ -537,8 +531,6 @@ export function Graph({
   onMcpClick,
   onSkillClick,
   onAddTool,
-  onEdgeToggle,
-  disabledEdges,
   showUninstalledTools = false,
 }: GraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -576,12 +568,6 @@ export function Graph({
     try { localStorage.setItem(LOCALSTORAGE_KEYS.radialMode, mode); } catch {}
   }, []);
 
-  // Track disabled edges locally if not controlled
-  const [localDisabledEdges, setLocalDisabledEdges] = useState<Set<string>>(
-    new Set()
-  );
-  const effectiveDisabled = disabledEdges ?? localDisabledEdges;
-
   // Stabilize callback refs to prevent unnecessary re-renders and ELK re-layouts
   const onToggleRef = useRef(onToggle);
   onToggleRef.current = onToggle;
@@ -617,29 +603,10 @@ export function Graph({
     [data, mode, showUninstalledTools, stableHandlers]
   );
 
-  // Apply disabled-edge styling
+  // Apply edge type styling
   const styledEdges = useMemo(() => {
-    return edges.map((edge) => {
-      if (effectiveDisabled.has(edge.id)) {
-        return {
-          ...edge,
-          animated: false,
-          interactionWidth: 30,
-          style: {
-            stroke: EDGE_COLORS.disabled,
-            strokeWidth: EDGE_STYLE.strokeWidth,
-            strokeDasharray: DISABLED_EDGE_STYLE.strokeDasharray,
-            opacity: DISABLED_EDGE_STYLE.opacity,
-          },
-          label: "✕",
-          labelStyle: { fill: EDGE_COLORS.disabled, fontSize: DISABLED_EDGE_STYLE.fontSize, fontWeight: 700, cursor: "pointer" },
-          labelBgStyle: { fill: "#1a1a1a", fillOpacity: DISABLED_EDGE_STYLE.labelBgOpacity, rx: DISABLED_EDGE_STYLE.labelBgRadius, ry: DISABLED_EDGE_STYLE.labelBgRadius },
-          labelBgPadding: DISABLED_EDGE_STYLE.labelPadding,
-        };
-      }
-      return { ...edge, type: edgeType, interactionWidth: 30 };
-    });
-  }, [edges, effectiveDisabled, edgeType]);
+    return edges.map((edge) => ({ ...edge, type: edgeType }));
+  }, [edges, edgeType]);
 
   // Track previous node IDs to detect structural vs data-only changes
   const prevNodeIdsRef = useRef<string>("");
@@ -737,44 +704,6 @@ export function Graph({
 
   const onNodeDragStop = useCallback(() => {}, []);
 
-  // Drag from handle to create new connections
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...connection,
-            animated: true,
-            style: { stroke: EDGE_COLORS.custom, strokeWidth: EDGE_STYLE.strokeWidth },
-          },
-          eds
-        )
-      );
-    },
-    [setEdges]
-  );
-
-  // Edge click — toggle individual connections
-  const handleEdgeClick = useCallback(
-    (_event: React.MouseEvent, edge: Edge) => {
-      const isCurrentlyDisabled = effectiveDisabled.has(edge.id);
-      if (onEdgeToggle) {
-        onEdgeToggle(edge.id, isCurrentlyDisabled); // parent controls
-      } else {
-        setLocalDisabledEdges((prev) => {
-          const next = new Set(prev);
-          if (isCurrentlyDisabled) {
-            next.delete(edge.id);
-          } else {
-            next.add(edge.id);
-          }
-          return next;
-        });
-      }
-    },
-    [effectiveDisabled, onEdgeToggle]
-  );
-
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       onNodeClick?.(node);
@@ -801,8 +730,6 @@ export function Graph({
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
         onNodeDragStop={onNodeDragStop}
-        onEdgeClick={handleEdgeClick}
-        onConnect={onConnect}
         onInit={(instance) => { fitViewRef.current = () => instance.fitView({ padding: 0.2, duration: 300 }); }}
         fitView
         minZoom={0.3}
