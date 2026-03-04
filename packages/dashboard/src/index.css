@@ -77,3 +77,7 @@
 .react-flow__edge-path {
   stroke-width: 1.5;
 }
+
+.react-flow__edge-interaction {
+  pointer-events: none;
+}
