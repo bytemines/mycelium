@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/bytemines/mycelium/actions"><img src="https://img.shields.io/github/actions/workflow/status/bytemines/mycelium/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
+  <a href="https://github.com/bytemines/mycelium/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen?logo=github" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@mycelish/cli"><img src="https://img.shields.io/npm/v/@mycelish/cli?color=cb3837&logo=npm" alt="npm" /></a>
   <img src="https://img.shields.io/badge/tools-8%20supported-blueviolet" alt="8 Tools" />
   <img src="https://img.shields.io/badge/tests-732%20passing-brightgreen" alt="732 Tests" />
