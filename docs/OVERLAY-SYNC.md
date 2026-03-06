@@ -11,7 +11,7 @@ When `mycelium sync` runs, it uses three overlay strategies:
                          |
           +--------------+--------------+
           |              |              |
-     Skills Sync    MCP Injection   Memory Merge
+     Skills Sync    MCP Injection    File Sync
 ```
 
 ### Skills — Symlinks
@@ -35,17 +35,13 @@ MCP configs are injected into each tool's native config file (JSON, TOML, or YAM
 }
 ```
 
-### Memory — Managed Blocks
+### File-Based Items — Symlink / Copy
 
-Memory content is appended as a delimited block at the end of each tool's memory file:
+Agents, rules, and commands are synced as files into each tool's directory:
 
-```markdown
-# My notes          ← untouched
-Custom content       ← untouched
-<!-- mycelium -->    ← marker
-Shared memory...     ← managed by mycelium
-<!-- /mycelium -->   ← marker
-```
+- **Agents**: Symlinked from `~/.mycelium/agents/` into each tool's agents directory
+- **Rules**: Copied into each tool's rules directory (VS Code exception: symlinked)
+- **Commands**: Symlinked from `~/.mycelium/commands/` into each tool's commands directory
 
 ## Key Guarantees
 
@@ -60,8 +56,10 @@ Shared memory...     ← managed by mycelium
 |-------------|:--------:|-------|
 | Skills (SKILL.md) | Yes | Symlinked to all enabled tools |
 | MCP servers | Yes | Translated to each tool's format |
-| Memory files | Yes | Appended as managed blocks |
+| Agents | Yes | Symlinked to all tools with agents capability |
+| Rules | Yes | Copied to all tools with rules capability |
+| Commands | Yes | Symlinked to all tools with commands capability |
+| Hooks | Yes | Synced across Claude Code, Codex, Gemini, OpenCode, OpenClaw, Cursor |
 | Env vars / flags | No | Tool-specific |
-| Hooks | No | Claude Code-specific lifecycle |
 | Plugin versions | No | Marketplace metadata |
 | Tool settings | No | Keybindings, themes, UI prefs |

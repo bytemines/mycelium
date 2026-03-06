@@ -1,6 +1,6 @@
 # Mycelium MCP Server
 
-Mycelium exposes itself as an [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server, allowing any AI tool to manage configs, memory, and marketplace through the standard protocol.
+Mycelium exposes itself as an [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server, allowing any AI tool to manage configs and marketplace through the standard protocol.
 
 ## Quick Start
 
@@ -57,9 +57,9 @@ If you need to register manually, add this to your tool's MCP config:
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `mycelium_status` | Show merged config state -- MCPs, skills, memory scopes with state and source | `tool?` (filter by tool ID), `json?` |
+| `mycelium_status` | Show merged config state -- MCPs and skills with state and source | `tool?` (filter by tool ID), `json?` |
 | `mycelium_sync` | Push config to all tools (overlay sync -- only touches mycelium-managed sections) | `tool?` (sync only this tool) |
-| `mycelium_doctor` | Run health checks -- tool detection, MCP connectivity, config integrity, memory size | `json?` |
+| `mycelium_doctor` | Run health checks -- tool detection, MCP connectivity, config integrity | `json?` |
 
 ### Item Management
 
@@ -69,16 +69,6 @@ If you need to register manually, add this to your tool's MCP config:
 | `mycelium_disable` | Disable a skill, MCP, or plugin and trigger sync | `name`, `type`, `scope?` |
 | `mycelium_add` | Add a new MCP server or skill to config | `name`, `type`, `command?`, `args?`, `env?`, `scope?` |
 | `mycelium_remove` | Remove an item (sets state to "deleted") | `name`, `type`, `scope?` |
-
-### Memory
-
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `mycelium_memory_list` | List memory files by scope (shared, coding, personal) | `scope?` |
-| `mycelium_memory_read` | Read a memory file's contents | `scope`, `name` |
-| `mycelium_memory_write` | Create or overwrite a memory file (synced on next `sync`) | `scope`, `name`, `content` |
-
-Memory files live in `~/.mycelium/global/memory/{shared,coding,personal}/` and are synced to each tool's memory location. See [Memory Architecture](memory-architecture.md) for details.
 
 ### Marketplace
 
@@ -101,7 +91,7 @@ MCP resources provide read-only snapshots of Mycelium state:
 
 | Resource | URI | Description |
 |----------|-----|-------------|
-| Config | `mycelium://config` | Current merged configuration (MCPs, skills, memory scopes with state and source) |
+| Config | `mycelium://config` | Current merged configuration (MCPs and skills with state and source) |
 | Tools | `mycelium://tools` | Full tool registry -- all 8 supported tools with capabilities, paths, and formats |
 
 Access resources from any MCP client:
@@ -127,7 +117,6 @@ Once registered, you can ask Claude naturally:
 
 - "Use mycelium to check what tools are configured"
 - "Search the mycelium marketplace for git-related skills"
-- "Write a memory file with our project patterns"
 - "Disable the docker MCP and sync to all tools"
 - "Show me recent mycelium errors from the last hour"
 - "Run mycelium doctor to check system health"
@@ -165,22 +154,6 @@ Once registered, you can ask Claude naturally:
 }
 ```
 
-**Write a memory file:**
-
-```json
-{
-  "jsonrpc": "2.0", "method": "tools/call", "id": 4,
-  "params": {
-    "name": "mycelium_memory_write",
-    "arguments": {
-      "scope": "shared",
-      "name": "patterns.md",
-      "content": "# Project Patterns\n\n- Use dependency injection\n- Prefer composition over inheritance"
-    }
-  }
-}
-```
-
 **Query traces:**
 
 ```json
@@ -205,7 +178,6 @@ mycelium mcp            <-- @modelcontextprotocol/sdk, StdioServerTransport
     |
     |-- tools/config-tools.ts      -> config-merger, sync-writer
     |-- tools/item-tools.ts        -> config-writer
-    |-- tools/memory-tools.ts      -> fs (direct read/write)
     |-- tools/marketplace-tools.ts -> marketplace-registry
     |-- tools/observe-tools.ts     -> trace-store (SQLite)
     |-- resources.ts               -> config-merger, TOOL_REGISTRY
@@ -237,7 +209,6 @@ During `mycelium init`, Mycelium writes itself as an MCP entry into every detect
 | Errors in tool calls | Run `mycelium report --cmd mcp --level error --since 1h` |
 | Need to re-register | Run `mycelium init` (safe to re-run) |
 | Tool shows stale config | Run `mycelium_sync` from the AI tool, or `mycelium sync` from terminal |
-| Memory files not syncing | Check scope directories exist: `ls ~/.mycelium/global/memory/` |
 | Permission errors | Ensure `~/.mycelium/` is writable; check file ownership |
 
 For more diagnostic workflows, use the `debug_mycelium` prompt or see [Reporting Issues](reporting-issues.md).

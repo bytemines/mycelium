@@ -1,10 +1,10 @@
 # Mycelium Architecture
 
-> Universal AI Tool Orchestrator — syncs skills, MCPs, and memory across 8 AI coding tools.
+> Universal AI Tool Orchestrator — syncs skills, MCPs, agents, rules, commands, and hooks across 8 AI coding tools.
 
 ## Design Philosophy
 
-**Non-destructive overlay.** Mycelium never owns tool config files. It writes only the sections it manages (MCPs, skills, memory) and preserves everything else. Tools remain fully functional without Mycelium installed.
+**Non-destructive overlay.** Mycelium never owns tool config files. It writes only the sections it manages (MCPs, skills, agents, rules, commands, hooks) and preserves everything else. Tools remain fully functional without Mycelium installed.
 
 **CLI-first, dashboard-optional.** All operations work through `mycelium` CLI commands. The dashboard is a read-heavy visualization layer that calls the same core functions, served via an Express API on port 3378.
 
@@ -31,7 +31,9 @@ Dependencies flow one way: `core` <- `cli`, `core` <- `dashboard`. The CLI and d
   manifest.yaml    ──> mycelium sync ──> ~/.claude.json (mcpServers)
   global/mcps.yaml                       ~/.codex/config.toml
   global/skills/                         ~/.gemini/settings.json
-  global/memory/                         ~/.config/opencode/opencode.json
+  global/agents/                         ~/.config/opencode/opencode.json
+  global/rules/
+  global/commands/
   machines/{hostname}/overrides.yaml     ~/.openclaw/openclaw.json
 ```
 
@@ -51,7 +53,7 @@ Snapshots are taken before any destructive write, stored in `~/.mycelium/snapsho
 
 ## Tool Registry & Auto-Adapter
 
-All tool knowledge lives in `packages/core/src/tools/` as **ToolDescriptor** objects — one file per tool. Each descriptor declares paths, MCP config format, CLI commands, capabilities, memory scopes, and display metadata.
+All tool knowledge lives in `packages/core/src/tools/` as **ToolDescriptor** objects — one file per tool. Each descriptor declares paths, MCP config format, CLI commands, capabilities, and display metadata.
 
 ```
 packages/core/src/tools/
@@ -68,7 +70,7 @@ The **auto-adapter factory** (`packages/cli/src/core/auto-adapter.ts`) generates
 2. One import in `_registry.ts`
 3. One SVG icon in `packages/dashboard/src/components/icons/svg/`
 
-Everything else — schema validation, adapters, dashboard, memory scoping, sync — is derived from the registry.
+Everything else — schema validation, adapters, dashboard, sync — is derived from the registry.
 
 ## Migration Design
 
@@ -100,16 +102,6 @@ Solution — three mechanisms:
 1. **Machine overrides.** `~/.mycelium/machines/{hostname}/overrides.yaml` is auto-detected by hostname. Override files can specify different command paths for MCPs.
 2. **Env templates.** `.env.template` is git-tracked with placeholder values. `.env.local` holds real secrets and is gitignored. MCP configs reference variables with `${VAR_NAME}` syntax, resolved at sync time.
 3. **Git-based sync.** `mycelium push` and `mycelium pull` wrap git operations. The `.env.local` and `machines/` override files ensure the same git repo works on different machines without manual editing.
-
-## Memory Scoping
-
-Memory files are organized into three scopes:
-
-- **shared** — synced to all tools (preferences, project knowledge)
-- **coding** — synced to coding tools only, excluded from OpenClaw (code patterns, architecture decisions)
-- **personal** — synced to OpenClaw only (contacts, schedule)
-
-Smart memory compression keeps files within tool-specific line limits (e.g., Claude Code's 200-line MEMORY.md limit) by prioritizing headers and key insights over verbose session logs. Deduplication prevents the same fact from appearing in multiple merged sections.
 
 ## Key Technical Decisions
 

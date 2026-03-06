@@ -31,18 +31,9 @@ Claude Code recursively scans the entire plugin source directory for SKILL.md fi
 
 The `/plugin` UI shows plugins as disabled but their MCP tools and skills remain available in the session. Restarting Claude Code does not fix it.
 
-## Competitive Landscape
+## Existing Solutions
 
-| Tool | Per-Plugin Toggle | Per-Skill/Tool Toggle | Notes |
-|------|:-:|:-:|-------|
-| Claude Code | Broken | No | Issues #13344, #9996 |
-| GitHub Copilot | Yes | Yes | "Configure Tools" UI with per-tool checkboxes |
-| MetaMCP | Yes | Yes | Namespace-based filtering, per-tool enable/disable |
-| OpenSkills | Yes | Yes | `openskills manage` lets you uncheck individual skills |
-| Cursor | Plugin-level | No | No per-skill granularity |
-| VS Code Copilot | Extension-level | Partial | Extension contributions can be toggled |
-
-GitHub Copilot and MetaMCP have already shipped per-tool filtering. OpenSkills provides per-skill management. Claude Code is behind the curve on this capability.
+Some tools have implemented per-skill or per-tool filtering: GitHub Copilot offers a "Configure Tools" UI with per-tool checkboxes, MetaMCP provides namespace-based filtering with per-tool enable/disable, and OpenSkills supports per-skill management via `openskills manage`. Claude Code does not yet offer this granularity natively.
 
 ## How Mycelium Solves This
 
@@ -53,7 +44,7 @@ Mycelium's **plugin takeover** feature provides the missing granularity:
 3. **Manifest-tracked state** — All per-item state is stored in `manifest.yaml` with `pluginOrigin` tracking
 4. **Sync-aware** — Disabled items are excluded from sync-writer output, so tools never see them
 5. **Dashboard toggle** — Visual per-item switches in the React Flow graph
-6. **Cross-tool** — Works across all 9 supported tools, not just Claude Code
+6. **Cross-tool** — Works across all 8 supported tools, not just Claude Code
 
 This directly addresses issues #7328, #14920, #13344, and #9996 without requiring any changes to Claude Code itself.
 

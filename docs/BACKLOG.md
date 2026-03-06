@@ -15,4 +15,4 @@ Items to do later, not blocking current work.
 - [ ] `watcher.ts` `recursive:true` unsupported on Linux
 - [ ] `doctor.ts` `checkMcpServerConnectivity` runs actual MCP commands (could use `which`)
 - [ ] `dryRunSync` doesn't use `entryShape` for vscode/opencode preview (cosmetic)
-- [ ] `doctor.ts` `memoryLimits` could derive from TOOL_REGISTRY
+

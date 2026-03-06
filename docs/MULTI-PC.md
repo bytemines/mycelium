@@ -50,7 +50,7 @@ mycelium env setup    # generate .env.local with missing vars
 ## New Machine Checklist
 
 ```bash
-npm install -g mycelium
+npm install -g @mycelish/cli
 mycelium init                    # clones config, detects tools
 mycelium env setup               # fill in secrets
 mycelium sync                    # apply to all tools

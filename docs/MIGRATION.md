@@ -40,7 +40,7 @@ mycelium migrate --clear --apply  # execute
 |--------|----------------|
 | Skills directories | SKILL.md files with metadata |
 | MCP config files | Server definitions (name, command, args, env) |
-| Memory files | Content blocks (CLAUDE.md, AGENTS.md, etc.) |
+
 
 ## Migration Manifest
 
@@ -67,6 +67,6 @@ Stored at `~/.mycelium/snapshots/<name>/`:
 - `metadata.json` — name, date, file list
 - `skills/` — copy of all skills
 - `mcps.yaml` — MCP config
-- `memory/` — memory files
+
 
 Each snapshot captures full Mycelium state. Restoring replaces current config.
