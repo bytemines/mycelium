@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">🍄 Mycelium</h1>
-  <p align="center"><strong>One config. Every AI tool. Every machine.</strong></p>
-  <p align="center">Define your skills, MCPs, agents, rules, and hooks once — sync everywhere.</p>
+  <p align="center"><em>One mushroom to rule them all.</em></p>
+  <p align="center">Sync your skills, MCPs, agents, rules, and hooks across every AI tool, from every machine — one config.</p>
 </p>
 
 <p align="center">
