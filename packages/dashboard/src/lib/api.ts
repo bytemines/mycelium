@@ -1,12 +1,20 @@
 import type { ToggleAction, DashboardState, ToolScanResult, MigrationPlan, MigrationResult, MarketplaceEntry, MarketplaceConfig, PluginInfo, MarketplaceSource } from "@mycelish/core";
 
-export async function fetchDashboardState(): Promise<DashboardState> {
-  const res = await fetch(`/api/state`);
+async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`API error ${res.status}: ${text || res.statusText}`);
+  }
   return res.json();
 }
 
+export async function fetchDashboardState(): Promise<DashboardState> {
+  return fetchJSON(`/api/state`);
+}
+
 export async function sendToggle(action: ToggleAction): Promise<void> {
-  await fetch(`/api/toggle`, {
+  await fetchJSON(`/api/toggle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(action),
@@ -14,48 +22,42 @@ export async function sendToggle(action: ToggleAction): Promise<void> {
 }
 
 export async function scanTools(): Promise<ToolScanResult[]> {
-  const res = await fetch(`/api/migrate/scan`);
-  return res.json();
+  return fetchJSON(`/api/migrate/scan`);
 }
 
 export async function applyMigration(plan: MigrationPlan): Promise<MigrationResult> {
-  const res = await fetch(`/api/migrate/apply`, {
+  return fetchJSON(`/api/migrate/apply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(plan),
   });
-  return res.json();
 }
 
 export async function clearMigration(toolId?: string): Promise<{ cleared: string[]; errors: string[] }> {
   const url = toolId ? `/api/migrate/clear?tool=${toolId}` : `/api/migrate/clear`;
-  const res = await fetch(url, { method: "POST" });
-  return res.json();
+  return fetchJSON(url, { method: "POST" });
 }
 
 export async function searchMarketplace(query: string, source?: string): Promise<MarketplaceEntry[]> {
   const params = new URLSearchParams({ q: query });
   if (source) params.set("source", source);
-  const res = await fetch(`/api/marketplace/search?${params}`);
-  return res.json();
+  return fetchJSON(`/api/marketplace/search?${params}`);
 }
 
 export async function installMarketplaceEntry(name: string, source: string, type?: string, url?: string): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(`/api/marketplace/install`, {
+  return fetchJSON(`/api/marketplace/install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, source, type, url }),
   });
-  return res.json();
 }
 
 export async function fetchMarketplaceRegistry(): Promise<Record<string, MarketplaceConfig>> {
-  const res = await fetch(`/api/marketplace/registry`);
-  return res.json();
+  return fetchJSON(`/api/marketplace/registry`);
 }
 
 export async function addMarketplaceToRegistry(name: string, config: MarketplaceConfig): Promise<void> {
-  await fetch(`/api/marketplace/registry`, {
+  await fetchJSON(`/api/marketplace/registry`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, ...config }),
@@ -63,80 +65,69 @@ export async function addMarketplaceToRegistry(name: string, config: Marketplace
 }
 
 export async function removeMarketplaceFromRegistry(name: string): Promise<void> {
-  await fetch(`/api/marketplace/registry/${encodeURIComponent(name)}`, { method: "DELETE" });
+  await fetchJSON(`/api/marketplace/registry/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
 export async function fetchPlugins(marketplace?: string): Promise<PluginInfo[]> {
   const params = marketplace ? `?marketplace=${marketplace}` : "";
-  const res = await fetch(`/api/plugins${params}`);
-  return res.json();
+  return fetchJSON(`/api/plugins${params}`);
 }
 
 export async function togglePlugin(name: string, enabled: boolean): Promise<{ success: boolean }> {
-  const res = await fetch(`/api/plugins/toggle`, {
+  return fetchJSON(`/api/plugins/toggle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, enabled }),
   });
-  return res.json();
 }
 
 export async function togglePluginItem(
   pluginName: string, itemName: string, enabled: boolean,
   options?: { global?: boolean; tool?: string },
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(`/api/plugins/${encodeURIComponent(pluginName)}/items/${encodeURIComponent(itemName)}/toggle`, {
+  return fetchJSON(`/api/plugins/${encodeURIComponent(pluginName)}/items/${encodeURIComponent(itemName)}/toggle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled, ...options }),
   });
-  return res.json();
 }
 
 export async function refreshMarketplaceCache(): Promise<{ cleared: number; refreshed: string[]; errors: string[] }> {
-  const res = await fetch(`/api/marketplace/refresh`, { method: "POST" });
-  return res.json();
+  return fetchJSON(`/api/marketplace/refresh`, { method: "POST" });
 }
 
 export async function fetchPopularSkills(): Promise<MarketplaceEntry[]> {
-  const res = await fetch(`/api/marketplace/popular`);
-  return res.json();
+  return fetchJSON(`/api/marketplace/popular`);
 }
 
 export async function removeSkill(name: string): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(`/api/remove/${encodeURIComponent(name)}?type=skill`, { method: "DELETE" });
-  return res.json();
+  return fetchJSON(`/api/remove/${encodeURIComponent(name)}?type=skill`, { method: "DELETE" });
 }
 
 export async function purgeItem(name: string, type?: string): Promise<{ success: boolean; name: string; message?: string; error?: string }> {
   const params = new URLSearchParams({ purge: "true" });
   if (type) params.set("type", type);
-  const res = await fetch(`/api/remove/${encodeURIComponent(name)}?${params}`, { method: "DELETE" });
-  return res.json();
+  return fetchJSON(`/api/remove/${encodeURIComponent(name)}?${params}`, { method: "DELETE" });
 }
 
 export async function removeMcp(name: string): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(`/api/remove/${encodeURIComponent(name)}?type=mcp`, { method: "DELETE" });
-  return res.json();
+  return fetchJSON(`/api/remove/${encodeURIComponent(name)}?type=mcp`, { method: "DELETE" });
 }
 
 export async function removePlugin(name: string): Promise<{ removed: string[]; errors: string[] }> {
-  const res = await fetch(`/api/remove/plugin/${encodeURIComponent(name)}`, { method: "DELETE" });
-  return res.json();
+  return fetchJSON(`/api/remove/plugin/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
 export async function auditMarketplaceEntry(name: string, source: string, type: string): Promise<{ safe: boolean; findings: Array<{ ruleId: string; category: string; severity: string; message: string; match: string }> }> {
-  const res = await fetch(`/api/marketplace/audit`, {
+  return fetchJSON(`/api/marketplace/audit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, source, type }),
   });
-  return res.json();
 }
 
 export async function fetchMyceliumVersion(): Promise<{ current: string; latest: string; hasUpdate: boolean }> {
-  const res = await fetch(`/api/marketplace/self-update`);
-  return res.json();
+  return fetchJSON(`/api/marketplace/self-update`);
 }
 
 export async function fetchItemContent(url: string, type = "skill", signal?: AbortSignal, name?: string): Promise<string | null> {
@@ -166,15 +157,13 @@ export async function fetchItemContent(url: string, type = "skill", signal?: Abo
 }
 
 export async function fetchAvailableUpdates(): Promise<{ name: string; source: string; type: string; installedVersion: string; latestVersion: string }[]> {
-  const res = await fetch(`/api/marketplace/updates`);
-  return res.json();
+  return fetchJSON(`/api/marketplace/updates`);
 }
 
-export async function updateMarketplaceEntry(name: string, source: MarketplaceSource): Promise<{ success: boolean; path?: string; error?: string }> {
-  const res = await fetch(`/api/marketplace/update`, {
+export async function updateMarketplaceEntry(name: string, source: MarketplaceSource, type?: string): Promise<{ success: boolean; path?: string; error?: string }> {
+  return fetchJSON(`/api/marketplace/update`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, source }),
+    body: JSON.stringify({ name, source, type }),
   });
-  return res.json();
 }

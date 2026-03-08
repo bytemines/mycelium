@@ -120,7 +120,7 @@ export function MarketplaceBrowser({ onClose: _onClose }: MarketplaceBrowserProp
     setUpdating(key);
     setError(null);
     try {
-      const result = await updateMarketplaceEntry(item.name, item.source);
+      const result = await updateMarketplaceEntry(item.name, item.source, item.type);
       if (result.success) {
         setResults(prev => prev.map(r =>
           r.name === item.name && r.source === item.source

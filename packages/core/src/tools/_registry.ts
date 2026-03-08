@@ -41,7 +41,34 @@ export function toolsWithCapability(cap: Capability): ToolDescriptor[] {
   return Object.values(TOOL_REGISTRY).filter(t => t.capabilities.includes(cap));
 }
 
+const VALID_MCP_FORMATS = new Set(["json", "jsonc", "toml", "yaml"]);
+
 export function validateRegistry(): string[] {
   const errors: string[] = [];
+  for (const desc of Object.values(TOOL_REGISTRY)) {
+    if (!desc.id) errors.push("Descriptor missing id");
+    if (!desc.display?.name) errors.push(`${desc.id ?? "unknown"}: missing display.name`);
+
+    const configPath = desc.paths?.mcp;
+    if (configPath === null || configPath === undefined) {
+      // null is valid (tool has no MCP config path)
+    } else if (typeof configPath === "string") {
+      if (!configPath) errors.push(`${desc.id}: configPath (mcp) is empty string`);
+    } else {
+      const hasAtLeastOneOS =
+        configPath.darwin || configPath.linux || configPath.win32;
+      if (!hasAtLeastOneOS) {
+        errors.push(`${desc.id}: configPath (mcp) has no OS paths`);
+      }
+    }
+
+    if (!desc.capabilities || desc.capabilities.length === 0) {
+      errors.push(`${desc.id}: capabilities is empty`);
+    }
+
+    if (!VALID_MCP_FORMATS.has(desc.mcp?.format)) {
+      errors.push(`${desc.id}: invalid mcpFormat "${desc.mcp?.format}"`);
+    }
+  }
   return errors;
 }

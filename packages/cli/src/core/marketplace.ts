@@ -3,6 +3,7 @@
  */
 import type {
   MarketplaceEntry,
+  MarketplaceEntryType,
   MarketplaceSearchResult,
   MarketplaceSource,
 } from "@mycelish/core";
@@ -118,6 +119,8 @@ interface InstallResult {
   error?: string;
   version?: string;
   contentHash?: string;
+  newComponents?: string[];
+  removedComponents?: string[];
 }
 
 export async function installFromMarketplace(
@@ -160,8 +163,9 @@ export async function installFromMarketplace(
     if (result.success) {
       try {
         await autoSync();
-      } catch {
-        // Sync failure shouldn't break the install
+      } catch (err) {
+        const log = getTracer().createTrace("marketplace");
+        log.warn({ scope: "install", op: "auto-sync", msg: `Post-install sync failed: ${err instanceof Error ? err.message : String(err)}` });
       }
     }
     return result;
@@ -409,7 +413,10 @@ async function getInstalledItems(): Promise<Map<string, { source: string; versio
   }
 
   if (needsSave) {
-    await saveStateManifest(MYCELIUM_HOME, manifest).catch(() => {});
+    await saveStateManifest(MYCELIUM_HOME, manifest).catch((err) => {
+      const log = getTracer().createTrace("marketplace");
+      log.warn({ scope: "manifest", op: "backfill-save", msg: `Failed to save backfilled hashes: ${err instanceof Error ? err.message : String(err)}` });
+    });
   }
 
   return map;
@@ -519,8 +526,12 @@ async function enrichWithLatestHashes(entries: MarketplaceEntry[]): Promise<Mark
             const content = await res.text();
             hashMap.set(e.name, `#${computeContentHash(content)}`);
           }
-        } catch {
-          // Non-critical — skip (includes abort)
+        } catch (err) {
+          // Non-critical — skip (includes AbortError from overall timeout)
+          if (err instanceof Error && err.name !== "AbortError") {
+            const log = getTracer().createTrace("marketplace");
+            log.warn({ scope: "enrich", op: "hash-fetch", item: e.name, msg: `Hash fetch failed: ${err.message}` });
+          }
         }
       });
       await Promise.allSettled(batch);
@@ -570,10 +581,132 @@ export async function checkForUpdates(): Promise<{ name: string; source: string;
 // Update
 // ============================================================================
 
-export async function updateSkill(
+export async function updateItem(
   name: string,
-  source: MarketplaceSource
-): Promise<{ success: boolean; path?: string; error?: string }> {
-  const entry: MarketplaceEntry = { name, description: "", source, type: "skill" };
-  return installFromMarketplace(entry);
+  source: MarketplaceSource,
+  type?: MarketplaceEntryType,
+  url?: string
+): Promise<{ success: boolean; path?: string; error?: string; newComponents?: string[]; removedComponents?: string[] }> {
+  // Force-refresh cache so we pick up newly added items in the source repo
+  const results = await searchMarketplace(name, undefined, { forceRefresh: true });
+  const match = results.find(e => e.name === name && e.source === source);
+  if (match) {
+    type ??= match.type;
+    url ??= match.url;
+  }
+  const entry: MarketplaceEntry = { name, description: "", source, type: type ?? "skill", url };
+  const result = await installFromMarketplace(entry);
+
+  // After updating any component, sync ALL components from the same source
+  // This ensures new items added to the repo get installed automatically
+  // and items removed from the repo get cleaned up
+  if (result.success) {
+    const allSourceEntries = await searchMarketplace("", source, { forceRefresh: true });
+    const { added, removed } = await syncSourceComponents(source, allSourceEntries);
+    if (added.length > 0 || removed.length > 0) {
+      const parts = [result.path];
+      if (added.length > 0) parts.push(`+${added.length} new: ${added.join(", ")}`);
+      if (removed.length > 0) parts.push(`-${removed.length} removed: ${removed.join(", ")}`);
+      result.path = parts.join(" | ");
+      result.newComponents = added;
+      result.removedComponents = removed;
+    }
+  }
+
+  return result;
 }
+
+/**
+ * Sync components from a source: install new items, remove deleted items.
+ * Called during updates to keep plugins in sync with their repos.
+ */
+async function syncSourceComponents(
+  source: MarketplaceSource,
+  allEntries: MarketplaceEntry[]
+): Promise<{ added: string[]; removed: string[] }> {
+  const log = getTracer().createTrace("marketplace");
+
+  // Guard: if search returned empty results, skip removal to prevent data loss
+  // (could be an API/cache failure rather than all items being deleted)
+  if (allEntries.length === 0) {
+    log.warn({ scope: "sync", op: "skip", msg: `Empty results for source ${source}, skipping sync to prevent data loss` });
+    return { added: [], removed: [] };
+  }
+
+  const installed = await getInstalledItems();
+  const sourceEntries = allEntries.filter(e => e.source === source && e.type !== "plugin");
+  const sourceItemNames = new Set(sourceEntries.map(e => e.name));
+  const added: string[] = [];
+  const removed: string[] = [];
+
+  // Install new components not yet installed
+  for (const entry of sourceEntries) {
+    if (!installed.has(entry.name)) {
+      try {
+        const res = await installFromMarketplace(entry);
+        if (res.success) added.push(entry.name);
+      } catch (err) {
+        log.warn({ scope: "sync", op: "install-failed", item: entry.name, msg: `Failed to install: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    }
+  }
+
+  // Remove components that were deleted from the source repo
+  for (const [itemName, info] of installed) {
+    if (info.source === source && !sourceItemNames.has(itemName)) {
+      try {
+        await removeItemFromSource(itemName, log);
+        removed.push(itemName);
+      } catch (err) {
+        log.warn({ scope: "sync", op: "remove-failed", item: itemName, msg: `Failed to remove: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    }
+  }
+
+  return { added, removed };
+}
+
+/**
+ * Remove an item installed from a marketplace source.
+ * Marks as deleted in manifest and purges files from global dir.
+ * This is a core-layer helper to avoid importing from commands/.
+ */
+async function removeItemFromSource(
+  name: string,
+  log: ReturnType<ReturnType<typeof getTracer>["createTrace"]>,
+): Promise<void> {
+  const manifest = await loadStateManifest(MYCELIUM_HOME);
+  if (!manifest) return;
+
+  // Mark as deleted in manifest
+  for (const { key } of ITEM_SECTIONS) {
+    const section = manifest[key] as Record<string, ItemConfig> | undefined;
+    if (section?.[name]) {
+      section[name].state = "deleted";
+    }
+  }
+  await saveStateManifest(MYCELIUM_HOME, manifest);
+
+  // Purge files from global dir
+  const DIR_NAMES = ["skills", "mcps", "agents", "commands", "rules", "hooks"];
+  for (const dirName of DIR_NAMES) {
+    const dirPath = path.join(MYCELIUM_DIR, dirName, name);
+    try {
+      await fs.rm(dirPath, { recursive: true, force: true });
+    } catch {
+      // Directory doesn't exist, fine
+    }
+    for (const ext of [".md", ".yaml", ".yml"]) {
+      try {
+        await fs.unlink(path.join(MYCELIUM_DIR, dirName, `${name}${ext}`));
+      } catch {
+        // File doesn't exist, fine
+      }
+    }
+  }
+
+  log.info({ scope: "sync", op: "removed", item: name, msg: `Removed ${name} from manifest and files` });
+}
+
+/** @deprecated Use updateItem instead */
+export const updateSkill = updateItem;

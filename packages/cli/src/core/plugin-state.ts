@@ -160,7 +160,8 @@ export async function getLivePluginState(projectRoot?: string): Promise<PluginIn
   return Array.from(pluginMap.entries()).map(([name, data]) => {
     const allItems = [...data.skills, ...data.agents, ...data.commands, ...data.hooks, ...data.libs];
     const disabledList = allItems.filter(i => disabledItems.has(i));
-    const allEnabled = disabledList.length === 0;
+    // Plugin is enabled if at least one component is enabled (partial disable = still enabled)
+    const allDisabled = allItems.length > 0 && disabledList.length === allItems.length;
 
     const parts: string[] = [];
     if (data.skills.length) parts.push(`${data.skills.length} skills`);
@@ -174,7 +175,7 @@ export async function getLivePluginState(projectRoot?: string): Promise<PluginIn
       marketplace: data.marketplace,
       version: "",
       description: parts.join(", "),
-      enabled: allEnabled,
+      enabled: !allDisabled,
       skills: data.skills,
       agents: data.agents,
       commands: data.commands,

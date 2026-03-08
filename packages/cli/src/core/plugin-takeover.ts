@@ -93,7 +93,9 @@ async function findLatestVersion(pluginDir: string): Promise<string | null> {
     const entries = await fs.readdir(pluginDir, { withFileTypes: true });
     const versions = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
     return versions[versions.length - 1] ?? null;
-  } catch {
+  } catch (err) {
+    const log = getTracer().createTrace("plugin-cache");
+    log.warn({ scope: "plugin", op: "find-version", msg: `Could not read plugin directory ${pluginDir}: ${(err as Error).message}`, path: pluginDir });
     return null;
   }
 }
@@ -104,7 +106,9 @@ async function readSettings(): Promise<Record<string, unknown>> {
   if (!raw) return {};
   try {
     return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
+  } catch (err) {
+    const log = getTracer().createTrace("plugin-settings");
+    log.warn({ scope: "plugin", op: "read-settings", msg: `Failed to parse settings.json, using empty settings: ${(err as Error).message}`, path: SETTINGS_PATH });
     return {};
   }
 }
@@ -190,8 +194,9 @@ async function findPluginsWithComponent(componentName: string): Promise<TakenOve
         }
       }
     }
-  } catch {
-    // cache doesn't exist
+  } catch (err) {
+    const log = getTracer().createTrace("plugin-scan");
+    log.warn({ scope: "plugin", op: "scan-cache", msg: `Plugin cache directory not readable: ${(err as Error).message}`, path: PLUGIN_CACHE_DIR });
   }
 
   return matches;
@@ -285,8 +290,8 @@ export async function syncPluginSymlinks(manifestDir?: string): Promise<{ create
           log.warn({ scope: "plugin", op: "symlink", msg: `Failed to read symlink ${fullPath}: ${(err as Error).message}`, path: fullPath });
         }
       }
-    } catch {
-      // dir doesn't exist — expected for tools that don't use this component type
+    } catch (err) {
+      log.warn({ scope: "plugin", op: "scan-orphans", msg: `Could not read component directory ${componentDir}: ${(err as Error).message}`, path: componentDir });
     }
   }
 
@@ -322,7 +327,7 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
       await fs.access(pluginInfo.cachePath);
       cacheExists = true;
     } catch {
-      // Cache missing
+      // Expected — cache missing means plugin was uninstalled
     }
 
     // Also check if plugin is still installed in Claude Code
@@ -337,7 +342,9 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
             installedInClaude = pluginId in data.plugins;
           }
         }
-      } catch { /* no file */ }
+      } catch (err) {
+        log.warn({ scope: "plugin", op: "cleanup", msg: `Failed to read installed_plugins.json: ${(err as Error).message}`, item: pluginId });
+      }
     }
 
     if (cacheExists && installedInClaude) continue;
@@ -372,7 +379,9 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
         await writeSettings(settings);
         log.info({ scope: "plugin", op: "cleanup", msg: `Removed ${pluginId} from enabledPlugins`, item: pluginId });
       }
-    } catch { /* best effort */ }
+    } catch (err) {
+      log.warn({ scope: "plugin", op: "cleanup", msg: `Failed to clean enabledPlugins for ${pluginId}: ${(err as Error).message}`, item: pluginId });
+    }
 
     // 4. Delete source files from ~/.mycelium/global/ for all plugin components
     const allComponents = [...(pluginInfo.allSkills ?? []), ...(pluginInfo.allComponents ?? [])];
@@ -381,10 +390,14 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
       // Try skills dir (directory), agents/commands (file)
       for (const [, info] of Object.entries(PLUGIN_COMPONENT_DIRS)) {
         const globalDir = path.join(dir, "global", info.subdir, name);
-        try { await fs.rm(globalDir, { recursive: true, force: true }); } catch { /* noop */ }
+        try { await fs.rm(globalDir, { recursive: true, force: true }); } catch (err) {
+          log.warn({ scope: "plugin", op: "cleanup", msg: `Failed to remove global dir ${globalDir}: ${(err as Error).message}`, item: name, path: globalDir });
+        }
         if (info.ext) {
           const globalFile = path.join(dir, "global", info.subdir, name + info.ext);
-          try { await fs.unlink(globalFile); } catch { /* noop */ }
+          try { await fs.unlink(globalFile); } catch (err) {
+            log.warn({ scope: "plugin", op: "cleanup", msg: `Failed to remove global file ${globalFile}: ${(err as Error).message}`, item: name, path: globalFile });
+          }
         }
       }
     }
@@ -433,9 +446,13 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
           manifestDirty = true;
           log.info({ scope: "plugin", op: "cleanup", msg: `Removed stale symlink from global/skills: ${entry.name} → ${target}`, item: entry.name });
         }
-      } catch { /* broken symlink */ }
+      } catch (err) {
+        log.warn({ scope: "plugin", op: "cleanup", msg: `Failed to read symlink ${fullPath}: ${(err as Error).message}`, path: fullPath });
+      }
     }
-  } catch { /* dir doesn't exist */ }
+  } catch (err) {
+    log.warn({ scope: "plugin", op: "cleanup", msg: `Could not read global skills directory: ${(err as Error).message}`, path: globalSkillsDir });
+  }
 
   if (manifestDirty) {
     await saveStateManifest(dir, manifest);

@@ -106,7 +106,7 @@ Each log entry has 16 dimensions: ts, traceId, level, cmd, scope, op, tool, item
 Single source of truth for all tool knowledge. 8 tools: Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, Cursor, VS Code, Antigravity.
 
 - `_types.ts` — `ToolDescriptor`, `Capability`, `McpFormat`, `McpEntryShape`, `PathSpec`
-- `_registry.ts` — `TOOL_REGISTRY`, `ALL_TOOL_IDS`, `resolvePath()`, `toolsWithCapability()`, `toolsForScope()`
+- `_registry.ts` — `TOOL_REGISTRY`, `ALL_TOOL_IDS`, `resolvePath()`, `toolsWithCapability()`
 - One file per tool (e.g., `claude-code.ts`) exporting a `ToolDescriptor`
 
 **Adding a new tool**: 1 descriptor file + 1 import in `_registry.ts` + 1 SVG icon.

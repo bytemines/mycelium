@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { searchMarketplace, installFromMarketplace, getPopularSkills, updateSkill, checkForUpdates, checkMyceliumUpdate } from "../core/marketplace.js";
+import { searchMarketplace, installFromMarketplace, getPopularSkills, updateItem, checkForUpdates, checkMyceliumUpdate } from "../core/marketplace.js";
 import {
   loadMarketplaceRegistry,
   addMarketplace,
@@ -178,12 +178,12 @@ export function registerMarketplaceRoutes(app: Express): void {
   }));
 
   router.post("/update", asyncHandler(async (req, res) => {
-    const { name, source } = req.body || {};
+    const { name, source, type, url } = req.body || {};
     if (!name || !source) {
       res.status(400).json({ success: false, error: "Missing required fields: name, source" });
       return;
     }
-    const result = await updateSkill(name, source);
+    const result = await updateItem(name, source, type, url);
     res.json(result);
   }));
 

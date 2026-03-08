@@ -15,11 +15,14 @@ export const toolIdSchema = z.enum(TOOL_ID_VALUES);
 // MCP Schemas
 // ============================================================================
 
+export const itemStateSchema = z.enum(["enabled", "disabled", "deleted"]);
+
 export const mcpServerConfigSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).optional(),
   env: z.record(z.string(), z.string()).optional(),
-  enabled: z.boolean().optional().default(true),
+  state: itemStateSchema.optional(),
+  source: z.string().optional(),
   tools: z.array(toolIdSchema).optional(),
   excludeTools: z.array(toolIdSchema).optional(),
 });
@@ -39,7 +42,8 @@ export const skillManifestSchema = z.object({
   author: z.string().optional(),
   tools: z.array(toolIdSchema).optional(),
   excludeTools: z.array(toolIdSchema).optional(),
-  enabled: z.boolean().optional().default(true),
+  state: itemStateSchema.optional(),
+  source: z.string().optional(),
 });
 
 // ============================================================================
@@ -52,6 +56,7 @@ export const manifestSchema = z.object({
     toolIdSchema,
     z.object({
       enabled: z.boolean(),
+      state: itemStateSchema.optional(),
     })
   ),
 });
