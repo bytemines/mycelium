@@ -1,5 +1,32 @@
 # @mycelish/core
 
+## 0.3.3
+
+### Patch Changes
+
+- ## v0.3.3
+
+  ### 🛡️ Reliability & Data Safety
+  - **Marketplace data loss guard** — empty API/cache responses no longer trigger removal of installed items
+  - **Schema/type alignment** — Zod schemas now match TypeScript interfaces (`state: ItemState` replaces `enabled: boolean`, `source` field added)
+  - **Dashboard API hardening** — all 20+ API calls now check HTTP status codes instead of silently parsing error responses
+  - **Error visibility** — replaced 15 silent `catch {}` blocks with traced `log.warn()` in plugin-takeover and marketplace
+
+  ### 🔧 Fixes
+  - Fix plugin enabled state — plugins with at least one enabled component now show as enabled (was requiring all components enabled)
+  - Fix Cursor icon with correct multi-color SVG
+  - Fix graph layout shift on plugin toggle (data-only changes no longer trigger re-layout)
+  - Fix edge click interaction disabled via CSS
+  - Use static CI badge to fix broken shields.io rendering
+  - Replace private project references in test fixtures
+
+  ### 🏗️ Internal
+  - Tool registry `validateRegistry()` now performs real descriptor validation (5 checks)
+  - Remove layer violation — core no longer imports from commands layer
+  - Route imports updated from deprecated `updateSkill` to `updateItem`
+  - Remove MiniMap, React Flow attribution, unused imports
+  - Remove non-persistent edge toggle and drag-to-connect features
+
 ## 0.3.2
 
 ### Patch Changes
