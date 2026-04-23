@@ -241,9 +241,12 @@ export async function createAndCloneRepo(repoName: string): Promise<void> {
   console.log(`Creating private repo: ${repoName}`);
   execFileSync("gh", ["repo", "create", repoName, "--private", "--description", "Mycelium AI tool config sync"], { stdio: "pipe" });
 
-  // Init locally, add remote, push
+  // Init locally, force branch name to main (overrides user's init.defaultBranch
+  // so every machine ends up on the same branch regardless of local git config),
+  // add remote, push.
   await ensureDir(myceliumDir);
   execFileSync("git", ["-C", myceliumDir, "init"], { stdio: "pipe" });
+  execFileSync("git", ["-C", myceliumDir, "branch", "-M", "main"], { stdio: "pipe" });
   const url = getCloneUrl(repoName);
   execFileSync("git", ["-C", myceliumDir, "remote", "add", "origin", url], { stdio: "pipe" });
 }
@@ -352,6 +355,8 @@ export async function autoSetup(options: {
         // Repo exists but not linked — add remote
         try {
           execFileSync("git", ["-C", myceliumDir, "init"], { stdio: "pipe" });
+          // Force branch name to main — user's init.defaultBranch may differ.
+          execFileSync("git", ["-C", myceliumDir, "branch", "-M", "main"], { stdio: "pipe" });
           execFileSync("git", ["-C", myceliumDir, "remote", "add", "origin", getCloneUrl(repoName)], { stdio: "pipe" });
           console.log(`Linked to existing repo: ${repoName}`);
         } catch {
@@ -427,20 +432,26 @@ export async function autoSetup(options: {
   if (hasGitRemote()) {
     try {
       const dir = myceliumDir;
+      // Upgrade path: a repo created by mycelium <= 0.3.3 may still be on `master`
+      // locally. Force `main` here too so push below works deterministically.
+      try { execFileSync("git", ["-C", dir, "branch", "-M", "main"], { stdio: "pipe" }); } catch { /* unborn HEAD or already main — ignore */ }
       execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "pipe" });
       try {
         execFileSync("git", ["-C", dir, "commit", "-m", "mycelium init: initial config"], { stdio: "pipe" });
-        try {
-          execFileSync("git", ["-C", dir, "push", "-u", "origin", "main"], { stdio: "pipe" });
-        } catch {
-          execFileSync("git", ["-C", dir, "push", "-u", "origin", "master"], { stdio: "pipe" });
-        }
-        console.log("\nConfig pushed to GitHub.");
       } catch {
-        // Nothing to commit or already pushed
+        // Nothing to commit — still attempt push below in case local is ahead.
+      }
+      try {
+        execFileSync("git", ["-C", dir, "push", "-u", "origin", "main"], { stdio: "pipe" });
+        console.log("\nConfig pushed to GitHub.");
+      } catch (err) {
+        // Surface push failures (previously silently swallowed) — users could
+        // hit "non-fast-forward" if remote main has divergent history.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`\nWarning: push to origin/main failed (config is local-only). Resolve and run \`mycelium push\`.\n${msg}`);
       }
     } catch {
-      // Push failed — non-critical
+      // Outer: git add failed — non-critical for init flow.
     }
   }
 

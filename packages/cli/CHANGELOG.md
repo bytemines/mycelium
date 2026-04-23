@@ -1,5 +1,15 @@
 # @mycelish/cli
 
+## 0.3.4
+
+### Patch Changes
+
+- Force `main` as the local branch name during `mycelium init` so every machine lands on the same branch regardless of user's `git config init.defaultBranch`.
+
+  Previously, if one user had `init.defaultBranch=master` (old Git default) and another had `init.defaultBranch=main`, they would initialize local branches with different names and push to different remote branches on the same shared config repo. A second machine cloning the repo could land on an empty branch while the other user's content lived on the other.
+
+  Fix: after `git init`, run `git branch -M main` to override the local default, and drop the `master` push fallback. Upgrade path from <= 0.3.3 also forces `main` before push, and push failures now surface a warning (previously silently swallowed). Deterministic branch state across machines.
+
 ## 0.3.3
 
 ### Patch Changes
