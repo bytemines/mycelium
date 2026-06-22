@@ -120,31 +120,38 @@ export class TraceStore {
 
   insert(entry: LogEntry): void {
     if (!this.insertStmt) return;
-    this.insertStmt.run(
-      entry.ts,
-      entry.traceId,
-      entry.level,
-      entry.cmd,
-      entry.scope,
-      entry.op,
-      entry.tool ?? null,
-      entry.item ?? null,
-      entry.itemType ?? null,
-      entry.state ?? null,
-      entry.source ?? null,
-      entry.configLevel ?? null,
-      entry.phase ?? null,
-      entry.method ?? null,
-      entry.format ?? null,
-      entry.entryShape ?? null,
-      entry.path ?? null,
-      entry.progress ?? null,
-      entry.project ?? null,
-      entry.msg,
-      entry.dur ?? null,
-      entry.error ?? null,
-      entry.data ? JSON.stringify(entry.data) : null,
-    );
+    // node:sqlite rejects `undefined` bindings (better-sqlite3 coerced them to NULL),
+    // and a tracing insert must never throw into the calling command — so coerce
+    // every nullable field to null and swallow any bind/exec error.
+    try {
+      this.insertStmt.run(
+        entry.ts,
+        entry.traceId,
+        entry.level,
+        entry.cmd ?? null,
+        entry.scope ?? null,
+        entry.op ?? null,
+        entry.tool ?? null,
+        entry.item ?? null,
+        entry.itemType ?? null,
+        entry.state ?? null,
+        entry.source ?? null,
+        entry.configLevel ?? null,
+        entry.phase ?? null,
+        entry.method ?? null,
+        entry.format ?? null,
+        entry.entryShape ?? null,
+        entry.path ?? null,
+        entry.progress ?? null,
+        entry.project ?? null,
+        entry.msg,
+        entry.dur ?? null,
+        entry.error ?? null,
+        entry.data ? JSON.stringify(entry.data) : null,
+      );
+    } catch {
+      // Optional tracing — never crash the caller over a bad row.
+    }
   }
 
   query(opts: TraceQueryOptions): LogEntry[] {
