@@ -5,6 +5,24 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
+describe("TraceStore resilience", () => {
+  it("disables tracing instead of throwing when the DB cannot open", () => {
+    // A directory path makes SQLite fail to open — the store must fail soft.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mycelium-trace-bad-"));
+    try {
+      const store = new TraceStore(tmpDir);
+      expect(store.enabled).toBe(false);
+      const entry = createLogEntry({ traceId: "t", level: "info", cmd: "sync", scope: "mcp", op: "write", msg: "x" });
+      expect(() => store.insert(entry)).not.toThrow();
+      expect(store.query({})).toEqual([]);
+      expect(() => store.vacuum()).not.toThrow();
+      expect(() => store.close()).not.toThrow();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("TraceStore", () => {
   let store: TraceStore;
   let dbPath: string;
@@ -35,6 +53,15 @@ describe("TraceStore", () => {
     const results = store.query({ tool: "cursor" });
     expect(results).toHaveLength(1);
     expect(results[0].item).toBe("postgres-mcp");
+  });
+
+  it("filters by a comma-separated list (SQL IN clause)", () => {
+    for (const tool of ["cursor", "vscode", "claude-code"]) {
+      store.insert(createLogEntry({ traceId: `t-${tool}`, level: "info", cmd: "sync", scope: "mcp", op: "write", msg: "x", tool }));
+    }
+    const results = store.query({ tool: "cursor,vscode" });
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.tool).sort()).toEqual(["cursor", "vscode"]);
   });
 
   it("filters by multiple dimensions", () => {

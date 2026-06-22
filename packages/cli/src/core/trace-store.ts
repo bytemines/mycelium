@@ -1,5 +1,12 @@
-import Database from "better-sqlite3";
+import { createRequire } from "node:module";
+import type { DatabaseSync, StatementSync } from "node:sqlite";
 import type { LogEntry } from "@mycelish/core";
+
+// Uses Node's built-in SQLite (node:sqlite, Node >= 22) — no native module to compile,
+// so no ABI breakage on Node upgrades. node:sqlite is loaded LAZILY (not a static import)
+// so that even if it's absent/flag-gated on an older Node, the failure is caught by the
+// constructor and tracing degrades to a no-op — it can never crash a core command like `sync`.
+const requireCjs = createRequire(import.meta.url);
 
 export interface TraceQueryOptions {
   traceId?: string;
@@ -25,6 +32,9 @@ export interface TraceStoreOptions {
   maxRows?: number;
 }
 
+/** Default row cap for a query when no explicit limit is given. */
+const DEFAULT_QUERY_LIMIT = 500;
+
 const COLUMNS = [
   "ts", "trace_id", "level", "cmd", "scope", "op", "tool", "item",
   "item_type", "state", "source", "config_level", "phase", "method",
@@ -33,23 +43,41 @@ const COLUMNS = [
 ] as const;
 
 export class TraceStore {
-  private db: Database.Database;
+  private db: DatabaseSync | null = null;
   private maxRows: number;
-  private insertStmt: Database.Statement;
+  private insertStmt: StatementSync | null = null;
+  private static warned = false;
 
   constructor(dbPath: string, opts?: TraceStoreOptions) {
     this.maxRows = opts?.maxRows ?? 50_000;
-    this.db = new Database(dbPath);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("synchronous = NORMAL");
-    this.init();
-    this.insertStmt = this.db.prepare(`
-      INSERT INTO events (${COLUMNS.join(", ")})
-      VALUES (${COLUMNS.map(() => "?").join(", ")})
-    `);
+    try {
+      const sqlite = requireCjs("node:sqlite") as typeof import("node:sqlite");
+      this.db = new sqlite.DatabaseSync(dbPath);
+      this.db.exec("PRAGMA journal_mode = WAL");
+      this.db.exec("PRAGMA synchronous = NORMAL");
+      this.init();
+      this.insertStmt = this.db.prepare(`
+        INSERT INTO events (${COLUMNS.join(", ")})
+        VALUES (${COLUMNS.map(() => "?").join(", ")})
+      `);
+    } catch (err) {
+      // Tracing is optional — never let a SQLite problem crash the command.
+      this.db = null;
+      this.insertStmt = null;
+      if (!TraceStore.warned) {
+        TraceStore.warned = true;
+        console.warn(`[mycelium] tracing disabled: ${(err as Error).message.split("\n")[0]}`);
+      }
+    }
+  }
+
+  /** True when the backing store is usable. */
+  get enabled(): boolean {
+    return this.db !== null;
   }
 
   private init(): void {
+    if (!this.db) return;
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,6 +119,7 @@ export class TraceStore {
   }
 
   insert(entry: LogEntry): void {
+    if (!this.insertStmt) return;
     this.insertStmt.run(
       entry.ts,
       entry.traceId,
@@ -119,8 +148,9 @@ export class TraceStore {
   }
 
   query(opts: TraceQueryOptions): LogEntry[] {
+    if (!this.db) return [];
     const conditions: string[] = [];
-    const params: unknown[] = [];
+    const params: (string | number)[] = [];
 
     const addFilter = (col: string, val: string | undefined) => {
       if (val !== undefined) {
@@ -157,7 +187,7 @@ export class TraceStore {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const limit = opts.limit ? `LIMIT ${opts.limit}` : "LIMIT 500";
+    const limit = `LIMIT ${opts.limit ?? DEFAULT_QUERY_LIMIT}`;
 
     const rows = this.db.prepare(`SELECT * FROM events ${where} ORDER BY ts DESC ${limit}`).all(...params) as Record<string, unknown>[];
 
@@ -194,6 +224,7 @@ export class TraceStore {
   }
 
   vacuum(): void {
+    if (!this.db) return;
     const count = (this.db.prepare("SELECT COUNT(*) as c FROM events").get() as { c: number }).c;
     if (count > this.maxRows) {
       const deleteCount = count - this.maxRows;
@@ -202,6 +233,6 @@ export class TraceStore {
   }
 
   close(): void {
-    this.db.close();
+    this.db?.close();
   }
 }
