@@ -64,6 +64,10 @@ export interface TakenOverPlugin {
   plugin: string;
   version: string;
   cachePath: string;
+  /** Hostname of the machine that captured this takeover. Used to attribute the
+   *  record to its owning machine so cleanup never deletes another machine's items
+   *  from the shared config. Optional for backward compat with pre-hostname records. */
+  hostname?: string;
   allSkills: string[];
   enabledSkills: string[];
 }
@@ -188,6 +192,7 @@ async function findPluginsWithComponent(componentName: string): Promise<TakenOve
             plugin: pl.name,
             version,
             cachePath: versionRoot,
+            hostname: os.hostname(),
             allSkills: skills,
             enabledSkills: skills,
           });
@@ -321,17 +326,23 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
   let manifestDirty = false;
 
   const home = os.homedir();
+  const thisHost = os.hostname();
 
   for (const [pluginId, pluginInfo] of Object.entries(manifest.takenOverPlugins)) {
-    // A takeover's cachePath is an absolute path on the machine that captured it
-    // (e.g. /Users/alice/.claude/plugins/cache/...). On any OTHER machine that path
-    // can never exist, so treating "cache missing" as "orphaned" below would delete
-    // another machine's plugin items from the SHARED manifest + global files — and a
-    // subsequent `push` would propagate that loss to every machine. Only reconcile
-    // takeovers whose cachePath belongs to THIS machine's home; leave foreign ones
-    // untouched (they stay in takenOverPlugins, so the pass below also keeps them).
-    if (pluginInfo.cachePath !== home && !pluginInfo.cachePath.startsWith(home + path.sep)) {
-      log.info({ scope: "plugin", op: "cleanup", msg: `Skipping takeover captured on another machine: ${pluginId} (cachePath ${pluginInfo.cachePath} not under ${home})`, item: pluginId });
+    // Only reconcile takeovers that belong to THIS machine. A takeover captured on
+    // another machine must never be judged "orphaned" here, or cleanup would delete
+    // its manifest + global files from the SHARED config and a later `push` would
+    // propagate that loss to every machine.
+    //
+    // Prefer the recorded capturing hostname (exact, and correct even for fleets
+    // that share an identical $HOME). Fall back to the absolute-cachePath-under-home
+    // heuristic for legacy records written before `hostname` was tracked — that path
+    // is on the capturing machine, so on any other machine it won't be under $HOME.
+    const isThisMachine = pluginInfo.hostname
+      ? pluginInfo.hostname === thisHost
+      : pluginInfo.cachePath === home || pluginInfo.cachePath.startsWith(home + path.sep);
+    if (!isThisMachine) {
+      log.info({ scope: "plugin", op: "cleanup", msg: `Skipping takeover captured on another machine: ${pluginId} (host=${pluginInfo.hostname ?? "?"}, cachePath ${pluginInfo.cachePath})`, item: pluginId });
       continue;
     }
 
