@@ -320,7 +320,21 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
   const cleaned: string[] = [];
   let manifestDirty = false;
 
+  const home = os.homedir();
+
   for (const [pluginId, pluginInfo] of Object.entries(manifest.takenOverPlugins)) {
+    // A takeover's cachePath is an absolute path on the machine that captured it
+    // (e.g. /Users/alice/.claude/plugins/cache/...). On any OTHER machine that path
+    // can never exist, so treating "cache missing" as "orphaned" below would delete
+    // another machine's plugin items from the SHARED manifest + global files — and a
+    // subsequent `push` would propagate that loss to every machine. Only reconcile
+    // takeovers whose cachePath belongs to THIS machine's home; leave foreign ones
+    // untouched (they stay in takenOverPlugins, so the pass below also keeps them).
+    if (pluginInfo.cachePath !== home && !pluginInfo.cachePath.startsWith(home + path.sep)) {
+      log.info({ scope: "plugin", op: "cleanup", msg: `Skipping takeover captured on another machine: ${pluginId} (cachePath ${pluginInfo.cachePath} not under ${home})`, item: pluginId });
+      continue;
+    }
+
     // Check if cache still exists
     let cacheExists = false;
     try {
