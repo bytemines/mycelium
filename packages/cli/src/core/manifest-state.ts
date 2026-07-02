@@ -52,6 +52,9 @@ export interface ManifestConfig {
   takenOverPlugins?: Record<string, {
     version: string;
     cachePath: string;
+    /** Hostname of the machine that captured this takeover, so cleanup on another
+     *  host never treats it as orphaned. Optional for pre-hostname records. */
+    hostname?: string;
     allSkills: string[];
     allComponents?: string[];
   }>;
