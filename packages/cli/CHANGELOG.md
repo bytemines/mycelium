@@ -1,5 +1,16 @@
 # @mycelish/cli
 
+## 0.3.5
+
+### Patch Changes
+
+- [`fcc3a91`](https://github.com/bytemines/mycelium/commit/fcc3a91e6b6c5ad0e8c7c0562957a6244da6962c) Thanks [@bytemines](https://github.com/bytemines)! - Stop deleting other machines' plugin items on sync. `cleanOrphanedTakeovers` judged a takeover "orphaned" by `fs.access(cachePath)`, but `cachePath` is an absolute path on the machine that captured the plugin (e.g. `/Users/alice/.claude/plugins/cache/...`). On any other machine that path never exists, so `mycelium sync`/`pull` deleted the plugin's manifest entries and `~/.mycelium/global/` source files — and a later `push` propagated the loss to every machine. Takeovers now record the capturing machine's `hostname`, and cleanup only reconciles takeovers owned by the current host (falling back to a cachePath-under-`$HOME` check for legacy records) — so items from other machines stay intact, including on fleets that share an identical home path. Genuine same-machine orphans are still cleaned.
+
+- [`7c81066`](https://github.com/bytemines/mycelium/commit/7c810662cc10442054a62d56fe1addaf80ab6230) Thanks [@bytemines](https://github.com/bytemines)! - Zero-native-dependency tracing: migrate `TraceStore` from `better-sqlite3` (native, ABI-sensitive) to Node's built-in `node:sqlite`. `mycelium sync` no longer crashes after a Node upgrade (ABI mismatch), and tracing works with no recompile. Tracing also fails soft now — a SQLite problem disables tracing instead of crashing the command. Removes the `better-sqlite3` dependency; CI now tests across Node 22/24/26.
+
+- Updated dependencies [[`e4dbb12`](https://github.com/bytemines/mycelium/commit/e4dbb120a50e1f51b046963492c3c8803d37e7ce)]:
+  - @mycelish/core@0.3.5
+
 ## 0.3.4
 
 ### Patch Changes
