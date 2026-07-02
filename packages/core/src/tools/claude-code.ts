@@ -14,10 +14,10 @@ export const claudeCode: ToolDescriptor = {
     projectAgents: ".claude/agents/",
     rules: null,
     hooks: "~/.claude/settings.json",
-    commands: null,
+    commands: "~/.claude/commands/",
     backupDirs: ["~/.claude", "~/"],
   },
   mcp: { format: "json", key: "mcpServers", entryShape: "standard" },
-  capabilities: ["mcp", "skills", "agents", "hooks"],
+  capabilities: ["mcp", "skills", "agents", "hooks", "commands"],
   enabled: true,
 };
