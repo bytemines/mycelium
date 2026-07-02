@@ -7,6 +7,7 @@
  * - mycelium disable <name> --tool <id>  # Disable item for specific tool only
  */
 
+import * as os from "node:os";
 import { Command } from "commander";
 import { type ToolId, ALL_TOOL_IDS } from "@mycelish/core";
 import { getTracer } from "../core/global-tracer.js";
@@ -164,6 +165,10 @@ export async function disableSkillOrMcp(options: DisableOptions): Promise<Disabl
         manifest.takenOverPlugins[pluginInfo.pluginId] = {
           version: pluginInfo.version,
           cachePath: pluginInfo.cachePath,
+          // Record the capturing machine so cleanup on another host never treats
+          // this takeover as orphaned (see cleanOrphanedTakeovers) — protects fleets
+          // that share an identical $HOME, where cachePath alone can't attribute it.
+          hostname: os.hostname(),
           allSkills: pluginInfo.allSkills,
           allComponents: allComponentNames,
         };
