@@ -302,7 +302,14 @@ export class GenericAdapter extends BaseToolAdapter {
           command: [mcp.command, ...(mcp.args || [])],
           enabled: true,
         };
-        if (hasEnv) e.environment = mcp.env;
+        if (hasEnv) {
+          e.environment = Object.fromEntries(
+            Object.entries(mcp.env!).map(([key, value]) => [
+              key,
+              value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, "{env:$1}"),
+            ]),
+          );
+        }
         return e;
       }
       case "standard":
@@ -395,4 +402,3 @@ export class GenericAdapter extends BaseToolAdapter {
     return current as Record<string, unknown> | undefined;
   }
 }
-

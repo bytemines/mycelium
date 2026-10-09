@@ -80,6 +80,45 @@ describe("auto-adapter", () => {
       });
     });
 
+    it("converts OpenCode environment placeholders without mutating the source", () => {
+      const adapter = new GenericAdapter(TOOL_REGISTRY["opencode"]);
+      const env = { MASSIVE_API_KEY: "${MASSIVE_API_KEY}" };
+
+      expect(adapter.shapeEntry({ command: "uvx", env }).environment).toEqual({
+        MASSIVE_API_KEY: "{env:MASSIVE_API_KEY}",
+      });
+      expect(env).toEqual({ MASSIVE_API_KEY: "${MASSIVE_API_KEY}" });
+    });
+
+    it("preserves literals and converts multiple embedded OpenCode placeholders", () => {
+      const adapter = new GenericAdapter(TOOL_REGISTRY["opencode"]);
+      expect(adapter.shapeEntry({
+        command: "server",
+        env: {
+          LITERAL: "info",
+          EMPTY: "",
+          NATIVE: "{env:API_KEY}",
+          COMBINED: "Bearer ${API_KEY}/${ACCOUNT_2}/${API_KEY}",
+          SHELL: "$API_KEY ${API_KEY:-fallback}",
+        },
+      }).environment).toEqual({
+        LITERAL: "info",
+        EMPTY: "",
+        NATIVE: "{env:API_KEY}",
+        COMBINED: "Bearer {env:API_KEY}/{env:ACCOUNT_2}/{env:API_KEY}",
+        SHELL: "$API_KEY ${API_KEY:-fallback}",
+      });
+    });
+
+    it.each(["claude-code", "vscode", "codex", "gemini-cli", "cursor", "antigravity"])(
+      "preserves environment placeholders for %s",
+      (toolId) => {
+        const adapter = new GenericAdapter(TOOL_REGISTRY[toolId]);
+        const env = { API_KEY: "${API_KEY}" };
+        expect(adapter.shapeEntry({ command: "server", env }).env).toEqual(env);
+      },
+    );
+
     it("omits empty args/env for standard", () => {
       const adapter = new GenericAdapter(TOOL_REGISTRY["claude-code"]);
       expect(adapter.shapeEntry({ command: "foo" })).toEqual({ command: "foo" });
@@ -118,6 +157,22 @@ describe("auto-adapter", () => {
       const content = mockWriteFile.mock.calls[0][1] as string;
       expect(content).toContain('[mcp.servers."my-mcp"]');
       expect(content).toContain('command = "npx"');
+    });
+
+    it("writes OpenCode environment references while preserving command arguments", async () => {
+      const adapter = new GenericAdapter(TOOL_REGISTRY["opencode"]);
+      const result = await adapter.writeToFile({
+        massive: {
+          command: "uvx",
+          args: ["--with", "mcp<2", "mcp_massive"],
+          env: { MASSIVE_API_KEY: "${MASSIVE_API_KEY}" },
+        },
+      });
+
+      expect(result.success).toBe(true);
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      expect(written.mcp.massive.environment).toEqual({ MASSIVE_API_KEY: "{env:MASSIVE_API_KEY}" });
+      expect(written.mcp.massive.command).toEqual(["uvx", "--with", "mcp<2", "mcp_massive"]);
     });
   });
 
@@ -265,4 +320,3 @@ describe("OpenClawAdapter writeToFile — preserves existing entry properties", 
     expect(entry.disabled).toBeUndefined();
   });
 });
-
