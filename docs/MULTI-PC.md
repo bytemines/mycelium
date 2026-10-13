@@ -63,8 +63,17 @@ running OpenCode service may need restarting from that environment to inherit ch
 
 Keep MCP dependency compatibility pins in `~/.mycelium/global/mcps.yaml`, not just the
 generated tool config, so sync preserves them. For example, `mcp_massive` v0.6.0 is
-incompatible with Python MCP SDK v2; use `uvx --with 'mcp<2' mcp_massive` (args:
-`["--with", "mcp<2", "mcp_massive"]`) until that server supports v2.
+incompatible with Python MCP SDK v2. Preserve its versioned Git source as well as
+the SDK constraint until that server supports v2:
+
+```bash
+uvx --with 'mcp<2' \
+  --from git+https://github.com/massive-com/mcp_massive@v0.6.0 \
+  mcp_massive
+```
+
+The corresponding `args` are `["--with", "mcp<2", "--from",
+"git+https://github.com/massive-com/mcp_massive@v0.6.0", "mcp_massive"]`.
 
 ## New Machine Checklist
 

@@ -174,7 +174,21 @@ export async function syncTool(
     }
 
     // 5. Filter and resolve MCPs for this tool
-    const filteredMcps = filterMcpsForTool(mergedConfig.mcps, toolId);
+    let filteredMcps = filterMcpsForTool(mergedConfig.mcps, toolId);
+    if (toolId === "opencode") {
+      // Keep missing env references for OpenCode's runtime instead of resolving them to empty strings.
+      filteredMcps = Object.fromEntries(Object.entries(filteredMcps).map(([name, mcp]) => [
+        name,
+        mcp.env ? {
+          ...mcp,
+          env: Object.fromEntries(Object.entries(mcp.env).map(([key, value]) => [
+            key,
+            value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (placeholder, variable) =>
+              envVars[variable] === undefined ? `{env:${variable}}` : placeholder),
+          ])),
+        } : mcp,
+      ]));
+    }
     const resolvedMcps = resolveEnvVarsInMcps(filteredMcps, envVars);
     const mcpsCount = Object.keys(resolvedMcps).length;
 
