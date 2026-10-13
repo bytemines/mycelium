@@ -1,5 +1,11 @@
 # @mycelish/cli
 
+## 0.3.6
+
+### Patch Changes
+
+- [#13](https://github.com/bytemines/mycelium/pull/13) [`fa01275`](https://github.com/bytemines/mycelium/commit/fa01275d2412f6de2fc65ae2183b9a937a1fd99c) Thanks [@bytemines](https://github.com/bytemines)! - Translate unresolved MCP environment placeholders to OpenCode's native `{env:VAR}` syntax without changing literal values or other tools' exports. Document inherited environment setup and persistent MCP SDK compatibility pins.
+
 ## 0.3.5
 
 ### Patch Changes
