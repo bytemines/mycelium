@@ -6,6 +6,7 @@
 import YAML from "yaml";
 import type { ToolId, McpServerConfig } from "@mycelish/core";
 import { resolveEnvVarsInObject } from "@mycelish/core";
+import { encodeMcpToml } from "./toml-encoding.js";
 
 // ============================================================================
 // Types
@@ -155,33 +156,7 @@ export function generateGeminiConfig(
 export function generateCodexConfig(
   mcps: Record<string, McpServerConfig>
 ): string {
-  const lines: string[] = [];
-
-  for (const [name, config] of Object.entries(mcps)) {
-    // Skip disabled MCPs
-    if (config.state && config.state !== "enabled") {
-      continue;
-    }
-
-    lines.push(`[mcp.servers."${name}"]`);
-    lines.push(`command = "${config.command}"`);
-
-    if (config.args && config.args.length > 0) {
-      const argsStr = config.args.map((a) => `"${a}"`).join(", ");
-      lines.push(`args = [${argsStr}]`);
-    }
-
-    if (config.env && Object.keys(config.env).length > 0) {
-      lines.push(`[mcp.servers."${name}".env]`);
-      for (const [key, value] of Object.entries(config.env)) {
-        lines.push(`${key} = "${value}"`);
-      }
-    }
-
-    lines.push("");
-  }
-
-  return lines.join("\n");
+  return encodeMcpToml(mcps);
 }
 
 // ============================================================================
@@ -239,4 +214,3 @@ export function generateOpenClawConfig(
   // OpenClaw uses same format as OpenCode
   return generateOpenCodeConfig(mcps);
 }
-

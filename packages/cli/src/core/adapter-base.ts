@@ -53,7 +53,48 @@ export async function commandExists(cmd: string): Promise<boolean> {
 }
 
 export async function execCli(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync(cmd, args, { timeout: 30000 });
+  const secrets: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (["-e", "--env"].includes(args[i])) {
+      const pair = args[++i] ?? "";
+      if (pair.includes("=")) secrets.push(pair.slice(pair.indexOf("=") + 1));
+    } else if (["--api-key", "--token", "--client-secret", "--oauth-client-secret"].includes(args[i])) {
+      secrets.push(args[++i] ?? "");
+    } else if (args[i].startsWith("{")) {
+      try {
+        const entry = JSON.parse(args[i]);
+        secrets.push(...Object.values(entry.env ?? entry.environment ?? {}).filter((v): v is string => typeof v === "string"));
+      } catch { /* Not a JSON MCP entry. */ }
+    }
+  }
+  const redact = (text: string): string => {
+    for (const secret of secrets.filter(Boolean).sort((a, b) => b.length - a.length)) {
+      // JSON arguments escape quotes/backslashes; stderr may echo the literal value.
+      for (const value of new Set([secret, JSON.stringify(secret).slice(1, -1)])) {
+        text = text.split(value).join("[REDACTED]");
+      }
+    }
+    return text;
+  };
+  try {
+    const result = await execFileAsync(cmd, args, { timeout: 30000 });
+    return { stdout: redact(result.stdout), stderr: redact(result.stderr) };
+  } catch (err) {
+    const failure = err as Error & { code?: string | number; stdout?: string; stderr?: string; signal?: string; killed?: boolean };
+    throw Object.assign(new Error(redact(String(err))), {
+      code: failure.code, signal: failure.signal, killed: failure.killed,
+      stdout: redact(failure.stdout ?? ""), stderr: redact(failure.stderr ?? ""),
+    });
+  }
+}
+
+export function isAbsentCliRemoval(toolId: string, name: string, err: unknown): boolean {
+  // Verified in https://unpkg.com/@anthropic-ai/claude-code@2.1.15/cli.js (DS6 + remove handler).
+  // shortcut: only this verified response; add other versions/tools after checking their fixtures.
+  if (toolId !== "claude-code" || !(err instanceof Error)) return false;
+  const failure = err as Error & { code?: number; stderr?: string; stdout?: string; signal?: string; killed?: boolean };
+  return failure.code === 1 && !failure.signal && !failure.killed && !failure.stdout?.trim()
+    && failure.stderr?.trim() === `No user-scoped MCP server found with name: ${name}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,8 +131,9 @@ export abstract class BaseToolAdapter implements ToolAdapter {
     if (await this.hasCli()) {
       const errors: string[] = [];
       for (const [name, config] of Object.entries(mcps)) {
-        if (config.state && config.state !== "enabled") continue;
-        const result = await this.addViaCli(name, config);
+        const result = config.state && config.state !== "enabled"
+          ? await this.removeViaCli(name)
+          : await this.addViaCli(name, config);
         if (!result.success) errors.push(`${name}: ${result.error}`);
       }
       if (errors.length > 0) {
@@ -109,7 +151,12 @@ export abstract class BaseToolAdapter implements ToolAdapter {
 
   async remove(name: string): Promise<AdapterResult> {
     if (await this.hasCli()) return this.removeViaCli(name);
-    return this.removeFromFile(name);
+    const result = await this.removeFromFile(name);
+    // A tool without a config/registration is already reconciled, not a failed native operation.
+    if (!result.success && (result.error === "Config not found" || result.error === `${name} not found`)) {
+      return { success: true, method: "file", message: `${name} already absent` };
+    }
+    return result;
   }
 
   async disable(name: string): Promise<AdapterResult> {

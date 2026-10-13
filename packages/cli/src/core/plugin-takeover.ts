@@ -12,7 +12,6 @@ import * as os from "node:os";
 import { expandPath } from "@mycelish/core";
 import { scanPluginComponents } from "./plugin-scanner.js";
 import { createSkillSymlink, removeSkillSymlink } from "./symlink-manager.js";
-import { readFileIfExists } from "./fs-helpers.js";
 import { getDisabledItems, loadStateManifest, saveStateManifest, ITEM_SECTIONS } from "./manifest-state.js";
 import { getTracer } from "./global-tracer.js";
 
@@ -104,16 +103,32 @@ async function findLatestVersion(pluginDir: string): Promise<string | null> {
   }
 }
 
-/** Read settings.json, preserving all fields. */
-async function readSettings(): Promise<Record<string, unknown>> {
-  const raw = await readFileIfExists(SETTINGS_PATH);
-  if (!raw) return {};
+/** Only confirmed absence may be treated as an empty file. */
+async function readPluginFile(filePath: string): Promise<string | null> {
   try {
-    return JSON.parse(raw) as Record<string, unknown>;
+    return await fs.readFile(filePath, "utf-8");
   } catch (err) {
-    const log = getTracer().createTrace("plugin-settings");
-    log.warn({ scope: "plugin", op: "read-settings", msg: `Failed to parse settings.json, using empty settings: ${(err as Error).message}`, path: SETTINGS_PATH });
-    return {};
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Read settings.json, preserving all fields; never replace invalid settings. */
+async function readSettings(): Promise<Record<string, unknown>> {
+  const raw = await readPluginFile(SETTINGS_PATH);
+  if (raw === null) return {};
+  try {
+    const settings: unknown = JSON.parse(raw);
+    if (!isRecord(settings) || (settings.enabledPlugins !== undefined && !isRecord(settings.enabledPlugins))) {
+      throw new Error("Expected a settings object with an enabledPlugins object");
+    }
+    return settings;
+  } catch (err) {
+    throw new Error(`Cannot update ${SETTINGS_PATH}: ${(err as Error).message}`, { cause: err });
   }
 }
 
@@ -322,8 +337,25 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
   }
 
   const log = getTracer().createTrace("plugin-cleanup");
+  // A missing or unrecognized index is not evidence that a plugin was uninstalled.
+  let installedPlugins: Record<string, unknown>;
+  try {
+    const ipPath = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const raw = await readPluginFile(ipPath);
+    if (raw === null) throw new Error("Installed plugin index is missing");
+    const data: unknown = JSON.parse(raw);
+    if (!isRecord(data) || data.version !== 2 || !isRecord(data.plugins)
+      || !Object.values(data.plugins).every((installs) => Array.isArray(installs) && installs.every(isRecord))) {
+      throw new Error("Unrecognized installed plugin index schema or version");
+    }
+    installedPlugins = data.plugins;
+  } catch (err) {
+    log.warn({ scope: "plugin", op: "cleanup", msg: `Skipping takeover cleanup: ${(err as Error).message}` });
+    return [];
+  }
   const cleaned: string[] = [];
   let manifestDirty = false;
+  let cleanupUncertain = false;
 
   const home = os.homedir();
   const thisHost = os.hostname();
@@ -351,28 +383,16 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
     try {
       await fs.access(pluginInfo.cachePath);
       cacheExists = true;
-    } catch {
-      // Expected — cache missing means plugin was uninstalled
-    }
-
-    // Also check if plugin is still installed in Claude Code
-    let installedInClaude = false;
-    if (cacheExists) {
-      try {
-        const ipPath = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
-        const raw = await readFileIfExists(ipPath);
-        if (raw) {
-          const data = JSON.parse(raw) as { version?: number; plugins?: Record<string, unknown> };
-          if (data.version === 2 && data.plugins) {
-            installedInClaude = pluginId in data.plugins;
-          }
-        }
-      } catch (err) {
-        log.warn({ scope: "plugin", op: "cleanup", msg: `Failed to read installed_plugins.json: ${(err as Error).message}`, item: pluginId });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        cleanupUncertain = true;
+        log.warn({ scope: "plugin", op: "cleanup", msg: `Skipping unreadable plugin cache: ${(err as Error).message}`, item: pluginId });
+        continue;
       }
     }
 
-    if (cacheExists && installedInClaude) continue;
+    const installedInClaude = Object.hasOwn(installedPlugins, pluginId);
+    if (installedInClaude) continue;
 
     // Orphaned takeover — clean everything
     log.warn({ scope: "plugin", op: "cleanup", msg: `Cleaning orphaned takeover: ${pluginId} (cache=${cacheExists ? "exists" : "missing"}, installed=${installedInClaude})`, item: pluginId });
@@ -438,7 +458,7 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
 
   // Also clean orphaned manifest entries with pluginOrigin but no matching takenOverPlugins
   const activePluginIds = new Set(Object.keys(manifest.takenOverPlugins ?? {}));
-  for (const { key: section } of ITEM_SECTIONS) {
+  for (const { key: section } of cleanupUncertain ? [] : ITEM_SECTIONS) {
     const sectionData = manifest[section] as Record<string, { pluginOrigin?: { pluginId?: string }; state?: string }> | undefined;
     if (!sectionData) continue;
     for (const [name, cfg] of Object.entries(sectionData)) {
@@ -452,7 +472,7 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
 
   // Clean stale symlinks in ~/.mycelium/global/skills/ that point to plugin cache
   const globalSkillsDir = path.join(dir, "global", "skills");
-  try {
+  if (!cleanupUncertain) try {
     const entries = await fs.readdir(globalSkillsDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isSymbolicLink()) continue;
@@ -484,7 +504,7 @@ export async function cleanOrphanedTakeovers(manifestDir?: string): Promise<stri
   }
 
   // Run symlink sync to remove any orphaned symlinks
-  if (cleaned.length > 0) {
+  if (cleaned.length > 0 && !cleanupUncertain) {
     await syncPluginSymlinks(dir);
     log.info({ scope: "plugin", op: "cleanup", msg: `Cleaned ${cleaned.length} orphaned takeover(s): ${cleaned.join(", ")}` });
   }

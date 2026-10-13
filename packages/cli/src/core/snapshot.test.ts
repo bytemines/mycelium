@@ -112,6 +112,137 @@ describe("createSnapshot", () => {
 });
 
 describe("restoreSnapshot", () => {
+  it("restores recorded config absence and old contents while preserving uncaptured directories", async () => {
+    const root = await setupMyceliumDir();
+    const mcps = path.join(root, "global", "mcps.yaml");
+    await fs.unlink(mcps);
+    await createSnapshot("absent");
+    const metadata = JSON.parse(await fs.readFile(path.join(root, "snapshots", "absent", "metadata.json"), "utf8"));
+    expect(metadata.formatVersion).toBe(2);
+    expect(metadata.configFiles).toEqual({ "manifest.yaml": false, "global/mcps.yaml": false, "global/hooks.yaml": true, "migration-manifest.json": true, "marketplaces.yaml": true });
+    await fs.writeFile(mcps, "new config");
+    await fs.writeFile(path.join(root, "global", "hooks.yaml"), "new hooks");
+    const native = path.join(root, "global", "skills", "native");
+    await fs.mkdir(native);
+    await fs.writeFile(path.join(native, "SKILL.md"), "keep");
+    await fs.writeFile(path.join(root, "unmanaged.yaml"), "unmanaged");
+    await restoreSnapshot("absent");
+    await expect(fs.lstat(mcps)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.readFile(path.join(root, "global", "hooks.yaml"), "utf8")).toBe("hooks: []\n");
+    expect(await fs.readFile(path.join(native, "SKILL.md"), "utf8")).toBe("keep");
+    expect(await fs.readFile(path.join(root, "unmanaged.yaml"), "utf8")).toBe("unmanaged");
+  });
+
+  it("does not infer absence from legacy metadata", async () => {
+    const root = await setupMyceliumDir();
+    const mcps = path.join(root, "global", "mcps.yaml");
+    await fs.unlink(mcps);
+    await createSnapshot("legacy");
+    const metadataPath = path.join(root, "snapshots", "legacy", "metadata.json");
+    const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+    delete metadata.formatVersion;
+    delete metadata.configFiles;
+    await fs.writeFile(metadataPath, JSON.stringify(metadata));
+    await fs.writeFile(mcps, "keep legacy unknown");
+    await fs.writeFile(path.join(root, "manifest.yaml"), "keep uncaptured manifest");
+    await restoreSnapshot("legacy");
+    expect(await fs.readFile(mcps, "utf8")).toBe("keep legacy unknown");
+    expect(await fs.readFile(path.join(root, "manifest.yaml"), "utf8")).toBe("keep uncaptured manifest");
+  });
+
+  it("restores captured enabled manifest state after a later removal", async () => {
+    const root = await setupMyceliumDir();
+    const manifest = path.join(root, "manifest.yaml");
+    const original = JSON.stringify({ version: "1", mcps: { server: { state: "enabled" } } });
+    await fs.writeFile(manifest, original);
+    const metadata = await createSnapshot("enabled");
+    expect(metadata.fileList).toContain("manifest.yaml");
+    await fs.writeFile(manifest, JSON.stringify({ version: "1", mcps: { server: { state: "deleted" } } }));
+    await restoreSnapshot("enabled");
+    expect(await fs.readFile(manifest, "utf8")).toBe(original);
+  });
+
+  it.each(["symlink", "directory"])("preflights recorded absence and preserves a new %s destination", async kind => {
+    const root = await setupMyceliumDir();
+    const mcps = path.join(root, "global", "mcps.yaml");
+    await fs.unlink(mcps);
+    await createSnapshot("absent");
+    const hooks = path.join(root, "global", "hooks.yaml");
+    await fs.writeFile(hooks, "current hooks");
+    const sentinel = path.join(tmpDir, "sentinel");
+    await fs.writeFile(sentinel, "outside");
+    if (kind === "symlink") await fs.symlink(sentinel, mcps);
+    else await fs.mkdir(mcps);
+    await expect(restoreSnapshot("absent")).rejects.toThrow();
+    expect(await fs.readFile(hooks, "utf8")).toBe("current hooks");
+    expect(await fs.readFile(sentinel, "utf8")).toBe("outside");
+    expect((await fs.lstat(mcps)).isSymbolicLink()).toBe(kind === "symlink");
+  });
+
+  it("rejects incomplete absence states before deleting any config", async () => {
+    const root = await setupMyceliumDir();
+    const mcps = path.join(root, "global", "mcps.yaml");
+    await fs.unlink(mcps);
+    await createSnapshot("absent");
+    await fs.writeFile(mcps, "keep");
+    const metadataPath = path.join(root, "snapshots", "absent", "metadata.json");
+    const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+    delete metadata.configFiles["marketplaces.yaml"];
+    await fs.writeFile(metadataPath, JSON.stringify(metadata));
+    await expect(restoreSnapshot("absent")).rejects.toThrow("Invalid snapshot config states");
+    expect(await fs.readFile(mcps, "utf8")).toBe("keep");
+  });
+
+  it("preserves ordinary skill directories that snapshots do not capture", async () => {
+    const root = await setupMyceliumDir();
+    await createSnapshot("safe");
+    const native = path.join(root, "global", "skills", "native");
+    await fs.mkdir(native);
+    await fs.writeFile(path.join(native, "SKILL.md"), "keep");
+    await restoreSnapshot("safe");
+    expect(await fs.readFile(path.join(native, "SKILL.md"), "utf8")).toBe("keep");
+  });
+
+  it("validates every metadata path and reads every source before updating config", async () => {
+    const root = await setupMyceliumDir();
+    const metadata = await createSnapshot("unsafe");
+    const metadataFile = path.join(root, "snapshots", "unsafe", "metadata.json");
+    const current = path.join(root, "global", "mcps.yaml");
+    await fs.writeFile(current, "current");
+    metadata.fileList.push("../../../victim");
+    await fs.writeFile(metadataFile, JSON.stringify(metadata));
+    await expect(restoreSnapshot("unsafe")).rejects.toThrow("Invalid snapshot file");
+    expect(await fs.readFile(current, "utf8")).toBe("current");
+    metadata.fileList.pop();
+    metadata.skillSymlinks["../../victim"] = "/outside";
+    await fs.writeFile(metadataFile, JSON.stringify(metadata));
+    await expect(restoreSnapshot("unsafe")).rejects.toThrow("Unsafe path component");
+    expect(await fs.readFile(current, "utf8")).toBe("current");
+    delete metadata.skillSymlinks["../../victim"];
+    await fs.writeFile(metadataFile, JSON.stringify(metadata));
+    await fs.unlink(path.join(root, "snapshots", "unsafe", "global", "hooks.yaml"));
+    await expect(restoreSnapshot("unsafe")).rejects.toThrow();
+    expect(await fs.readFile(current, "utf8")).toBe("current");
+  });
+
+  it("rejects restore destination-parent symlink escapes", async () => {
+    const root = await setupMyceliumDir();
+    await createSnapshot("safe");
+    await fs.rename(path.join(root, "global"), path.join(root, "original"));
+    const outside = path.join(tmpDir, "outside");
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(outside, "mcps.yaml"), "sentinel");
+    await fs.symlink(outside, path.join(root, "global"));
+    await expect(restoreSnapshot("safe")).rejects.toThrow("Path escapes root");
+    expect(await fs.readFile(path.join(outside, "mcps.yaml"), "utf8")).toBe("sentinel");
+  });
+
+  it("rejects traversal names for restore and delete", async () => {
+    const root = await setupMyceliumDir();
+    await expect(restoreSnapshot("../global")).rejects.toThrow("Invalid snapshot name");
+    await expect(deleteSnapshot("../global")).rejects.toThrow("Invalid snapshot name");
+    expect(await fs.readFile(path.join(root, "global", "mcps.yaml"), "utf8")).toContain("mcps:");
+  });
   it("recreates files and symlinks", async () => {
     const myceliumDir = await setupMyceliumDir();
     await createSnapshot("restore-test");

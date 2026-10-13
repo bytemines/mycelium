@@ -3,7 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import { ENTRY_TYPE_META } from "@/lib/entry-type-meta";
 import { getTrustTier } from "@/lib/trust";
-import { auditMarketplaceEntry, fetchItemContent } from "@/lib/api";
+import { fetchItemContent } from "@/lib/api";
 import { Sparkles, Bot, Terminal, Puzzle, Plug, FileText, ShieldCheck, Check, X } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -135,6 +135,9 @@ export function SkillDetailPanel({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    setContent(null);
+    setAuditResult(null);
+    setAuditing(false);
     if (!open || !item) {
       setContent(null);
       setAuditResult(null);
@@ -286,14 +289,22 @@ export function SkillDetailPanel({
           <div className="flex items-center justify-end gap-2 border-t border-border/50 px-6 py-3">
             <button
               onClick={async () => {
+                const controller = abortRef.current;
+                setAuditResult(null);
                 setAuditing(true);
                 try {
-                  const result = await auditMarketplaceEntry(item.name, item.source, item.type);
-                  setAuditResult(result);
-                } catch { setAuditResult(null); }
-                finally { setAuditing(false); }
+                  const fileName = item.type === "skill" ? "SKILL.md" : item.type === "agent" || item.type === "command" ? `${item.name}.md` : "README.md";
+                  const response = await fetch("/api/marketplace/audit", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content, fileName }), signal: controller?.signal,
+                  });
+                  if (!response.ok) throw new Error("Audit failed");
+                  const result = await response.json();
+                  if (controller === abortRef.current && !controller?.signal.aborted) setAuditResult(result);
+                } catch { /* No clean result on failure. */ }
+                finally { if (controller === abortRef.current && !controller?.signal.aborted) setAuditing(false); }
               }}
-              disabled={auditing}
+              disabled={auditing || loadingContent || content == null}
               className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted disabled:opacity-50 transition-colors"
               title="Scan for security issues"
             >

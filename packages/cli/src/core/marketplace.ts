@@ -32,7 +32,8 @@ import {
 } from "./marketplace-sources.js";
 import type { CacheOptions } from "./marketplace-cache.js";
 import { getTracer } from "./global-tracer.js";
-import { cachedFetch } from "./marketplace-cache.js";
+import { cachedFetch, fetchMarketplaceText } from "./marketplace-cache.js";
+import { assertSafePathComponent, assertContainedPath } from "./path-safety.js";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -127,6 +128,7 @@ export async function installFromMarketplace(
   entry: MarketplaceEntry
 ): Promise<InstallResult> {
   try {
+    if (entry.source !== MS.MCP_REGISTRY) assertSafePathComponent(entry.name);
     let result: InstallResult;
     switch (entry.source) {
       case MS.CLAUDE_PLUGINS:
@@ -178,17 +180,20 @@ async function installClaudePlugin(entry: MarketplaceEntry) {
   const cacheDir = path.join(os.homedir(), ".claude", "plugins", "cache");
   const src = path.join(cacheDir, entry.name);
   const dest = path.join(MYCELIUM_DIR, "skills", entry.name);
+  assertContainedPath(MYCELIUM_DIR, dest);
   await fs.mkdir(path.dirname(dest), { recursive: true });
   await fs.symlink(src, dest);
   return { success: true, path: dest, version: entry.version };
 }
 
 async function installMcpRegistry(entry: MarketplaceEntry) {
+  const mcpsPath = path.join(MYCELIUM_DIR, "mcps.yaml");
+  assertContainedPath(MYCELIUM_DIR, mcpsPath);
   const registryEntry = await getRegistryEntry(entry.name);
   if (!registryEntry) throw new Error(`Entry not found: ${entry.name}`);
   const config = parseRegistryEntry(registryEntry);
-  const mcpsPath = path.join(MYCELIUM_DIR, "mcps.yaml");
-  const yamlLine = `\n${entry.name}:\n  command: ${config.command}\n  args: [${(config.args || []).map((a) => `"${a}"`).join(", ")}]\n  enabled: true\n`;
+  const yamlLine = `\n${JSON.stringify(entry.name)}:\n  command: ${JSON.stringify(config.command)}\n  args: ${JSON.stringify(config.args || [])}\n  enabled: true\n`;
+  assertContainedPath(MYCELIUM_DIR, mcpsPath);
   await fs.appendFile(mcpsPath, yamlLine, "utf-8");
   // MCP registry entries store version in manifest directly
   await registerItemInManifest(entry.name, entry.source, entry.version, undefined, "mcp");
@@ -196,13 +201,13 @@ async function installMcpRegistry(entry: MarketplaceEntry) {
 }
 
 async function installAnthropicSkill(entry: MarketplaceEntry) {
-  const rawUrl = `https://raw.githubusercontent.com/anthropics/skills/main/skills/${encodeURIComponent(entry.name)}/SKILL.md`;
-  const ghRes = await fetch(rawUrl);
-  if (!ghRes.ok) throw new Error(`Download failed: ${ghRes.statusText}`);
-  const content = await ghRes.text();
   const dir = path.join(MYCELIUM_DIR, "skills", entry.name);
-  await fs.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, "SKILL.md");
+  assertContainedPath(MYCELIUM_DIR, filePath);
+  const rawUrl = `https://raw.githubusercontent.com/anthropics/skills/main/skills/${encodeURIComponent(entry.name)}/SKILL.md`;
+  const content = await fetchMarketplaceText(rawUrl);
+  await fs.mkdir(dir, { recursive: true });
+  assertContainedPath(MYCELIUM_DIR, filePath);
   await fs.writeFile(filePath, content, "utf-8");
   return { success: true, path: filePath, contentHash: computeContentHash(content) };
 }
@@ -342,6 +347,7 @@ async function installPlugin(
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx];
     const r = results[idx];
+    if (r.status !== "fulfilled" || !r.value.success) continue;
     const contentHash = r.status === "fulfilled" ? r.value.contentHash : undefined;
     await registerItemInManifest(item.name, entry.source, undefined, contentHash, item.type);
   }
@@ -521,11 +527,10 @@ async function enrichWithLatestHashes(entries: MarketplaceEntry[]): Promise<Mark
               rawUrl += "/SKILL.md";
             }
           }
-          const res = await fetch(rawUrl, { signal: overallController.signal });
-          if (res.ok) {
-            const content = await res.text();
-            hashMap.set(e.name, `#${computeContentHash(content)}`);
-          }
+          const parsed = new URL(rawUrl);
+          if (parsed.protocol !== "https:" || !["github.com", "raw.githubusercontent.com"].includes(parsed.hostname)) return;
+          const content = await fetchMarketplaceText(rawUrl, { signal: overallController.signal });
+          hashMap.set(e.name, `#${computeContentHash(content)}`);
         } catch (err) {
           // Non-critical — skip (includes AbortError from overall timeout)
           if (err instanceof Error && err.name !== "AbortError") {
@@ -599,7 +604,7 @@ export async function updateItem(
 
   // After updating any component, sync ALL components from the same source
   // This ensures new items added to the repo get installed automatically
-  // and items removed from the repo get cleaned up
+  // Search results are not verified complete inventories (pagination/truncated trees).
   if (result.success) {
     const allSourceEntries = await searchMarketplace("", source, { forceRefresh: true });
     const { added, removed } = await syncSourceComponents(source, allSourceEntries);
@@ -617,7 +622,7 @@ export async function updateItem(
 }
 
 /**
- * Sync components from a source: install new items, remove deleted items.
+ * Sync components from a source: install new items without inferring deletions.
  * Called during updates to keep plugins in sync with their repos.
  */
 async function syncSourceComponents(
@@ -635,7 +640,6 @@ async function syncSourceComponents(
 
   const installed = await getInstalledItems();
   const sourceEntries = allEntries.filter(e => e.source === source && e.type !== "plugin");
-  const sourceItemNames = new Set(sourceEntries.map(e => e.name));
   const added: string[] = [];
   const removed: string[] = [];
 
@@ -651,61 +655,9 @@ async function syncSourceComponents(
     }
   }
 
-  // Remove components that were deleted from the source repo
-  for (const [itemName, info] of installed) {
-    if (info.source === source && !sourceItemNames.has(itemName)) {
-      try {
-        await removeItemFromSource(itemName, log);
-        removed.push(itemName);
-      } catch (err) {
-        log.warn({ scope: "sync", op: "remove-failed", item: itemName, msg: `Failed to remove: ${err instanceof Error ? err.message : String(err)}` });
-      }
-    }
-  }
+  // Never delete installed items based on potentially partial search results.
 
   return { added, removed };
-}
-
-/**
- * Remove an item installed from a marketplace source.
- * Marks as deleted in manifest and purges files from global dir.
- * This is a core-layer helper to avoid importing from commands/.
- */
-async function removeItemFromSource(
-  name: string,
-  log: ReturnType<ReturnType<typeof getTracer>["createTrace"]>,
-): Promise<void> {
-  const manifest = await loadStateManifest(MYCELIUM_HOME);
-  if (!manifest) return;
-
-  // Mark as deleted in manifest
-  for (const { key } of ITEM_SECTIONS) {
-    const section = manifest[key] as Record<string, ItemConfig> | undefined;
-    if (section?.[name]) {
-      section[name].state = "deleted";
-    }
-  }
-  await saveStateManifest(MYCELIUM_HOME, manifest);
-
-  // Purge files from global dir
-  const DIR_NAMES = ["skills", "mcps", "agents", "commands", "rules", "hooks"];
-  for (const dirName of DIR_NAMES) {
-    const dirPath = path.join(MYCELIUM_DIR, dirName, name);
-    try {
-      await fs.rm(dirPath, { recursive: true, force: true });
-    } catch {
-      // Directory doesn't exist, fine
-    }
-    for (const ext of [".md", ".yaml", ".yml"]) {
-      try {
-        await fs.unlink(path.join(MYCELIUM_DIR, dirName, `${name}${ext}`));
-      } catch {
-        // File doesn't exist, fine
-      }
-    }
-  }
-
-  log.info({ scope: "sync", op: "removed", item: name, msg: `Removed ${name} from manifest and files` });
 }
 
 /** @deprecated Use updateItem instead */

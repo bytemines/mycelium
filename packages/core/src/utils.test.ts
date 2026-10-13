@@ -63,6 +63,22 @@ describe("getProjectMyceliumPath", () => {
 });
 
 describe("deepMerge", () => {
+  it("merges only own source properties", async () => {
+    const { deepMerge } = await import("./utils.js");
+    const source = Object.assign(Object.create({ inherited: true }), { own: true });
+    expect(deepMerge({}, source)).toEqual({ own: true });
+  });
+
+  it("preserves prototype-named keys as data without changing prototypes", async () => {
+    const { deepMerge } = await import("./utils.js");
+    const source = JSON.parse('{"__proto__":{"unexpected":true},"constructor":{"enabled":true}}');
+    const result = deepMerge({}, source);
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+    expect(Object.hasOwn(result, "__proto__")).toBe(true);
+    expect(result).toEqual(source);
+    expect(({} as Record<string, unknown>).unexpected).toBeUndefined();
+  });
+
   it("merges flat objects with source priority", async () => {
     const { deepMerge } = await import("./utils.js");
     const target = { a: 1, b: 2 };

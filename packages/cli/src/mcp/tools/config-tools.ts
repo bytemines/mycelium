@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ALL_TOOL_IDS, type McpServerConfig } from "@mycelish/core";
+import { ALL_TOOL_IDS, toolIdSchema, type McpServerConfig } from "@mycelish/core";
 
 export function registerConfigTools(server: McpServer): void {
   server.registerTool("mycelium_status", {
@@ -33,38 +33,32 @@ export function registerConfigTools(server: McpServer): void {
     description:
       "Push mycelium config (MCPs, skills, agents, rules, commands) to detected AI tools. Performs overlay sync — only touches mycelium-managed sections.",
     inputSchema: {
-      tool: z
-        .string()
-        .optional()
-        .describe("Sync only this tool (e.g. 'claude-code', 'cursor')"),
+      tool: toolIdSchema.optional().describe("Sync only this tool (e.g. 'claude-code', 'cursor')"),
     },
   }, async ({ tool }) => {
-    const { loadAndMergeAllConfigs } = await import(
-      "../../core/config-merger.js"
-    );
-    const { syncToTool } = await import("../../core/sync-writer.js");
-    const { getTracer } = await import("../../core/global-tracer.js");
-
-    const tracer = getTracer();
-    const log = tracer.createTrace("mcp");
-    const merged = await loadAndMergeAllConfigs(process.cwd());
-
+    const { syncAll } = await import("../../commands/sync.js");
+    const enabledTools = Object.fromEntries(ALL_TOOL_IDS.map(id => [id, { enabled: !tool || id === tool }]));
     const toolIds = tool ? [tool] : [...ALL_TOOL_IDS];
     const results: Record<string, { success: boolean; error?: string }> = {};
-
-    for (const id of toolIds) {
-      try {
-        const result = await syncToTool(id, merged.mcps, undefined, log);
-        results[id] = { success: result.success, error: result.error };
-        log.info({ scope: "mcp", op: "sync", tool: id, msg: `Sync ${result.success ? "ok" : "failed"}` });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        results[id] = { success: false, error: msg };
-        log.warn({ scope: "mcp", op: "sync", tool: id, msg, error: msg });
+    let isError = false;
+    try {
+      const result = await syncAll(process.cwd(), enabledTools);
+      isError = !result.success;
+      for (const status of result.tools) {
+        const success = status.status === "synced";
+        results[status.tool] = { success, error: status.error };
+        if (!success) isError = true;
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      for (const id of toolIds) results[id] = { success: false, error: msg };
+      const { getTracer } = await import("../../core/global-tracer.js");
+      getTracer().createTrace("mcp").error({ scope: "mcp", op: "sync", msg, error: msg });
+      isError = true;
     }
 
     return {
+      isError,
       content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }],
     };
   });

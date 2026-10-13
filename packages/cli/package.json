@@ -2,6 +2,10 @@
   "name": "@mycelish/cli",
   "version": "0.3.6",
   "description": "CLI for Mycelium - Universal AI Tool Orchestrator",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && cp -r ../dashboard/dist dist/dashboard 2>/dev/null || true",
+    "build": "node ../../build-package.mjs cli",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,18 +38,18 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^25.2.2",
+    "@types/node": "^25.9.9",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@mycelish/core": "workspace:*",
     "commander": "^14.0.3",
-    "express": "^5.2.1",
+    "express": "^5.3.0",
     "jsonc-parser": "^3.3.1",
     "picocolors": "^1.1.1",
-    "yaml": "^2.8.2",
-    "zod": "^4.3.6"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
   }
 }

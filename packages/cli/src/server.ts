@@ -10,18 +10,13 @@ import { registerSyncRoutes } from "./routes/sync.js";
 import { registerPluginsRoutes } from "./routes/plugins.js";
 import { registerRemoveRoutes } from "./routes/remove.js";
 import { DEFAULT_PORT } from "./core/fs-helpers.js";
+import { localRequestGuard } from "./local-request-guard.js";
 
 import type { Request, Response, NextFunction, Express } from "express";
 
 export function createServer(port = DEFAULT_PORT): Express {
   const app = express();
-  app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
-    next();
-  });
+  app.use(localRequestGuard(port));
   app.use(express.json());
 
   // Mount route modules
@@ -77,7 +72,7 @@ export function startServer(port = DEFAULT_PORT) {
     });
   });
 
-  const server = app.listen(port, () => {
+  const server = app.listen(port, "127.0.0.1", () => {
     console.log(`Mycelium dashboard running on http://localhost:${port}`);
   });
   return server;

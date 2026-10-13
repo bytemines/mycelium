@@ -52,21 +52,25 @@ Every migration is tracked at `~/.mycelium/migration-manifest.json`:
 ## Safe Testing Workflow
 
 ```bash
-mycelium snapshot create "before-experiment"
+mycelium migrate --snapshot "before-experiment"
 mycelium migrate --apply
 mycelium sync
 # Test your tools...
 # If something breaks:
-mycelium snapshot restore "before-experiment"
+mycelium migrate --restore "before-experiment"
 mycelium sync
 ```
 
 ## Snapshots
 
 Stored at `~/.mycelium/snapshots/<name>/`:
-- `metadata.json` — name, date, file list
-- `skills/` — copy of all skills
-- `mcps.yaml` — MCP config
+- `metadata.json` — name, date, captured-file list, configuration presence, and skill-link targets.
+- Selected global configuration files: `manifest.yaml`, `global/mcps.yaml`,
+  `global/hooks.yaml`, `migration-manifest.json`, and `marketplaces.yaml` when present.
 
-
-Each snapshot captures full Mycelium state. Restoring replaces current config.
+Snapshots are **selective**, not full backups. They do not copy ordinary skill-directory
+contents, project configurations, or `.env.local`. Restoration preserves uncaptured
+ordinary directories and unrelated files. New snapshots also record when a known
+configuration file was absent, so restoring can remove that later-created file safely.
+Legacy snapshots without presence metadata do not infer absence. Back up important
+local edits and secrets separately before experimentation.

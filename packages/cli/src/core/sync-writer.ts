@@ -10,6 +10,8 @@ import type { TraceLogger } from "./tracer.js";
 import { TOOL_REGISTRY, resolvePath, expandPath } from "@mycelish/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
 import { getAdapter } from "./tool-adapter.js";
+import { encodeMcpToml, tomlString } from "./toml-encoding.js";
+import { replaceMcpSection } from "./toml-helpers.js";
 
 // ============================================================================
 // Types
@@ -121,7 +123,7 @@ export async function syncToTool(
 
 /** Group hooks by event into a JSON-friendly structure */
 function groupHooksByEvent(hooks: ScannedHook[]): Record<string, Record<string, unknown>[]> {
-  const grouped: Record<string, Record<string, unknown>[]> = {};
+  const grouped: Record<string, Record<string, unknown>[]> = Object.create(null);
   for (const hook of hooks) {
     const event = hook.event ?? "PostToolUse";
     if (!grouped[event]) grouped[event] = [];
@@ -159,10 +161,12 @@ async function writeCodexHooks(hooks: ScannedHook[]): Promise<void> {
 
   const lines: string[] = [];
   if (existing) {
+    let inHook = false;
     for (const line of existing.split("\n")) {
-      if (!line.startsWith("[[hooks.")) {
-        lines.push(line);
+      if (/^\s*\[/.test(line)) {
+        inHook = /^\s*\[\[hooks\./.test(line);
       }
+      if (!inHook) lines.push(line);
     }
     if (lines.length && lines[lines.length - 1] !== "") {
       lines.push("");
@@ -172,12 +176,17 @@ async function writeCodexHooks(hooks: ScannedHook[]): Promise<void> {
   const grouped = groupHooksByEvent(hooks);
   for (const [event, entries] of Object.entries(grouped)) {
     for (const entry of entries) {
-      lines.push(`[[hooks.${event}]]`);
+      lines.push(`[[hooks.${tomlString(event)}]]`);
       if (entry.matchers) {
-        lines.push(`matchers = [${(entry.matchers as string[]).map(m => `"${m}"`).join(", ")}]`);
+        lines.push(`matchers = [${(entry.matchers as string[]).map(tomlString).join(", ")}]`);
       }
-      if (entry.command) lines.push(`command = "${entry.command}"`);
-      if (entry.timeout) lines.push(`timeout = ${entry.timeout}`);
+      if (entry.command) lines.push(`command = ${tomlString(entry.command as string)}`);
+      if (entry.timeout) {
+        if (typeof entry.timeout !== "number" || !Number.isFinite(entry.timeout)) {
+          throw new Error("Hook timeout must be a finite number");
+        }
+        lines.push(`timeout = ${entry.timeout}`);
+      }
       lines.push("");
     }
   }
@@ -213,16 +222,8 @@ export async function dryRunSync(
   // Build what the new content would be
   let newContent: string;
   if (desc?.mcp.format === "toml") {
-    const lines: string[] = [];
-    for (const [name, mcp] of Object.entries(mcps)) {
-      lines.push(`[mcp.servers."${name}"]`);
-      lines.push(`command = "${mcp.command}"`);
-      if (mcp.args?.length) {
-        lines.push(`args = [${mcp.args.map((a) => `"${a}"`).join(", ")}]`);
-      }
-      lines.push("");
-    }
-    newContent = lines.join("\n");
+    const section = encodeMcpToml(mcps);
+    newContent = currentContent ? replaceMcpSection(currentContent, section) : section;
   } else if (desc?.mcp.entryShape === "openclaw") {
     const config: Record<string, unknown> = currentContent ? JSON.parse(currentContent) : {};
     const plugins = (config.plugins ?? {}) as Record<string, unknown>;

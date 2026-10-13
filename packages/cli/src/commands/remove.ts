@@ -10,7 +10,8 @@ import { Command } from "commander";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { expandPath, TOOL_REGISTRY, resolvePath } from "@mycelish/core";
+import { expandPath, TOOL_REGISTRY, resolvePath, ALL_TOOL_IDS } from "@mycelish/core";
+import { assertContainedPath, assertSafePathComponent } from "../core/path-safety.js";
 import { getTracer } from "../core/global-tracer.js";
 import { MYCELIUM_HOME } from "../core/fs-helpers.js";
 import {
@@ -128,11 +129,15 @@ export async function removeItem(
     if (opts?.type) {
       const section = typeToSection(opts.type);
       if (section) {
+        try {
+          await validateRemoval(name, opts.type, manifestDir);
+          if (opts.type === "mcp" && !opts.soft) await removeNativeMcp(name);
+        } catch (error) { return { success: false, name, error: String(error) }; }
         const sectionData = (manifest[section] ?? {}) as Record<string, ItemConfig>;
         sectionData[name] = { state: "deleted" };
         (manifest as any)[section] = sectionData;
         await saveStateManifest(manifestDir, manifest);
-        if (!opts?.soft) await purgeItemFiles(name, opts.type, log);
+        if (!opts?.soft) await purgeItemFiles(name, opts.type, log, manifestDir);
         const msg = `${opts.type} '${name}' removed`;
         log.info({ scope: "manifest", op: "remove", msg, item: name });
         return { success: true, name, section: opts.type, message: msg };
@@ -154,6 +159,10 @@ export async function removeItem(
 
   const match = matches[0];
   const itemType = sectionToType(match.section);
+  try {
+    await validateRemoval(name, itemType, manifestDir);
+    if (itemType === "mcp" && !opts?.soft) await removeNativeMcp(name, match.config);
+  } catch (error) { return { success: false, name, error: String(error) }; }
 
   // Check if item belongs to a taken-over plugin
   const pluginOrigin = match.config.pluginOrigin;
@@ -172,7 +181,7 @@ export async function removeItem(
 
   // Purge files/symlinks (default behavior)
   if (!opts?.soft) {
-    await purgeItemFiles(name, itemType, log);
+    await purgeItemFiles(name, itemType, log, manifestDir);
     // Re-sync plugin symlinks to clean up
     if (pluginOrigin) {
       await syncPluginSymlinks(manifestDir);
@@ -201,6 +210,16 @@ export async function removePlugin(
   }
 
   const removed: string[] = [];
+  // Preflight filesystem names before mutating any manifest entries.
+  try {
+    for (const { key: section } of ITEM_SECTIONS) {
+      for (const [name, config] of Object.entries(manifest[section] ?? {})) {
+        if (config.source === pluginName || config.pluginOrigin?.pluginId === pluginName || config.pluginOrigin?.pluginId.startsWith(pluginName + "@")) {
+          await validateRemoval(name, sectionToType(section), manifestDir);
+        }
+      }
+    }
+  } catch (error) { return { removed: [], errors: [String(error)] }; }
 
   // Find matching plugin in takenOverPlugins
   let matchedPluginId: string | null = null;
@@ -243,7 +262,8 @@ export async function removePlugin(
           config.state = "deleted";
           removed.push(`${sectionToType(section)}: ${name}`);
           if (!opts?.soft) {
-            await purgeItemFiles(name, sectionToType(section), log);
+            if (sectionToType(section) === "mcp") await removeNativeMcp(name, config);
+            await purgeItemFiles(name, sectionToType(section), log, manifestDir);
           }
         }
       }
@@ -286,7 +306,10 @@ export async function removePlugin(
       if (atIdx > 0) {
         const pluginPart = matchedPluginId.slice(0, atIdx);
         const marketplacePart = matchedPluginId.slice(atIdx + 1);
+        assertSafePathComponent(pluginPart);
+        assertSafePathComponent(marketplacePart);
         const cacheDir = path.join(os.homedir(), ".claude", "plugins", "cache", marketplacePart, pluginPart);
+        assertContainedPath(path.join(os.homedir(), ".claude", "plugins", "cache"), cacheDir);
         await fs.rm(cacheDir, { recursive: true, force: true });
         log.info({ scope: "plugin", op: "cleanup", msg: `Deleted cache: ${cacheDir}`, item: matchedPluginId });
       }
@@ -310,7 +333,8 @@ export async function removePlugin(
           config.state = "deleted";
           removed.push(`${sectionToType(section)}: ${name}`);
           if (!opts?.soft) {
-            await purgeItemFiles(name, sectionToType(section), log);
+            if (sectionToType(section) === "mcp") await removeNativeMcp(name, config);
+            await purgeItemFiles(name, sectionToType(section), log, manifestDir);
           }
         }
       }
@@ -390,7 +414,10 @@ async function purgeItemFiles(
   name: string,
   type: string,
   log: ReturnType<ReturnType<typeof getTracer>["createTrace"]>,
+  manifestDir: string,
 ): Promise<void> {
+  if (type === "mcp") return; // MCP IDs are public names, not filesystem components.
+  await validateRemoval(name, type, manifestDir);
   const DIR_MAP: Record<string, string> = {
     skill: "skills", mcp: "mcps", agent: "agents",
     command: "commands", rule: "rules", hook: "hooks",
@@ -398,7 +425,8 @@ async function purgeItemFiles(
   const dirName = DIR_MAP[type] || `${type}s`;
 
   // 1. Delete source files from global dir
-  const sourceDir = path.join(MYCELIUM_HOME, "global", dirName, name);
+  const sourceRoot = removalRoot(manifestDir);
+  const sourceDir = path.join(sourceRoot, dirName, name);
   try {
     await fs.rm(sourceDir, { recursive: true, force: true });
     log.info({ scope: "purge", op: "delete-source", msg: `Deleted ${sourceDir}`, item: name });
@@ -406,7 +434,7 @@ async function purgeItemFiles(
 
   // Also try single-file items (e.g., rules/name.md)
   for (const ext of [".md", ".yaml", ".yml"]) {
-    const filePath = path.join(MYCELIUM_HOME, "global", dirName, `${name}${ext}`);
+    const filePath = path.join(sourceRoot, dirName, `${name}${ext}`);
     try { await fs.unlink(filePath); } catch { /* noop */ }
   }
 
@@ -417,7 +445,7 @@ async function purgeItemFiles(
     : type === "rule" ? "rules" as const
     : null;
 
-  if (pathKey) {
+  if (pathKey && sourceRoot === path.join(MYCELIUM_HOME, "global")) {
     for (const [, desc] of Object.entries(TOOL_REGISTRY)) {
       const itemPath = desc.paths[pathKey];
       if (!itemPath) continue;
@@ -427,17 +455,42 @@ async function purgeItemFiles(
         const targetPath = path.join(resolved, candidate);
         try {
           const stats = await fs.lstat(targetPath);
-          if (stats.isSymbolicLink() || stats.isFile()) {
+          if (stats.isSymbolicLink()) {
+            const target = path.resolve(path.dirname(targetPath), await fs.readlink(targetPath));
+            const owned = [sourceDir, ...[".md", ".yaml", ".yml"].map(ext => path.join(sourceRoot, dirName, `${name}${ext}`))];
+            if (!owned.includes(target)) continue;
             await fs.unlink(targetPath);
-            log.info({ scope: "purge", op: "delete-target", msg: `Removed ${targetPath}`, item: name });
-          } else if (stats.isDirectory()) {
-            await fs.rm(targetPath, { recursive: true, force: true });
             log.info({ scope: "purge", op: "delete-target", msg: `Removed ${targetPath}`, item: name });
           }
         } catch { /* doesn't exist */ }
       }
     }
   }
+}
+
+function removalRoot(manifestDir: string): string {
+  return path.resolve(manifestDir) === path.resolve(MYCELIUM_HOME)
+    ? path.join(MYCELIUM_HOME, "global") : manifestDir;
+}
+
+async function validateRemoval(name: string, type: string, manifestDir: string): Promise<void> {
+  if (type === "mcp") return;
+  assertSafePathComponent(name);
+  const root = removalRoot(manifestDir);
+  assertContainedPath(manifestDir, path.join(root, `${type}s`));
+}
+
+async function removeNativeMcp(name: string, config?: ItemConfig): Promise<void> {
+  const { getAdapter } = await import("../core/tool-adapter.js");
+  const errors: string[] = [];
+  for (const tool of config?.tools ?? ALL_TOOL_IDS) {
+    if (config?.excludeTools?.includes(tool)) continue;
+    try {
+      const result = await getAdapter(tool).remove(name);
+      if (!result.success) errors.push(`${tool}: ${result.error ?? "MCP removal failed"}`);
+    } catch (error) { errors.push(`${tool}: ${String(error)}`); }
+  }
+  if (errors.length) throw new Error(errors.join("; "));
 }
 
 // ============================================================================

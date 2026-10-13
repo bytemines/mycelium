@@ -9,12 +9,14 @@ import * as jsonc from "jsonc-parser";
 import type { McpServerConfig } from "@mycelish/core";
 import { type ToolDescriptor, resolvePath } from "@mycelish/core";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
-import { replaceMcpSection } from "./toml-helpers.js";
+import { replaceNamedMcpSection } from "./toml-helpers.js";
+import { encodeMcpToml } from "./toml-encoding.js";
 import {
   type AdapterResult,
   BaseToolAdapter,
   commandExists,
   execCli,
+  isAbsentCliRemoval,
 } from "./adapter-base.js";
 
 // ---------------------------------------------------------------------------
@@ -91,6 +93,9 @@ export class GenericAdapter extends BaseToolAdapter {
       await execCli(cli.command, args);
       return { success: true, method: "cli" };
     } catch (err) {
+      if (isAbsentCliRemoval(this.toolId, name, err)) {
+        return { success: true, method: "cli", message: `${name} already absent` };
+      }
       this.log?.error({
         scope: "mcp", op: "remove", msg: String(err), tool: this.desc.id,
         item: name, method: "cli", error: String(err),
@@ -139,21 +144,22 @@ export class GenericAdapter extends BaseToolAdapter {
       const format = this.desc.mcp.format;
 
       if (format === "toml") {
-        return this.writeToml(configPath, mcps);
+        return await this.writeToml(configPath, mcps);
       }
 
       // json or jsonc
-      const existing = await readFileIfExists(configPath);
-      const config: Record<string, unknown> = existing
-        ? (format === "jsonc" ? jsonc.parse(existing) : JSON.parse(existing))
-        : {};
+      const existing = await this.readJsonConfig(configPath);
+      const config = existing === null ? {} : this.parseJsonConfig(existing);
 
       // Read existing entries to preserve extra properties
       const existingEntries = (this.getNestedKey(config, this.desc.mcp.key) ?? {}) as Record<string, Record<string, unknown>>;
 
-      const entries: Record<string, unknown> = {};
+      const entries: Record<string, unknown> = { ...existingEntries };
       for (const [name, mcp] of Object.entries(mcps)) {
-        if (mcp.state && mcp.state !== "enabled") continue;
+        if (mcp.state && mcp.state !== "enabled") {
+          delete entries[name];
+          continue;
+        }
         if (!mcp.command) continue; // Skip entries without a valid command
         const shaped = this.shapeEntry(mcp);
         const prev = existingEntries[name];
@@ -191,23 +197,24 @@ export class GenericAdapter extends BaseToolAdapter {
     if (!configPath) return { success: false, method: "file", error: "No MCP config path" };
 
     try {
-      const existing = await readFileIfExists(configPath);
-      if (!existing) return { success: false, method: "file", error: "Config not found" };
-
       const format = this.desc.mcp.format;
+      const existing = format === "toml"
+        ? await readFileIfExists(configPath)
+        : await this.readJsonConfig(configPath);
+      if (existing === null) return { success: true, method: "file", message: `${name} already absent` };
 
       if (format === "toml") {
         return this.removeFromToml(configPath, existing, name);
       }
 
-      const config = format === "jsonc" ? jsonc.parse(existing) : JSON.parse(existing);
+      const config = this.parseJsonConfig(existing);
       const section = this.getNestedKey(config, this.desc.mcp.key);
       if (section?.[name]) {
         delete section[name];
         await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
         return { success: true, method: "file" };
       }
-      return { success: false, method: "file", error: `${name} not found` };
+      return { success: true, method: "file", message: `${name} already absent` };
     } catch (err) {
       this.log?.error({
         scope: "mcp", op: "remove", msg: String(err), tool: this.desc.id,
@@ -329,25 +336,10 @@ export class GenericAdapter extends BaseToolAdapter {
   private async writeToml(configPath: string, mcps: Record<string, McpServerConfig>): Promise<AdapterResult> {
     const existing = await readFileIfExists(configPath);
 
-    const mcpLines: string[] = [];
+    let content = existing ?? "";
     for (const [name, mcp] of Object.entries(mcps)) {
-      if (mcp.state && mcp.state !== "enabled") continue;
-      mcpLines.push(`[mcp.servers."${name}"]`);
-      mcpLines.push(`command = "${mcp.command}"`);
-      if (mcp.args?.length) {
-        mcpLines.push(`args = [${mcp.args.map((a) => `"${a}"`).join(", ")}]`);
-      }
-      if (mcp.env && Object.keys(mcp.env).length > 0) {
-        mcpLines.push(`[mcp.servers."${name}".env]`);
-        for (const [k, v] of Object.entries(mcp.env)) {
-          mcpLines.push(`${k} = "${v}"`);
-        }
-      }
-      mcpLines.push("");
+      content = replaceNamedMcpSection(content, name, encodeMcpToml({ [name]: mcp }), this.desc.mcp.key);
     }
-
-    const mcpSection = mcpLines.join("\n");
-    const content = existing ? replaceMcpSection(existing, mcpSection) : mcpSection;
 
     await mkdirp(path.dirname(configPath));
     await fs.writeFile(configPath, content, "utf-8");
@@ -355,21 +347,7 @@ export class GenericAdapter extends BaseToolAdapter {
   }
 
   private removeFromToml(configPath: string, existing: string, name: string): Promise<AdapterResult> {
-    const lines = existing.split("\n");
-    const result: string[] = [];
-    let inTarget = false;
-    for (const line of lines) {
-      if (line === `[mcp.servers."${name}"]`) {
-        inTarget = true;
-        continue;
-      }
-      if (inTarget && /^\[/.test(line)) {
-        inTarget = false;
-      }
-      if (!inTarget) result.push(line);
-    }
-
-    return fs.writeFile(configPath, result.join("\n"), "utf-8").then(
+    return fs.writeFile(configPath, replaceNamedMcpSection(existing, name), "utf-8").then(
       () => ({ success: true as const, method: "file" as const }),
       (err) => ({ success: false as const, method: "file" as const, error: String(err) }),
     );
@@ -400,5 +378,29 @@ export class GenericAdapter extends BaseToolAdapter {
       current = (current as Record<string, unknown>)[part];
     }
     return current as Record<string, unknown> | undefined;
+  }
+
+  private async readJsonConfig(configPath: string): Promise<string | null> {
+    try {
+      return await fs.readFile(configPath, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  }
+
+  private parseJsonConfig(content: string): Record<string, unknown> {
+    const errors: jsonc.ParseError[] = [];
+    const config = this.desc.mcp.format === "jsonc"
+      ? jsonc.parse(content, errors, { allowTrailingComma: true })
+      : JSON.parse(content);
+    if (errors.length || !config || typeof config !== "object" || Array.isArray(config)) {
+      throw new Error("Invalid native MCP config: expected a JSON object");
+    }
+    const section = this.getNestedKey(config, this.desc.mcp.key);
+    if (section !== undefined && (!section || typeof section !== "object" || Array.isArray(section))) {
+      throw new Error("Invalid native MCP section: expected an object");
+    }
+    return config;
   }
 }

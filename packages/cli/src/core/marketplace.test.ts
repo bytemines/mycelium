@@ -44,12 +44,17 @@ vi.mock("./mcp-registry.js", () => ({
 }));
 
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+global.fetch = async (...args: Parameters<typeof fetch>) => {
+  const response = await mockFetch(...args);
+  if (response?.json && !response.text) response.text = async () => JSON.stringify(await response.json());
+  return response;
+};
 
 import {
   searchMarketplace,
   installFromMarketplace,
   listInstalledPlugins,
+  updateItem,
 } from "./marketplace.js";
 
 const mockFs = vi.mocked(fs);
@@ -85,6 +90,31 @@ describe("searchMarketplace", () => {
 });
 
 describe("installFromMarketplace", () => {
+  it("keeps installed items omitted from nonempty partial update results", async () => {
+    const { loadStateManifest } = await import("./manifest-state.js");
+    const { KNOWN_SEARCHERS } = await import("./marketplace-sources.js");
+    const originalLoad = vi.mocked(loadStateManifest).getMockImplementation()!;
+    const manifest = { version: "1.0.0", mcps: {
+      "test-mcp": { state: "enabled", source: "mcp-registry" },
+      omitted: { state: "enabled", source: "mcp-registry" },
+    } };
+    vi.mocked(loadStateManifest).mockResolvedValue(manifest as any);
+    const search = vi.spyOn(KNOWN_SEARCHERS, "mcp-registry").mockResolvedValue({ entries: [{ name: "test-mcp", source: "mcp-registry", type: "mcp", description: "" }], total: 1, source: "mcp-registry" });
+    try {
+      const result = await updateItem("test-mcp", "mcp-registry", "mcp");
+      expect(result.success).toBe(true);
+      expect(manifest.mcps.omitted.state).toBe("enabled");
+      expect(mockFs.rm).not.toHaveBeenCalled();
+      expect(mockFs.unlink).not.toHaveBeenCalled();
+    } finally { search.mockRestore(); vi.mocked(loadStateManifest).mockImplementation(originalLoad); }
+  });
+  it("rejects traversal before fetching or writing", async () => {
+    const result = await installFromMarketplace({ name: "../../../outside", source: "anthropic-skills", type: "skill", description: "" });
+    expect(result.success).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockFs.mkdir).not.toHaveBeenCalled();
+    expect(mockFs.writeFile).not.toHaveBeenCalled();
+  });
   it("symlinks claude plugins", async () => {
     mockFs.mkdir.mockResolvedValue(undefined);
     mockFs.symlink.mockResolvedValue(undefined);

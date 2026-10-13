@@ -149,7 +149,7 @@ export function findItemType(
 ): { type: ItemType; config: ItemConfig } | null {
   for (const { key, type } of ITEM_SECTIONS) {
     const section = manifest[key];
-    if (section && typeof section === "object" && !Array.isArray(section) && name in (section as Record<string, ItemConfig>)) {
+    if (section && typeof section === "object" && !Array.isArray(section) && Object.hasOwn(section, name)) {
       return { type, config: (section as Record<string, ItemConfig>)[name] };
     }
   }
@@ -158,9 +158,9 @@ export function findItemType(
 
 /**
  * Build a set of disabled item names from both global and project manifests.
- * Project-level state overrides global-level state.
+ * Project-level state overrides global-level state; type isolates same-name items.
  */
-export async function getDisabledItems(projectRoot?: string): Promise<Set<string>> {
+export async function getDisabledItems(projectRoot?: string, type?: ItemType): Promise<Set<string>> {
   const disabledItems = new Set<string>();
 
   const manifestPaths = [
@@ -176,7 +176,8 @@ export async function getDisabledItems(projectRoot?: string): Promise<Set<string
     const manifest = yamlParse(content) as ManifestConfig | null;
     if (!manifest) continue;
 
-    for (const { key: section } of ITEM_SECTIONS) {
+    for (const { key: section, type: itemType } of ITEM_SECTIONS) {
+      if (type && itemType !== type) continue;
       const items = manifest[section];
       if (!items || typeof items !== "object" || Array.isArray(items)) continue;
       for (const [itemName, config] of Object.entries(items as Record<string, ItemConfig>)) {

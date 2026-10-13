@@ -8,8 +8,15 @@ import * as os from "node:os";
 vi.mock("node:fs/promises");
 vi.mock("./plugin-scanner.js");
 vi.mock("./symlink-manager.js");
-vi.mock("./fs-helpers.js");
-vi.mock("./manifest-state.js");
+vi.mock("./manifest-state.js", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("./manifest-state.js")>();
+  return {
+    ITEM_SECTIONS: orig.ITEM_SECTIONS,
+    loadStateManifest: vi.fn(),
+    saveStateManifest: vi.fn(),
+    getDisabledItems: vi.fn(),
+  };
+});
 vi.mock("./global-tracer.js", () => ({
   getTracer: () => ({
     createTrace: () => ({
@@ -30,12 +37,12 @@ vi.mock("@mycelish/core", async (importOriginal) => {
 const fsMock = await import("node:fs/promises");
 const scannerMock = await import("./plugin-scanner.js");
 const symlinkMock = await import("./symlink-manager.js");
-const fsHelpersMock = await import("./fs-helpers.js");
 const manifestMock = await import("./manifest-state.js");
 
 const {
   getPluginForSkill,
   setPluginEnabled,
+  cleanOrphanedTakeovers,
   syncPluginSymlinks,
   getSymlinkPath,
   PLUGIN_COMPONENT_DIRS,
@@ -50,9 +57,9 @@ function mockDirent(name: string, isDir: boolean, isSymlink = false) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   // Default: no settings.json
-  vi.mocked(fsHelpersMock.readFileIfExists).mockResolvedValue(null);
+  vi.mocked(fsMock.readFile).mockRejectedValue(Object.assign(new Error("Missing file"), { code: "ENOENT" }));
   // Default: mkdir/writeFile succeed
   vi.mocked(fsMock.mkdir).mockResolvedValue(undefined as any);
   vi.mocked(fsMock.writeFile).mockResolvedValue(undefined);
@@ -118,7 +125,7 @@ describe("getPluginForSkill", () => {
 
 describe("setPluginEnabled", () => {
   it("preserves other settings.json content", async () => {
-    vi.mocked(fsHelpersMock.readFileIfExists).mockResolvedValue(
+    vi.mocked(fsMock.readFile).mockResolvedValue(
       JSON.stringify({ permissions: { allow: true }, enabledPlugins: { "other@mp": true } }),
     );
 
@@ -131,6 +138,121 @@ describe("setPluginEnabled", () => {
     expect(written.permissions).toEqual({ allow: true });
     expect(written.enabledPlugins["other@mp"]).toBe(true);
     expect(written.enabledPlugins["my-plugin@mp"]).toBe(false);
+  });
+
+  it.each(["{broken", "", "null", "[]", '{"enabledPlugins":[]}']) (
+    "rejects invalid settings without overwriting permissions: %s",
+    async (raw) => {
+      vi.mocked(fsMock.readFile).mockResolvedValue(raw);
+      await expect(setPluginEnabled("plug@mp", false)).rejects.toThrow("Cannot update");
+      expect(fsMock.writeFile).not.toHaveBeenCalled();
+      expect(fsMock.mkdir).not.toHaveBeenCalled();
+    },
+  );
+
+  it("propagates settings read failures without writing", async () => {
+    vi.mocked(fsMock.readFile).mockRejectedValue(Object.assign(new Error("Permission denied"), { code: "EACCES" }));
+    await expect(setPluginEnabled("plug@mp", false)).rejects.toThrow("Permission denied");
+    expect(fsMock.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("creates settings only when confirmed missing", async () => {
+    await setPluginEnabled("plug@mp", false);
+    expect(JSON.parse(String(vi.mocked(fsMock.writeFile).mock.calls[0][1]))).toEqual({ enabledPlugins: { "plug@mp": false } });
+  });
+});
+
+describe("cleanOrphanedTakeovers", () => {
+  function fixture(hostname = os.hostname()) {
+    const manifest = {
+      version: "1.0", mcps: {},
+      skills: { s1: { state: "enabled", pluginOrigin: { pluginId: "plug@mp" } } },
+      agents: { a1: { state: "enabled", pluginOrigin: { pluginId: "plug@mp" } } },
+      commands: { c1: { state: "enabled", pluginOrigin: { pluginId: "plug@mp" } } },
+      takenOverPlugins: { "plug@mp": {
+        hostname, cachePath: `${os.homedir()}/.claude/plugins/cache/mp/plug/1.0.0`,
+        version: "1.0.0", allSkills: ["s1"], allComponents: ["a1", "c1"],
+      } },
+    };
+    vi.mocked(manifestMock.loadStateManifest).mockResolvedValue(manifest as any);
+    vi.mocked(fsMock.access).mockResolvedValue(undefined);
+    vi.mocked(fsMock.readdir).mockResolvedValue([mockDirent("s1", false, true)] as any);
+    vi.mocked(fsMock.readlink).mockResolvedValue(`${os.homedir()}/.claude/plugins/cache/mp/plug/1.0.0/skills/s1`);
+    return manifest;
+  }
+
+  function expectNoChanges(manifest: unknown, before: unknown) {
+    expect(manifest).toEqual(before);
+    expect(manifestMock.saveStateManifest).not.toHaveBeenCalled();
+    expect(fsMock.writeFile).not.toHaveBeenCalled();
+    expect(fsMock.rm).not.toHaveBeenCalled();
+    expect(fsMock.unlink).not.toHaveBeenCalled();
+    expect(symlinkMock.removeSkillSymlink).not.toHaveBeenCalled();
+  }
+
+  it.each(["{broken", "", "null", "[]", "{}", '{"version":3,"plugins":{}}', '{"version":2}', '{"version":2,"plugins":[]}', '{"version":2,"plugins":null}', '{"version":2,"plugins":{"other@mp":true}}', '{"version":2,"plugins":{"other@mp":[null]}}']) (
+    "preserves all takeover state for an unrecognized index: %s", async (raw) => {
+      const manifest = fixture();
+      const before = structuredClone(manifest);
+      vi.mocked(fsMock.readFile).mockResolvedValue(raw);
+      expect(await cleanOrphanedTakeovers("/test")).toEqual([]);
+      expectNoChanges(manifest, before);
+    },
+  );
+
+  it.each(["ENOENT", "EACCES", "EIO"])("preserves state when the index read fails with %s", async (code) => {
+    const manifest = fixture();
+    const before = structuredClone(manifest);
+    vi.mocked(fsMock.readFile).mockRejectedValue(Object.assign(new Error(code), { code }));
+    expect(await cleanOrphanedTakeovers("/test")).toEqual([]);
+    expectNoChanges(manifest, before);
+  });
+
+  it("preserves state when cache access is denied rather than missing", async () => {
+    const manifest = fixture();
+    const before = structuredClone(manifest);
+    vi.mocked(fsMock.readFile).mockResolvedValue('{"version":2,"plugins":{}}');
+    vi.mocked(fsMock.access).mockRejectedValue(Object.assign(new Error("Denied"), { code: "EACCES" }));
+    expect(await cleanOrphanedTakeovers("/test")).toEqual([]);
+    expectNoChanges(manifest, before);
+  });
+
+  it("does not infer uninstall from missing cache when the index still lists the plugin", async () => {
+    const manifest = fixture();
+    vi.mocked(fsMock.readFile).mockResolvedValue('{"version":2,"plugins":{"plug@mp":[]}}');
+    vi.mocked(fsMock.access).mockRejectedValue(Object.assign(new Error("Missing"), { code: "ENOENT" }));
+    vi.mocked(fsMock.readdir).mockResolvedValue([] as any);
+    const before = structuredClone(manifest);
+    expect(await cleanOrphanedTakeovers("/test")).toEqual([]);
+    expectNoChanges(manifest, before);
+  });
+
+  it.each([true, false])("cleans a confirmed uninstall with cache present=%s", async (cachePresent) => {
+    const manifest = fixture();
+    vi.mocked(fsMock.readFile).mockImplementation(async (file) => String(file).endsWith("installed_plugins.json")
+      ? '{"version":2,"plugins":{}}'
+      : '{"permissions":{"allow":["safe"]},"enabledPlugins":{"plug@mp":false,"other@mp":true}}');
+    if (!cachePresent) vi.mocked(fsMock.access).mockRejectedValue(Object.assign(new Error("Missing"), { code: "ENOENT" }));
+    vi.mocked(fsMock.readdir).mockResolvedValue([] as any);
+    expect(await cleanOrphanedTakeovers("/test")).toEqual(["plug@mp"]);
+    expect(manifest.skills).toEqual({});
+    expect(manifest.agents).toEqual({});
+    expect(manifest.commands).toEqual({});
+    expect(manifestMock.saveStateManifest).toHaveBeenCalled();
+    expect(fsMock.rm).toHaveBeenCalled();
+    expect(JSON.parse(String(vi.mocked(fsMock.writeFile).mock.calls[0][1]))).toEqual({
+      permissions: { allow: ["safe"] }, enabledPlugins: { "other@mp": true },
+    });
+  });
+
+  it("preserves another machine's takeover with a valid empty index", async () => {
+    const manifest = fixture("other-machine");
+    const before = structuredClone(manifest);
+    vi.mocked(fsMock.readFile).mockResolvedValue('{"version":2,"plugins":{}}');
+    vi.mocked(fsMock.readdir).mockResolvedValue([] as any);
+    expect(await cleanOrphanedTakeovers("/test")).toEqual([]);
+    expectNoChanges(manifest, before);
+    expect(fsMock.access).not.toHaveBeenCalled();
   });
 });
 

@@ -5,6 +5,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { SnapshotMetadata } from "@mycelish/core";
 import { mkdirp, MYCELIUM_HOME } from "./fs-helpers.js";
+import { assertContainedPath, assertSafePathComponent } from "./path-safety.js";
 
 function getMyceliumDir(): string {
   return MYCELIUM_HOME;
@@ -16,6 +17,7 @@ function getSnapshotsDir(): string {
 
 /** Files to capture relative to getMyceliumDir() */
 const SNAPSHOT_FILES = [
+  "manifest.yaml",
   "global/mcps.yaml",
   "global/hooks.yaml",
   "migration-manifest.json",
@@ -24,39 +26,33 @@ const SNAPSHOT_FILES = [
 
 const VALID_NAME = /^[a-zA-Z0-9-]+$/;
 
+type SnapshotRecord = SnapshotMetadata & {
+  formatVersion?: number;
+  configFiles?: Record<string, boolean>;
+};
+
+function snapshotPath(name: string): string {
+  if (!VALID_NAME.test(name)) throw new Error(`Invalid snapshot name "${name}": only alphanumeric characters and hyphens are allowed`);
+  const dir = path.join(getSnapshotsDir(), name);
+  assertContainedPath(getMyceliumDir(), dir);
+  assertContainedPath(getSnapshotsDir(), dir);
+  return dir;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
 
 async function copyIfExists(src: string, dest: string): Promise<boolean> {
   try {
-    await mkdirp(path.dirname(dest));
-    await fs.copyFile(src, dest);
-    return true;
-  } catch {
-    return false;
+    if (!(await fs.lstat(src)).isFile()) throw new Error(`Invalid snapshot config source: ${src}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
-}
-
-async function copyDirRecursive(src: string, dest: string): Promise<string[]> {
-  const files: string[] = [];
-  try {
-    const entries = await fs.readdir(src, { withFileTypes: true });
-    await mkdirp(dest);
-    for (const entry of entries) {
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...(await copyDirRecursive(srcPath, destPath)));
-      } else {
-        await fs.copyFile(srcPath, destPath);
-        files.push(entry.name);
-      }
-    }
-  } catch {
-    // directory doesn't exist, skip
-  }
-  return files;
+  await mkdirp(path.dirname(dest));
+  await fs.copyFile(src, dest);
+  return true;
 }
 
 async function rmrf(dir: string): Promise<void> {
@@ -77,7 +73,7 @@ export async function createSnapshot(
     );
   }
 
-  const snapshotDir = path.join(getSnapshotsDir(), name);
+  const snapshotDir = snapshotPath(name);
 
   // Check for duplicates
   try {
@@ -91,12 +87,16 @@ export async function createSnapshot(
   await mkdirp(snapshotDir);
 
   const fileList: string[] = [];
+  const configFiles: Record<string, boolean> = {};
 
   // Copy individual files
   for (const relPath of SNAPSHOT_FILES) {
     const src = path.join(getMyceliumDir(), relPath);
     const dest = path.join(snapshotDir, relPath);
-    if (await copyIfExists(src, dest)) {
+    assertContainedPath(getMyceliumDir(), src);
+    assertContainedPath(snapshotDir, dest);
+    configFiles[relPath] = await copyIfExists(src, dest);
+    if (configFiles[relPath]) {
       fileList.push(relPath);
     }
   }
@@ -119,12 +119,14 @@ export async function createSnapshot(
     // skills dir doesn't exist
   }
 
-  const metadata: SnapshotMetadata = {
+  const metadata: SnapshotRecord = {
     name,
     createdAt: new Date().toISOString(),
     description,
     skillSymlinks,
     fileList,
+    formatVersion: 2,
+    configFiles,
   };
 
   await fs.writeFile(
@@ -136,7 +138,8 @@ export async function createSnapshot(
 }
 
 export async function restoreSnapshot(name: string): Promise<void> {
-  const snapshotDir = path.join(getSnapshotsDir(), name);
+  const snapshotDir = snapshotPath(name);
+  assertContainedPath(snapshotDir, path.join(snapshotDir, "metadata.json"));
 
   let raw: string;
   try {
@@ -145,26 +148,71 @@ export async function restoreSnapshot(name: string): Promise<void> {
     throw new Error(`Snapshot "${name}" not found`);
   }
 
-  const metadata: SnapshotMetadata = JSON.parse(raw);
-
-  // Remove current config files
-  for (const relPath of SNAPSHOT_FILES) {
-    await fs.rm(path.join(getMyceliumDir(), relPath), { force: true });
+  const metadata: SnapshotRecord = JSON.parse(raw);
+  if (!Array.isArray(metadata.fileList) || !metadata.skillSymlinks || typeof metadata.skillSymlinks !== "object" || Array.isArray(metadata.skillSymlinks)) {
+    throw new Error("Invalid snapshot metadata");
   }
-  await rmrf(path.join(getMyceliumDir(), "global", "skills"));
-
-  // Restore files
+  const absentPaths: string[] = [];
+  if (metadata.formatVersion !== undefined || metadata.configFiles !== undefined) {
+    if (metadata.formatVersion !== 2 || !metadata.configFiles || typeof metadata.configFiles !== "object" || Array.isArray(metadata.configFiles) || Object.keys(metadata.configFiles).length !== SNAPSHOT_FILES.length) {
+      throw new Error("Invalid snapshot config states");
+    }
+    for (const relPath of SNAPSHOT_FILES) {
+      const present = metadata.configFiles[relPath];
+      if (typeof present !== "boolean" || present !== metadata.fileList.includes(relPath)) throw new Error("Invalid snapshot config states");
+      if (!present) absentPaths.push(relPath);
+    }
+  }
+  // Validate and read every input before changing any current configuration.
+  const files: Array<{ dest: string; content: Buffer }> = [];
   for (const relPath of metadata.fileList) {
+    if (!SNAPSHOT_FILES.includes(relPath)) throw new Error(`Invalid snapshot file: ${relPath}`);
     const src = path.join(snapshotDir, relPath);
     const dest = path.join(getMyceliumDir(), relPath);
-    await copyIfExists(src, dest);
+    assertContainedPath(snapshotDir, src);
+    assertContainedPath(getMyceliumDir(), dest);
+    try {
+      if (!(await fs.lstat(dest)).isFile()) throw new Error(`Invalid restore destination: ${dest}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    files.push({ dest, content: await fs.readFile(src) });
   }
-
-  // Recreate symlinks
+  const removals: string[] = [];
+  for (const relPath of absentPaths) {
+    const dest = path.join(getMyceliumDir(), relPath);
+    assertContainedPath(getMyceliumDir(), dest);
+    try {
+      if (!(await fs.lstat(dest)).isFile()) throw new Error(`Invalid restore destination: ${dest}`);
+      removals.push(dest);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
   const skillsDir = path.join(getMyceliumDir(), "global", "skills");
+  assertContainedPath(getMyceliumDir(), skillsDir);
+  for (const [linkName, target] of Object.entries(metadata.skillSymlinks)) {
+    assertSafePathComponent(linkName);
+    if (typeof target !== "string" || !target || target.includes("\0")) throw new Error(`Invalid snapshot symlink: ${linkName}`);
+    try {
+      const stats = await fs.lstat(path.join(skillsDir, linkName));
+      if (!stats.isSymbolicLink()) throw new Error(`Preserving native skill: ${linkName}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  for (const dest of removals) await fs.unlink(dest);
+  for (const { dest, content } of files) {
+    await mkdirp(path.dirname(dest));
+    await fs.writeFile(dest, content);
+  }
   await mkdirp(skillsDir);
   for (const [linkName, target] of Object.entries(metadata.skillSymlinks)) {
-    await fs.symlink(target, path.join(skillsDir, linkName));
+    const link = path.join(skillsDir, linkName);
+    try { await fs.unlink(link); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await fs.symlink(target, link);
   }
 }
 
@@ -174,6 +222,8 @@ export async function listSnapshots(): Promise<SnapshotMetadata[]> {
     const entries = await fs.readdir(getSnapshotsDir());
     for (const entry of entries) {
       try {
+        const dir = snapshotPath(entry);
+        assertContainedPath(dir, path.join(dir, "metadata.json"));
         const raw = await fs.readFile(
           path.join(getSnapshotsDir(), entry, "metadata.json"),
           "utf-8",
@@ -193,7 +243,7 @@ export async function listSnapshots(): Promise<SnapshotMetadata[]> {
 }
 
 export async function deleteSnapshot(name: string): Promise<void> {
-  const snapshotDir = path.join(getSnapshotsDir(), name);
+  const snapshotDir = snapshotPath(name);
   try {
     await fs.access(snapshotDir);
   } catch {

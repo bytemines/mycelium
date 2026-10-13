@@ -16,6 +16,10 @@ import type {
 } from "@mycelish/core";
 
 // Mock the dependencies
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, readFile: vi.fn(actual.readFile) };
+});
 vi.mock("../core/config-merger.js", () => ({
   loadAndMergeAllConfigs: vi.fn(),
   loadGlobalConfig: vi.fn().mockResolvedValue({}),
@@ -30,15 +34,37 @@ vi.mock("../core/symlink-manager.js", () => ({
   syncSkillsToTool: vi.fn(),
 }));
 
+vi.mock("../core/file-syncer.js", () => ({ syncFilesToDir: vi.fn() }));
+
 vi.mock("../core/mcp-injector.js", () => ({
   filterMcpsForTool: vi.fn(),
   resolveEnvVarsInMcps: vi.fn(),
 }));
 
+vi.mock("../core/manifest-state.js", () => ({
+  getDisabledItems: vi.fn().mockResolvedValue(new Set()),
+  loadStateManifest: vi.fn().mockResolvedValue(null),
+}));
+vi.mock("../core/machine-overrides.js", () => ({
+  loadMachineOverrides: vi.fn().mockResolvedValue({ mcps: {} }),
+  applyMachineOverrides: vi.fn(mcps => mcps),
+  rescanOverrides: vi.fn().mockResolvedValue({ mcps: {} }),
+}));
+vi.mock("../core/plugin-takeover.js", () => ({
+  PLUGIN_COMPONENT_DIRS: {},
+  cleanOrphanedTakeovers: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("../core/global-tracer.js", () => ({
+  getTracer: () => ({ createTrace: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) }),
+  closeTracer: vi.fn(),
+}));
+
 const mockSyncAll = vi.fn().mockResolvedValue({ success: true });
+const mockRemove = vi.fn().mockResolvedValue({ success: true });
 vi.mock("../core/tool-adapter.js", () => ({
   getAdapter: vi.fn(() => ({
     syncAll: mockSyncAll,
+    remove: mockRemove,
     syncOne: vi.fn().mockResolvedValue({ success: true }),
   })),
 }));
@@ -49,6 +75,7 @@ import { syncAll, syncTool, loadEnvFile } from "./sync.js";
 // Import mocked modules
 import { loadAndMergeAllConfigs } from "../core/config-merger.js";
 import { syncSkillsToTool } from "../core/symlink-manager.js";
+import { syncFilesToDir } from "../core/file-syncer.js";
 import {
   filterMcpsForTool,
   resolveEnvVarsInMcps,
@@ -92,6 +119,7 @@ describe("Sync Command", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(syncFilesToDir).mockResolvedValue({ success: true, created: [], updated: [], removed: [], unchanged: [], errors: [] });
 
     // Default mock implementations
     (loadAndMergeAllConfigs as MockedFunction<typeof loadAndMergeAllConfigs>).mockResolvedValue(
@@ -117,7 +145,61 @@ describe("Sync Command", () => {
 
   });
 
+  describe("file sync failures", () => {
+    it("reports unsuccessful skills before counting or syncing MCPs", async () => {
+      vi.mocked(syncSkillsToTool).mockResolvedValue({ success: false, created: ["partial"], updated: [], removed: [], unchanged: [], errors: [{ skill: "native", error: "preserving native directory" }] });
+      const status = await syncTool("claude-code", sampleMergedConfig);
+      expect(status).toMatchObject({ status: "error", skillsCount: 0 });
+      expect(status.error).toContain("native: preserving native directory");
+      expect(mockSyncAll).not.toHaveBeenCalled();
+    });
+
+    it.each(["agents", "rules", "commands"])("reports unsuccessful %s instead of Synced", async section => {
+      const { TOOL_REGISTRY } = await import("@mycelish/core");
+      const tool = Object.values(TOOL_REGISTRY).find(desc => desc.capabilities.includes(section as "agents" | "rules" | "commands") && desc.paths[section as "agents" | "rules" | "commands"])!;
+      const item = { name: "native", path: "/test/source/native.md" };
+      vi.mocked(syncFilesToDir).mockImplementation(async items => ({
+        success: !items.some(candidate => candidate.name === "native"), created: [], updated: [], removed: [], unchanged: [],
+        errors: items.length ? [{ item: "native", error: "preserving native collision" }] : [],
+      }));
+      const status = await syncTool(tool.id, { ...sampleMergedConfig, [section]: { native: item } });
+      expect(status).toMatchObject({ status: "error", skillsCount: 0, agentsCount: 0, rulesCount: 0, commandsCount: 0 });
+      expect(status.error).toContain("native: preserving native collision");
+      expect(mockSyncAll).not.toHaveBeenCalled();
+    });
+  });
+
   describe("syncAll", () => {
+    beforeEach(() => {
+      vi.mocked(fs.readFile).mockRejectedValue(new Error("No test env file"));
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it("loads global and project env files for dashboard-style calls, with project priority", async () => {
+      vi.mocked(fs.readFile).mockImplementation(async envPath => {
+        if (String(envPath) === "/test/project/.mycelium/.env.local") {
+          return "SHARED=project\nPROJECT_ONLY=project-value\n";
+        }
+        return "SHARED=global\nGLOBAL_ONLY=global-value\n";
+      });
+      await syncAll("/test/project", { "claude-code": { enabled: true } });
+      expect(resolveEnvVarsInMcps).toHaveBeenCalledWith(sampleMergedConfig.mcps, {
+        SHARED: "project", PROJECT_ONLY: "project-value", GLOBAL_ONLY: "global-value",
+      });
+      expect(fs.readFile).toHaveBeenCalledTimes(2);
+      expect(String(vi.mocked(fs.readFile).mock.calls[0][0])).toMatch(/\.mycelium\/\.env\.local$/);
+    });
+
+    it("merges explicit env values last, including explicitly empty values", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue("SHARED=file\nFILE_ONLY=value\n");
+      const supplied = { SHARED: "", EXPLICIT: "override" };
+      await syncAll("/test/project", { "claude-code": { enabled: true } }, supplied);
+      expect(resolveEnvVarsInMcps).toHaveBeenCalledWith(sampleMergedConfig.mcps, {
+        FILE_ONLY: "value", SHARED: "", EXPLICIT: "override",
+      });
+      expect(supplied).toEqual({ SHARED: "", EXPLICIT: "override" });
+    });
+
     it("syncs to all enabled tools", async () => {
       const enabledTools: Record<ToolId, { enabled: boolean }> = {
         "claude-code": { enabled: true },
@@ -253,6 +335,12 @@ describe("Sync Command", () => {
   });
 
   describe("syncTool", () => {
+    it("reports unsuccessful adapter results", async () => {
+      mockSyncAll.mockResolvedValueOnce({ success: false, error: "Permission denied" });
+      expect(await syncTool("claude-code", sampleMergedConfig)).toMatchObject({
+        status: "error", error: "Permission denied",
+      });
+    });
     it("syncs skills to specific tool", async () => {
       const toolId: ToolId = "claude-code";
 
@@ -429,6 +517,8 @@ describe("Sync Command", () => {
     let tempDir: string;
 
     beforeEach(async () => {
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      vi.mocked(fs.readFile).mockImplementation(actual.readFile);
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "sync-test-"));
     });
 

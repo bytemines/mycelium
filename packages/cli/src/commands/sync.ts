@@ -41,7 +41,7 @@ import {
   applyMachineOverrides,
   rescanOverrides,
 } from "../core/machine-overrides.js";
-import { getDisabledItems, loadStateManifest } from "../core/manifest-state.js";
+import { getDisabledItems, loadStateManifest, type ItemType, type ItemConfig } from "../core/manifest-state.js";
 import { scanPluginComponents } from "../core/plugin-scanner.js";
 import { PLUGIN_COMPONENT_DIRS, cleanOrphanedTakeovers } from "../core/plugin-takeover.js";
 import { extractSecretsFromMcps } from "../core/env-template.js";
@@ -109,9 +109,22 @@ export async function loadEnvFile(
   return result;
 }
 
+async function loadSyncEnv(projectRoot: string): Promise<Record<string, string>> {
+  const globalEnv = await loadEnvFile(expandPath("~/.mycelium/.env.local"));
+  const projectEnv = await loadEnvFile(path.join(projectRoot, ".mycelium", ".env.local"));
+  return { ...globalEnv, ...projectEnv };
+}
+
 // ============================================================================
 // Core Sync Functions
 // ============================================================================
+
+function assertFileSyncSucceeded(section: string, result: { success: boolean; errors: Array<{ error: string; item?: string; skill?: string }> }): void {
+  if (result.success === false) {
+    const errors = result.errors.map(error => `${error.item ?? error.skill ?? section}: ${error.error}`).join("; ");
+    throw new Error(`${section} sync failed${errors ? `: ${errors}` : ""}`);
+  }
+}
 
 /**
  * Sync a single tool
@@ -119,7 +132,9 @@ export async function loadEnvFile(
 export async function syncTool(
   toolId: ToolId,
   mergedConfig: MergedConfig,
-  envVars: Record<string, string> = {}
+  envVars: Record<string, string> = {},
+  disabledMcps: Set<string> = new Set(),
+  projectRoot: string = process.cwd(),
 ): Promise<ToolSyncStatus> {
   const desc = TOOL_REGISTRY[toolId];
   const toolSkillsDir = resolvePath(desc.paths.skills) ?? "";
@@ -128,6 +143,7 @@ export async function syncTool(
     // 1. Sync skills via symlinks
     const skills = Object.values(mergedConfig.skills);
     const skillResult = await syncSkillsToTool(skills, toolSkillsDir, { removeOrphans: true });
+    assertFileSyncSucceeded("Skills", skillResult);
     const skillsCount =
       skillResult.created.length +
       skillResult.updated.length +
@@ -141,7 +157,8 @@ export async function syncTool(
         const agents = Object.values(mergedConfig.agents).map(a => ({
           name: a.name, path: a.path, state: a.state,
         }));
-        const agentResult = await syncFilesToDir(agents, agentsDir, { type: "symlink" }, { removeOrphans: true });
+        const agentResult = await syncFilesToDir(agents, agentsDir, { type: "symlink" }, { removeOrphans: true, projectRoot });
+        assertFileSyncSucceeded("Agents", agentResult);
         agentsCount = agentResult.created.length + agentResult.updated.length + agentResult.unchanged.length;
       }
     }
@@ -155,7 +172,8 @@ export async function syncTool(
           name: r.name, path: r.path, state: r.state,
         }));
         const strategy: FileSyncStrategy = desc.id === "vscode" ? { type: "symlink" } : { type: "copy" };
-        const rulesResult = await syncFilesToDir(rules, rulesDir, strategy, { removeOrphans: true });
+        const rulesResult = await syncFilesToDir(rules, rulesDir, strategy, { removeOrphans: true, projectRoot });
+        assertFileSyncSucceeded("Rules", rulesResult);
         rulesCount = rulesResult.created.length + rulesResult.updated.length + rulesResult.unchanged.length;
       }
     }
@@ -168,7 +186,8 @@ export async function syncTool(
         const commands = Object.values(mergedConfig.commands).map(c => ({
           name: c.name, path: c.path, state: c.state,
         }));
-        const cmdResult = await syncFilesToDir(commands, commandsDir, { type: "symlink" }, { removeOrphans: true });
+        const cmdResult = await syncFilesToDir(commands, commandsDir, { type: "symlink" }, { removeOrphans: true, projectRoot });
+        assertFileSyncSucceeded("Commands", cmdResult);
         commandsCount = cmdResult.created.length + cmdResult.updated.length + cmdResult.unchanged.length;
       }
     }
@@ -189,19 +208,31 @@ export async function syncTool(
         } : mcp,
       ]));
     }
-    const resolvedMcps = resolveEnvVarsInMcps(filteredMcps, envVars);
-    const mcpsCount = Object.keys(resolvedMcps).length;
+    const resolvedMcps = { ...resolveEnvVarsInMcps(filteredMcps, envVars) };
 
     // 6. Sync MCPs via tool adapter (CLI-first, file fallback)
     const { getAdapter } = await import("../core/tool-adapter.js");
     const adapter = getAdapter(toolId);
-    await adapter.syncAll(resolvedMcps);
+    // Only reconcile known managed names, never enumerate native registrations.
+    const removals = new Set(disabledMcps);
+    for (const [name, mcp] of Object.entries(mergedConfig.mcps)) {
+      if ((mcp.state && mcp.state !== "enabled") ||
+          (mcp.tools?.length && !mcp.tools.includes(toolId)) ||
+          mcp.excludeTools?.includes(toolId)) removals.add(name);
+    }
+    for (const name of removals) {
+      delete resolvedMcps[name];
+      const removal = await adapter.remove(name);
+      if (!removal.success) throw new Error(`${name}: ${removal.error ?? "MCP removal failed"}`);
+    }
+    const mcpResult = await adapter.syncAll(resolvedMcps);
+    if (!mcpResult.success) throw new Error(mcpResult.error ?? "MCP sync failed");
 
     return {
       tool: toolId,
       status: "synced",
       skillsCount,
-      mcpsCount,
+      mcpsCount: Object.keys(resolvedMcps).length,
       agentsCount,
       rulesCount,
       commandsCount,
@@ -230,6 +261,7 @@ export async function syncAll(
   envVars: Record<string, string> = {},
   options: { rescan?: boolean } = {}
 ): Promise<SyncResult> {
+  envVars = { ...await loadSyncEnv(projectRoot), ...envVars };
   const result: SyncResult = {
     success: true,
     tools: [],
@@ -248,7 +280,7 @@ export async function syncAll(
   }
 
   // Load and merge all configs
-  const mergedConfig = await loadAndMergeAllConfigs(projectRoot);
+  const mergedConfig = { ...await loadAndMergeAllConfigs(projectRoot) };
   log.info({ scope: "config", op: "merge", msg: "Loaded and merged config", configLevel: "all" });
 
   // Apply machine-level overrides to MCP commands
@@ -276,26 +308,47 @@ export async function syncAll(
   }
 
   // Apply manifest state filtering — remove disabled/deleted items from sync
-  const disabledItems = await getDisabledItems(projectRoot);
+  const disabledByType = Object.fromEntries(await Promise.all(
+    (["skill", "mcp", "agent", "rule", "command"] as ItemType[]).map(async type =>
+      [type, await getDisabledItems(projectRoot, type)] as const)
+  )) as Record<ItemType, Set<string>>;
 
-  // Filter disabled skills, MCPs, agents, rules, and commands from merged config
-  for (const name of disabledItems) {
+  const globalManifest = await loadStateManifest(expandPath("~/.mycelium"));
+  const projectManifest = await loadStateManifest(path.join(projectRoot, ".mycelium"));
+  const manifestMcps: Record<string, ItemConfig> = {};
+  mergedConfig.mcps = { ...mergedConfig.mcps };
+  for (const manifest of [globalManifest, projectManifest]) {
+    for (const [name, item] of Object.entries(manifest?.mcps ?? {})) {
+      manifestMcps[name] = { ...manifestMcps[name], ...item };
+      if (!Object.hasOwn(mergedConfig.mcps, name)) continue;
+      const mcp = { ...mergedConfig.mcps[name] };
+      for (const key of ["state", "tools", "excludeTools"] as const) {
+        if (item[key] !== undefined) Object.assign(mcp, { [key]: item[key] });
+      }
+      mergedConfig.mcps[name] = mcp;
+    }
+  }
+
+  // MCP tombstones stay available for explicit native removal below.
+  for (const name of disabledByType.skill) {
     if (mergedConfig.skills[name]) {
       log.info({ scope: "skill", op: "filter", msg: `Skipped disabled skill: ${name}`, item: name, state: "disabled" });
       delete mergedConfig.skills[name];
     }
-    if (mergedConfig.mcps[name]) {
-      log.info({ scope: "mcp", op: "filter", msg: `Skipped disabled MCP: ${name}`, item: name, state: "disabled" });
-      delete mergedConfig.mcps[name];
-    }
+  }
+  for (const name of disabledByType.agent) {
     if (mergedConfig.agents[name]) {
       log.info({ scope: "agent", op: "filter", msg: `Skipped disabled agent: ${name}`, item: name, state: "disabled" });
       delete mergedConfig.agents[name];
     }
+  }
+  for (const name of disabledByType.rule) {
     if (mergedConfig.rules[name]) {
       log.info({ scope: "rule", op: "filter", msg: `Skipped disabled rule: ${name}`, item: name, state: "disabled" });
       delete mergedConfig.rules[name];
     }
+  }
+  for (const name of disabledByType.command) {
     if (mergedConfig.commands[name]) {
       log.info({ scope: "command", op: "filter", msg: `Skipped disabled command: ${name}`, item: name, state: "disabled" });
       delete mergedConfig.commands[name];
@@ -303,14 +356,13 @@ export async function syncAll(
   }
 
   // Inject ALL component types from taken-over plugins (skills, agents, commands)
-  const globalManifest = await loadStateManifest(expandPath("~/.mycelium"));
   if (globalManifest?.takenOverPlugins) {
     for (const [pluginId, pluginInfo] of Object.entries(globalManifest.takenOverPlugins)) {
       try {
         const components = await scanPluginComponents(pluginInfo.cachePath);
         for (const comp of components) {
           if (!(comp.type in PLUGIN_COMPONENT_DIRS)) continue;
-          if (disabledItems.has(comp.name)) continue;
+          if (disabledByType[comp.type as ItemType]?.has(comp.name)) continue;
 
           if (comp.type === "skill") {
             if (mergedConfig.skills[comp.name]) continue;
@@ -350,7 +402,13 @@ export async function syncAll(
     }
 
     log.info({ scope: "config", op: "filter", msg: `Syncing to ${toolId}`, tool: toolId as string });
-    const toolStatus = await syncTool(toolId as ToolId, mergedConfig, envVars);
+    const disabledMcps = new Set(disabledByType.mcp);
+    for (const [name, mcp] of Object.entries(manifestMcps)) {
+      if ((mcp.tools?.length && !mcp.tools.includes(toolId)) || mcp.excludeTools?.includes(toolId)) {
+        disabledMcps.add(name);
+      }
+    }
+    const toolStatus = await syncTool(toolId as ToolId, mergedConfig, envVars, disabledMcps, projectRoot);
     result.tools.push(toolStatus);
 
     if (toolStatus.status === "error") {
@@ -381,14 +439,6 @@ export const syncCommand = new Command("sync")
   .action(async (options: SyncOptions) => {
     const projectRoot = process.cwd();
 
-    // Load env vars from .env.local
-    const globalEnvPath = expandPath("~/.mycelium/.env.local");
-    const projectEnvPath = path.join(projectRoot, ".mycelium", ".env.local");
-
-    const globalEnvVars = await loadEnvFile(globalEnvPath);
-    const projectEnvVars = await loadEnvFile(projectEnvPath);
-    const envVars = { ...globalEnvVars, ...projectEnvVars };
-
     // Auto-extract hardcoded secrets before syncing
     const { extracted } = await extractSecretsFromMcps();
     if (extracted.length > 0) {
@@ -397,9 +447,6 @@ export const syncCommand = new Command("sync")
         console.warn(`  \u2713 ${item}`);
       }
       console.warn("");
-      // Reload env vars since we just wrote new ones
-      const freshGlobal = await loadEnvFile(globalEnvPath);
-      Object.assign(envVars, freshGlobal);
     }
 
     // Get enabled tools from manifest (default all enabled)
@@ -463,7 +510,7 @@ export const syncCommand = new Command("sync")
       return;
     }
 
-    const result = await syncAll(projectRoot, enabledTools, envVars, {
+    const result = await syncAll(projectRoot, enabledTools, undefined, {
       rescan: options.rescan,
     });
 
@@ -499,7 +546,7 @@ export const syncCommand = new Command("sync")
       console.log("\nWatching for config changes... (Ctrl+C to stop)");
       const stop = startWatcher(projectRoot, async () => {
         console.log("\nConfig change detected, re-syncing...");
-        const watchResult = await syncAll(projectRoot, enabledTools, envVars);
+        const watchResult = await syncAll(projectRoot, enabledTools);
         for (const toolStatus of watchResult.tools) {
           const statusIcon = toolStatus.status === "synced" ? "\u2713" : "\u2717";
           console.log(

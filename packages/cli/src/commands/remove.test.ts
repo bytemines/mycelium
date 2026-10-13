@@ -10,6 +10,11 @@ vi.mock("node:fs/promises", () => ({
   rm: vi.fn().mockResolvedValue(undefined),
   unlink: vi.fn().mockResolvedValue(undefined),
   lstat: vi.fn().mockRejectedValue(new Error("ENOENT")),
+  readlink: vi.fn(),
+}));
+
+vi.mock("../core/tool-adapter.js", () => ({
+  getAdapter: vi.fn(() => ({ remove: vi.fn().mockResolvedValue({ success: true, method: "cli" }) })),
 }));
 
 vi.mock("@mycelish/core", async (importOriginal) => {
@@ -23,11 +28,46 @@ vi.mock("@mycelish/core", async (importOriginal) => {
 const MANIFEST_DIR = "/test/project/.mycelium";
 
 describe("remove command", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    const { getAdapter } = await import("../core/tool-adapter.js");
+    vi.mocked(getAdapter).mockReturnValue({ remove: vi.fn().mockResolvedValue({ success: true, method: "cli" }) } as any);
   });
 
   describe("removeItem", () => {
+    it("rejects traversal before manifest mutation or deletion", async () => {
+      const yaml = await import("yaml");
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify({ version: "1", skills: { "../../../victim": {} } }));
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("../../../victim", { manifestDir: MANIFEST_DIR });
+      expect(result.success).toBe(false);
+      expect(fs.writeFile).not.toHaveBeenCalled();
+      expect(fs.rm).not.toHaveBeenCalled();
+    });
+
+    it("purges only the selected project and preserves native files and directories", async () => {
+      const yaml = await import("yaml");
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify({ version: "1", skills: { safe: {} } }));
+      vi.mocked(fs.lstat).mockResolvedValue({ isSymbolicLink: () => false, isFile: () => true, isDirectory: () => false } as any);
+      const { removeItem } = await import("./remove.js");
+      expect((await removeItem("safe", { manifestDir: MANIFEST_DIR })).success).toBe(true);
+      expect(vi.mocked(fs.rm).mock.calls.map(call => call[0])).toEqual([path.join(MANIFEST_DIR, "skills", "safe")]);
+      expect(vi.mocked(fs.unlink).mock.calls.every(call => String(call[0]).startsWith(MANIFEST_DIR))).toBe(true);
+    });
+
+    it("removes slash-named native MCPs and reports native failures", async () => {
+      const yaml = await import("yaml");
+      vi.mocked(fs.readFile).mockResolvedValue(yaml.stringify({ version: "1", mcps: { "public/server": { tools: ["claude-code"] } } }));
+      const { getAdapter } = await import("../core/tool-adapter.js");
+      const remove = vi.fn().mockResolvedValue({ success: false, method: "cli", error: "native failure" });
+      vi.mocked(getAdapter).mockReturnValue({ remove } as any);
+      const { removeItem } = await import("./remove.js");
+      const result = await removeItem("public/server", { manifestDir: MANIFEST_DIR });
+      expect(remove).toHaveBeenCalledWith("public/server");
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("native failure");
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
     it("sets state: deleted on a skill", async () => {
       const yaml = await import("yaml");
       const manifest = {

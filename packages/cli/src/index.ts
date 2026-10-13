@@ -7,6 +7,7 @@
  */
 
 import { Command } from "commander";
+import { readFileSync } from "node:fs";
 import { initCommand } from "./commands/init.js";
 import { syncCommand } from "./commands/sync.js";
 import { statusCommand } from "./commands/status.js";
@@ -32,7 +33,7 @@ program
   .description(
     "Universal AI Tool Orchestrator - Sync skills, MCPs, agents, rules, and commands across AI coding tools"
   )
-  .version("0.0.1");
+  .version(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version);
 
 // Register commands
 program.addCommand(initCommand);

@@ -14,7 +14,32 @@ vi.mock("./global-tracer.js", () => ({
 
 import * as fs from "node:fs/promises";
 import { readFileIfExists, mkdirp } from "./fs-helpers.js";
-import { cachedFetch, clearAllCaches, clearL1, getCacheInfo } from "./marketplace-cache.js";
+import { cachedFetch, clearAllCaches, clearL1, getCacheInfo, fetchMarketplaceText } from "./marketplace-cache.js";
+
+describe("bounded marketplace downloads", () => {
+  it("rejects oversized streamed bodies", async () => {
+    const original = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue(new Response(new Uint8Array(5 * 1024 * 1024 + 1)));
+    try { await expect(fetchMarketplaceText("https://raw.githubusercontent.com/a/b/main/SKILL.md")).rejects.toThrow("too large"); }
+    finally { global.fetch = original; }
+  });
+  it("rejects on deadline and blocks redirects", async () => {
+    const original = global.fetch;
+    const controller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    const fetcher = vi.fn((_url, init) => new Promise<Response>((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new Error("deadline exceeded")));
+    }));
+    global.fetch = fetcher;
+    try {
+      const request = fetchMarketplaceText("https://raw.githubusercontent.com/a/b/main/SKILL.md");
+      controller.abort();
+      await expect(request).rejects.toThrow("deadline");
+      expect(timeout).toHaveBeenCalledWith(5000);
+      expect(fetcher).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ redirect: "manual" }));
+    } finally { timeout.mockRestore(); global.fetch = original; }
+  });
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -22,6 +47,27 @@ beforeEach(() => {
 });
 
 describe("cachedFetch", () => {
+  it("keeps scoped package cache keys inside the cache directory", async () => {
+    vi.mocked(readFileIfExists).mockResolvedValue(null);
+    await cachedFetch("npm-dl-@scope/pkg", async () => "data");
+    expect(fs.writeFile).toHaveBeenCalledWith("/mock/.mycelium/cache/marketplace/npm-dl-%40scope%2Fpkg.json", expect.any(String), "utf-8");
+  });
+  it("deduplicates concurrent requests and cleans up failures", async () => {
+    vi.mocked(readFileIfExists).mockResolvedValue(null);
+    const fetcher = vi.fn().mockRejectedValue(new Error("offline"));
+    const results = await Promise.allSettled([cachedFetch("concurrent", fetcher), cachedFetch("concurrent", fetcher)]);
+    expect(results.every(r => r.status === "rejected")).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    fetcher.mockResolvedValue("recovered");
+    expect(await cachedFetch("concurrent", fetcher)).toBe("recovered");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it("deduplicates concurrent force refreshes", async () => {
+    vi.mocked(readFileIfExists).mockResolvedValue(null);
+    const fetcher = vi.fn().mockResolvedValue("fresh");
+    expect(await Promise.all([cachedFetch("refresh", fetcher, { forceRefresh: true }), cachedFetch("refresh", fetcher, { forceRefresh: true })])).toEqual(["fresh", "fresh"]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("calls fetcher on cache miss and returns result", async () => {
     vi.mocked(readFileIfExists).mockResolvedValue(null);
     vi.mocked(mkdirp).mockResolvedValue(undefined);

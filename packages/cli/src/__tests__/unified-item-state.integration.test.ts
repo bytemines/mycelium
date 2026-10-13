@@ -45,6 +45,7 @@ const mockSyncAll = vi.fn().mockResolvedValue({ success: true });
 vi.mock("../core/tool-adapter.js", () => ({
   getAdapter: vi.fn(() => ({
     syncAll: mockSyncAll,
+    remove: vi.fn().mockResolvedValue({ success: true }),
     syncOne: vi.fn().mockResolvedValue({ success: true }),
   })),
 }));
