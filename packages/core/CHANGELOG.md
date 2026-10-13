@@ -1,5 +1,15 @@
 # @mycelish/core
 
+## 0.3.7
+
+### Patch Changes
+
+- [#15](https://github.com/bytemines/mycelium/pull/15) [`e361c6a`](https://github.com/bytemines/mycelium/commit/e361c6aff7fda226720152092c76804b496aedc3) Thanks [@bytemines](https://github.com/bytemines)! - Protect local dashboard access, validate mutation paths, and preserve user-owned files and settings during synchronization, removal, and snapshot restoration.
+
+  Update vulnerable runtime dependencies, retain credentials across dashboard-triggered syncs, safely encode TOML values, and reconcile removed MCP registrations without deleting unmanaged entries.
+
+  Make release artifacts reproducible, exclude tests and source maps, report the installed package version correctly, and fix graph layout controls.
+
 ## 0.3.5
 
 ### Patch Changes
