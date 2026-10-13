@@ -56,26 +56,26 @@ export function deepMerge<T extends Record<string, unknown>>(
 ): T {
   const result = { ...target };
 
-  for (const key in source) {
+  for (const key of Object.keys(source)) {
     const sourceValue = source[key];
-    const targetValue = target[key];
+    if (sourceValue === undefined) continue;
+    const targetValue = Object.hasOwn(target, key) ? target[key] : undefined;
 
-    if (
-      sourceValue !== undefined &&
+    const value =
       typeof sourceValue === "object" &&
       sourceValue !== null &&
       !Array.isArray(sourceValue) &&
       typeof targetValue === "object" &&
       targetValue !== null &&
       !Array.isArray(targetValue)
-    ) {
-      result[key] = deepMerge(
-        targetValue as Record<string, unknown>,
-        sourceValue as Record<string, unknown>
-      ) as T[Extract<keyof T, string>];
-    } else if (sourceValue !== undefined) {
-      result[key] = sourceValue as T[Extract<keyof T, string>];
-    }
+        ? deepMerge(
+            targetValue as Record<string, unknown>,
+            sourceValue as Record<string, unknown>
+          )
+        : sourceValue;
+    Object.defineProperty(result, key, {
+      value, enumerable: true, configurable: true, writable: true,
+    });
   }
 
   return result;

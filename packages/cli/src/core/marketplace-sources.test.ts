@@ -2,15 +2,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { BATCH_GITHUB } from "./marketplace-constants.js";
 
 vi.mock("node:fs/promises");
-vi.mock("./marketplace-cache.js", () => ({
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return { ...actual, homedir: vi.fn(actual.homedir) };
+});
+vi.mock("./marketplace-cache.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./marketplace-cache.js")>(),
   cachedFetch: vi.fn(),
 }));
 
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+global.fetch = async (...args: Parameters<typeof fetch>) => {
+  const response = await mockFetch(...args);
+  if (response?.json && !response.text) response.text = async () => JSON.stringify(await response.json());
+  return response;
+};
 
 import { parseGitHubUrl, searchGitHubRepo, fetchGitHubRepoItems, installGitHubRepoItem, enrichWithGitHubStars } from "./marketplace-sources.js";
 import * as fs from "node:fs/promises";
+import { mkdtempSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { cachedFetch } from "./marketplace-cache.js";
 
 beforeEach(() => {
@@ -41,6 +53,25 @@ describe("parseGitHubUrl", () => {
 });
 
 describe("fetchGitHubRepoItems", () => {
+  it("rejects a destination symlink escape before fetching", async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "marketplace-install-"));
+    const originalHome = os.homedir();
+    vi.mocked(os.homedir).mockReturnValue(home);
+    mkdirSync(path.join(home, ".mycelium/global/skills"), { recursive: true });
+    mkdirSync(path.join(home, "outside"));
+    symlinkSync(path.join(home, "outside"), path.join(home, ".mycelium/global/skills/escape"));
+    try {
+      await expect(installGitHubRepoItem("owner", "repo", { name: "escape", source: "test", type: "skill", description: "" })).rejects.toThrow("escapes root");
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    } finally { vi.mocked(os.homedir).mockReturnValue(originalHome); rmSync(home, { recursive: true, force: true }); }
+  });
+  it("rejects traversal before fetching or writing during install", async () => {
+    await expect(installGitHubRepoItem("owner", "repo", { name: "../../../outside", source: "test", type: "skill", description: "" })).rejects.toThrow("Unsafe");
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(fs.mkdir).not.toHaveBeenCalled();
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
   it("extracts skills, agents, and commands from tree", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -103,7 +134,7 @@ describe("fetchGitHubRepoItems", () => {
 
   it("returns empty on API failure", async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
-    await expect(fetchGitHubRepoItems("owner", "repo")).rejects.toThrow("GitHub API 500");
+    await expect(fetchGitHubRepoItems("owner", "repo")).rejects.toThrow("Download failed: 500");
   });
 });
 
@@ -160,7 +191,7 @@ describe("installGitHubRepoItem", () => {
 
     expect(result.success).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://raw.githubusercontent.com/blader/humanizer/main/SKILL.md"
+      "https://raw.githubusercontent.com/blader/humanizer/main/SKILL.md", expect.objectContaining({ redirect: "manual", signal: expect.any(AbortSignal) })
     );
   });
 
@@ -176,7 +207,7 @@ describe("installGitHubRepoItem", () => {
 
     expect(result.success).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://raw.githubusercontent.com/owner/repo/main/skills/debugging/SKILL.md"
+      "https://raw.githubusercontent.com/owner/repo/main/skills/debugging/SKILL.md", expect.objectContaining({ redirect: "manual", signal: expect.any(AbortSignal) })
     );
   });
 
@@ -192,7 +223,7 @@ describe("installGitHubRepoItem", () => {
 
     expect(result.success).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://raw.githubusercontent.com/owner/repo/main/agents/reviewer.md"
+      "https://raw.githubusercontent.com/owner/repo/main/agents/reviewer.md", expect.objectContaining({ redirect: "manual", signal: expect.any(AbortSignal) })
     );
   });
 

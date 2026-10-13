@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test (Node ${{ matrix.node-version }})
@@ -34,7 +37,12 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check production dependencies and local security patches
+        run: |
+          pnpm audit --prod --audit-level low
+          node check-security-patches.mjs
 
       - name: Build packages
         run: pnpm build

@@ -25,7 +25,7 @@ packages/
 - **Validation**: Zod 4 (core package)
 - **Server**: Express 5 (`mycelium serve` on port 3378)
 - **Testing**: Vitest 4 across all packages
-- **Node**: >=22 required
+- **Node**: >=22.13 required (`node:sqlite` without an experimental flag)
 
 ## Build & Test
 
@@ -36,9 +36,9 @@ pnpm test             # turbo test across all packages
 pnpm typecheck        # tsc --noEmit in all packages
 
 # Per-package
-cd packages/cli && pnpm test          # 546 tests
-cd packages/core && pnpm test         # 42 tests
-cd packages/dashboard && pnpm test    # 17 tests
+cd packages/cli && pnpm test
+cd packages/core && pnpm test
+cd packages/dashboard && pnpm test
 ```
 
 ## Release Process
@@ -138,6 +138,17 @@ The auto-adapter (`packages/cli/src/core/auto-adapter.ts`) generates adapters fr
 
 - `watcher.ts` uses `fs.watch` with `recursive: true` — not supported on Linux
 - `preset load` prints planned actions but does not execute enable/disable
-- `Graph.tsx` is ~600 lines — should be refactored (extract edge-building, plugin nodes)
+- Graph layout calculations live in `packages/dashboard/src/lib/graph-layout.ts`; keep them independently testable.
 - `doctor.ts` checkMcpServerConnectivity spawns actual MCP commands (could use `which` instead)
 - `dryRunSync` doesn't use `entryShape` for vscode/opencode preview (cosmetic)
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

@@ -17,6 +17,11 @@ vi.mock("node:util", () => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
+  readFile: async () => {
+    const content = await mockReadFileIfExists();
+    if (content === null) throw Object.assign(new Error("Missing"), { code: "ENOENT" });
+    return content;
+  },
   writeFile: mockWriteFile,
   appendFile: mockAppendFile,
   default: { writeFile: mockWriteFile, appendFile: mockAppendFile },

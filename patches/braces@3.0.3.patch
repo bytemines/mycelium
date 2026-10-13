@@ -1,0 +1,128 @@
+diff --git a/lib/compile.js b/lib/compile.js
+index dce69beb90ece5c3b0ca234a949418f9f34eedbc..045a54ee1dd70f4d25acbac2adf9fe0856538071 100644
+--- a/lib/compile.js
++++ b/lib/compile.js
+@@ -2,8 +2,10 @@
+ 
+ const fill = require('fill-range');
+ const utils = require('./utils');
++const { validate } = require('./validate');
+ 
+ const compile = (ast, options = {}) => {
++  validate(ast);
+   const walk = (node, parent = {}) => {
+     const invalidBlock = utils.isInvalidBrace(parent);
+     const invalidNode = node.invalid === true && options.escapeInvalid === true;
+diff --git a/lib/expand.js b/lib/expand.js
+index 35b2c41d6afdb8f0197959e26079f266e48370d3..bc80a45f785c3812513192622e3b20c78be8fe6c 100644
+--- a/lib/expand.js
++++ b/lib/expand.js
+@@ -3,6 +3,7 @@
+ const fill = require('fill-range');
+ const stringify = require('./stringify');
+ const utils = require('./utils');
++const { validate } = require('./validate');
+ 
+ const append = (queue = '', stash = '', enclose = false) => {
+   const result = [];
+@@ -31,6 +32,7 @@ const append = (queue = '', stash = '', enclose = false) => {
+ };
+ 
+ const expand = (ast, options = {}) => {
++  validate(ast);
+   const rangeLimit = options.rangeLimit === undefined ? 1000 : options.rangeLimit;
+ 
+   const walk = (node, parent = {}) => {
+diff --git a/lib/parse.js b/lib/parse.js
+index 3a6988e629f52aee6609dc5ec290a5e9ff47cecb..5f77555dd1b900b8cfdcb1a02137e0ba38808c1b 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -1,6 +1,7 @@
+ 'use strict';
+ 
+ const stringify = require('./stringify');
++const { assertDepth } = require('./validate');
+ 
+ /**
+  * Constants
+@@ -143,6 +144,7 @@ const parse = (input, options = {}) => {
+      */
+ 
+     if (value === CHAR_LEFT_PARENTHESES) {
++      assertDepth(stack.length + 1); // Include the block's leaf nodes in AST depth.
+       block = push({ type: 'paren', nodes: [] });
+       stack.push(block);
+       push({ type: 'text', value });
+@@ -195,6 +197,7 @@ const parse = (input, options = {}) => {
+      */
+ 
+     if (value === CHAR_LEFT_CURLY_BRACE) {
++      assertDepth(stack.length + 1);
+       depth++;
+ 
+       const dollar = prev.value && prev.value.slice(-1) === '$' || block.dollar === true;
+diff --git a/lib/stringify.js b/lib/stringify.js
+index 8bcf872c31894f81a8c64d9202fd607e4fd7ea2b..de4467e0ed896c1bbf9b7875cefabab92bb4ccd4 100644
+--- a/lib/stringify.js
++++ b/lib/stringify.js
+@@ -1,8 +1,10 @@
+ 'use strict';
+ 
+ const utils = require('./utils');
++const { validate } = require('./validate');
+ 
+ module.exports = (ast, options = {}) => {
++  validate(ast);
+   const stringify = (node, parent = {}) => {
+     const invalidBlock = options.escapeInvalid && utils.isInvalidBrace(parent);
+     const invalidNode = node.invalid === true && options.escapeInvalid === true;
+@@ -29,4 +31,3 @@ module.exports = (ast, options = {}) => {
+ 
+   return stringify(ast);
+ };
+-
+diff --git a/lib/validate.js b/lib/validate.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..7845d21cb9c3c57d01205d7cf28caa27d23cceea
+--- /dev/null
++++ b/lib/validate.js
+@@ -0,0 +1,39 @@
++'use strict';
++
++// GHSA-vfj7-8cjw-p6xm: bound recursive walkers, including caller-supplied ASTs.
++// Public parse/compile/expand/stringify reject AST depth >128 (127 nested
++// brace/paren blocks plus leaves) or cycles with SyntaxError, not stack overflow.
++// Callers accepting untrusted patterns must catch this validation failure.
++const assertDepth = depth => {
++  if (depth > 128) throw new SyntaxError('Brace AST depth exceeds security limit (128)');
++};
++
++const validate = ast => {
++  const active = new Set();
++  const stack = [{ node: ast, index: -1 }];
++  while (stack.length) {
++    const frame = stack[stack.length - 1];
++    const node = frame.node;
++    if (frame.index === -1) {
++      assertDepth(stack.length - 1);
++      if (active.has(node)) throw new SyntaxError('Cyclic brace AST');
++      active.add(node);
++      // expand also follows parent links; these must be bounded and acyclic.
++      let parent = node;
++      let depth = 0;
++      while (parent && parent.parent) {
++        assertDepth(++depth);
++        parent = parent.parent;
++      }
++      frame.index = 0;
++    }
++    if (node.nodes && frame.index < node.nodes.length) {
++      stack.push({ node: node.nodes[frame.index++], index: -1 });
++    } else {
++      active.delete(node);
++      stack.pop();
++    }
++  }
++};
++
++module.exports = { assertDepth, validate };

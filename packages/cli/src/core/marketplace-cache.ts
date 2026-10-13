@@ -6,6 +6,38 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { MYCELIUM_HOME, readFileIfExists, mkdirp } from "./fs-helpers.js";
 import { getTracer } from "./global-tracer.js";
+import { TIMEOUT_GITHUB } from "./marketplace-constants.js";
+
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+
+/** Bound downloaded marketplace files and trees, including streamed bodies. */
+export async function fetchMarketplaceText(url: string, init?: RequestInit): Promise<string> {
+  const signal = AbortSignal.timeout(TIMEOUT_GITHUB);
+  const res = await fetch(url, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal, redirect: "manual" });
+  if (!res.ok) throw new Error(`Download failed: ${res.statusText || res.status}`);
+  if (Number(res.headers?.get("content-length")) > MAX_RESPONSE_BYTES) throw new Error("Marketplace response too large");
+  if (!res.body) {
+    const text = await res.text();
+    if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) throw new Error("Marketplace response too large");
+    return text;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_RESPONSE_BYTES) throw new Error("Marketplace response too large");
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks).toString("utf-8");
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
 
 export interface CacheOptions {
   forceRefresh?: boolean;
@@ -15,6 +47,7 @@ const DEFAULT_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
 
 // L1: module-private Map
 const l1 = new Map<string, { data: unknown; ts: number }>();
+const inFlight = new Map<string, Promise<unknown>>();
 
 interface DiskEntry<T> {
   key: string;
@@ -27,7 +60,7 @@ export function getCacheDir(): string {
 }
 
 function diskPath(key: string): string {
-  return path.join(getCacheDir(), `${key}.json`);
+  return path.join(getCacheDir(), `${encodeURIComponent(key)}.json`);
 }
 
 export async function cachedFetch<T>(
@@ -35,6 +68,18 @@ export async function cachedFetch<T>(
   fetcher: () => Promise<T>,
   options?: CacheOptions,
 ): Promise<T> {
+  const pending = inFlight.get(key);
+  if (pending) return pending as Promise<T>;
+  const request = fetchCached(key, fetcher, options);
+  inFlight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function fetchCached<T>(key: string, fetcher: () => Promise<T>, options?: CacheOptions): Promise<T> {
   const log = getTracer().createTrace("marketplace");
   const forceRefresh = options?.forceRefresh ?? false;
 

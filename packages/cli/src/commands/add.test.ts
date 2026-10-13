@@ -25,6 +25,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as path from "node:path";
 
+// Filesystem-backed containment is exercised in core/add-helpers.test.ts.
+vi.mock("../core/path-safety.js", () => ({
+  assertSafePathComponent: vi.fn(),
+  assertContainedPath: vi.fn(),
+}));
+
 // Mock fs/promises module
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn(),
@@ -46,7 +52,7 @@ vi.mock("node:child_process", () => ({
     }
     return {};
   }),
-  execFile: vi.fn((cmd, args, callback) => {
+  execFile: vi.fn((cmd, args, opts, callback) => {
     if (typeof args === "function") {
       args(null, "", "");
     } else if (callback) {
@@ -178,7 +184,7 @@ version: "1.0"
 skills: {}
 `);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(cp.exec).mockImplementation((cmd: any, opts: any, callback?: any) => {
+    vi.mocked(cp.execFile).mockImplementation((cmd: any, args: any, opts: any, callback?: any) => {
       const cb = typeof opts === "function" ? opts : callback;
       if (cb) setImmediate(() => cb(null, "", ""));
       return {} as any;
@@ -208,7 +214,7 @@ version: "1.0"
 skills: {}
 `);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(cp.exec).mockImplementation((cmd: any, opts: any, callback?: any) => {
+    vi.mocked(cp.execFile).mockImplementation((cmd: any, args: any, opts: any, callback?: any) => {
       const cb = typeof opts === "function" ? opts : callback;
       if (cb) setImmediate(() => cb(null, "", ""));
       return {} as any;
@@ -235,9 +241,7 @@ skills: {}
 `);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-    let capturedCommand = "";
-    vi.mocked(cp.exec).mockImplementation((cmd: any, opts: any, callback?: any) => {
-      capturedCommand = cmd as string;
+    vi.mocked(cp.execFile).mockImplementation((cmd: any, args: any, opts: any, callback?: any) => {
       const cb = typeof opts === "function" ? opts : callback;
       if (cb) setImmediate(() => cb(null, "", ""));
       return {} as any;
@@ -245,8 +249,11 @@ skills: {}
 
     await addSkill("anthropic/claude-skills", { global: true });
 
-    expect(capturedCommand).toContain("git clone");
-    expect(capturedCommand).toContain("github.com/anthropic/claude-skills");
+    expect(cp.execFile).toHaveBeenCalledWith("git", [
+      "clone", "--depth", "1", "--", "https://github.com/anthropic/claude-skills.git",
+      "/mock/home/.mycelium/global/skills/claude-skills",
+    ], { timeout: 30000 }, expect.any(Function));
+    expect(cp.exec).not.toHaveBeenCalled();
   });
 
   it("copies files for local skills", async () => {
@@ -274,7 +281,7 @@ skills: {}
     expect(fs.cp).toHaveBeenCalledWith(
       expect.stringContaining("custom-skill"),
       expect.stringContaining("global/skills/custom-skill"),
-      { recursive: true }
+      { recursive: true, filter: expect.any(Function) }
     );
   });
 
@@ -314,7 +321,7 @@ skills:
 `);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.rm).mockResolvedValue(undefined);
-    vi.mocked(cp.exec).mockImplementation((cmd: any, opts: any, callback?: any) => {
+    vi.mocked(cp.execFile).mockImplementation((cmd: any, args: any, opts: any, callback?: any) => {
       const cb = typeof opts === "function" ? opts : callback;
       if (cb) setImmediate(() => cb(null, "", ""));
       return {} as any;
@@ -340,7 +347,7 @@ skills:
 version: "1.0"
 skills: {}
 `);
-    vi.mocked(cp.exec).mockImplementation((cmd: any, opts: any, callback?: any) => {
+    vi.mocked(cp.execFile).mockImplementation((cmd: any, args: any, opts: any, callback?: any) => {
       const cb = typeof opts === "function" ? opts : callback;
       if (cb) setImmediate(() => cb(new Error("git clone failed"), "", "Repository not found"));
       return {} as any;
@@ -378,7 +385,7 @@ version: "1.0"
 skills: {}
 `);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(cp.exec).mockImplementation((cmd: any, opts: any, callback?: any) => {
+    vi.mocked(cp.execFile).mockImplementation((cmd: any, args: any, opts: any, callback?: any) => {
       const cb = typeof opts === "function" ? opts : callback;
       if (cb) setImmediate(() => cb(null, "", ""));
       return {} as any;
@@ -464,7 +471,7 @@ describe("addMcp", () => {
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
     vi.mocked(fs.readFile).mockResolvedValue(`
-mcps: {}
+{}
 `);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
@@ -520,12 +527,11 @@ mcps: {}
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
     vi.mocked(fs.readFile).mockResolvedValue(`
-mcps:
-  context7:
-    command: npx
-    args:
-      - "-y"
-      - "@context7/mcp"
+context7:
+  command: npx
+  args:
+    - "-y"
+    - "@context7/mcp"
 `);
 
     const result = await addMcp("context7", {
@@ -546,9 +552,8 @@ mcps:
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
     vi.mocked(fs.readFile).mockResolvedValue(`
-mcps:
-  context7:
-    command: old-command
+context7:
+  command: old-command
 `);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
@@ -570,7 +575,7 @@ mcps:
 
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(`mcps: {}`);
+    vi.mocked(fs.readFile).mockResolvedValue(`{}`);
     vi.mocked(fs.writeFile).mockRejectedValue(new Error("Permission denied"));
 
     const result = await addMcp("context7", {
@@ -590,7 +595,7 @@ mcps:
 
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(`mcps: {}`);
+    vi.mocked(fs.readFile).mockResolvedValue(`{}`);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
     const result = await addMcp("context7", {
@@ -611,7 +616,7 @@ mcps:
 
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(`mcps: {}`);
+    vi.mocked(fs.readFile).mockResolvedValue(`{}`);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
     const result = await addMcp("my-mcp", {
@@ -636,7 +641,7 @@ mcps:
 
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(`mcps: {}`);
+    vi.mocked(fs.readFile).mockResolvedValue(`{}`);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
     await addMcp("context7", {
@@ -660,7 +665,7 @@ mcps:
 
     vi.mocked(pathExists).mockResolvedValue(true);
     vi.mocked(ensureDir).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue(`mcps: {}`);
+    vi.mocked(fs.readFile).mockResolvedValue(`{}`);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
     await addMcp("context7", {

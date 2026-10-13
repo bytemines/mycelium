@@ -6,14 +6,15 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import { expandPath, ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelish/core";
+import { ensureDir, pathExists, getGlobalMyceliumPath } from "@mycelish/core";
+import { assertSafePathComponent, assertContainedPath } from "./path-safety.js";
 import { getRegistryEntry, parseRegistryEntry } from "./mcp-registry.js";
 import { parseSkillMd, isValidSkillMd } from "./skill-parser.js";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // ============================================================================
 // Types
@@ -82,6 +83,7 @@ export function parseSkillSource(source: string): SkillSourceInfo {
   if (githubUrlMatch) {
     const [, owner, repo, subpath] = githubUrlMatch;
     const cleanRepo = repo.replace(/\.git$/, "");
+    validateGitHubSource(owner, cleanRepo, subpath);
     return {
       type: "github",
       owner,
@@ -106,6 +108,7 @@ export function parseSkillSource(source: string): SkillSourceInfo {
   const githubShortMatch = trimmedSource.match(/^([^/]+)\/([^/]+)(?:\/(.*))?$/);
   if (githubShortMatch) {
     const [, owner, repo, subpath] = githubShortMatch;
+    validateGitHubSource(owner, repo, subpath);
     return {
       type: "github",
       owner,
@@ -120,6 +123,17 @@ export function parseSkillSource(source: string): SkillSourceInfo {
   );
 }
 
+function validateGitHubSource(owner: string, repo: string, subpath?: string): void {
+  if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(owner) ||
+      !/^[a-zA-Z0-9_.-]+$/.test(repo)) {
+    throw new Error("Invalid GitHub owner or repository");
+  }
+  assertSafePathComponent(repo);
+  if (subpath) {
+    for (const component of subpath.split("/")) assertSafePathComponent(component);
+  }
+}
+
 // ============================================================================
 // GitHub clone helper
 // ============================================================================
@@ -129,22 +143,32 @@ async function cloneFromGitHub(
   skillDestPath: string
 ): Promise<{ success: boolean; error?: string }> {
   const repoUrl = `https://github.com/${sourceInfo.owner}/${sourceInfo.repo}.git`;
+  let tempDir: string | undefined;
   try {
     if (sourceInfo.subpath) {
-      const tempDir = path.join(path.dirname(skillDestPath), `.temp-${Date.now()}`);
-      await execAsync(`git clone --depth 1 ${repoUrl} "${tempDir}"`);
+      tempDir = await fs.mkdtemp(path.join(path.dirname(skillDestPath), ".temp-"));
+      await execFileAsync("git", ["clone", "--depth", "1", "--", repoUrl, tempDir], { timeout: 30000 });
       const subpathSource = path.join(tempDir, sourceInfo.subpath);
-      await fs.cp(subpathSource, skillDestPath, { recursive: true });
-      await fs.rm(tempDir, { recursive: true, force: true });
+      assertContainedPath(tempDir, subpathSource);
+      await fs.cp(subpathSource, skillDestPath, {
+        recursive: true,
+        filter: (src, dest) => {
+          assertContainedPath(tempDir!, src);
+          assertContainedPath(skillDestPath, dest);
+          return true;
+        },
+      });
     } else {
       if (await pathExists(skillDestPath)) {
         await fs.rm(skillDestPath, { recursive: true, force: true });
       }
-      await execAsync(`git clone --depth 1 ${repoUrl} "${skillDestPath}"`);
+      await execFileAsync("git", ["clone", "--depth", "1", "--", repoUrl, skillDestPath], { timeout: 30000 });
     }
     return { success: true };
   } catch (gitError) {
     return { success: false, error: `Failed to clone repository: ${(gitError as Error).message}` };
+  } finally {
+    if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });
   }
 }
 
@@ -164,7 +188,13 @@ async function copyFromLocal(
     return { success: false, error: `Local path not found: ${sourceInfo.path}` };
   }
 
-  await fs.cp(localPath, skillDestPath, { recursive: true });
+  await fs.cp(localPath, skillDestPath, {
+    recursive: true,
+    filter: (_src, dest) => {
+      assertContainedPath(skillDestPath, dest);
+      return true;
+    },
+  });
   return { success: true };
 }
 
@@ -196,6 +226,7 @@ async function updateManifestWithSkill(
   };
 
   const skillMdPath = path.join(skillDestPath, "SKILL.md");
+  assertContainedPath(skillDestPath, skillMdPath);
   if (await pathExists(skillMdPath)) {
     const skillMdContent = await fs.readFile(skillMdPath, "utf-8");
     if (isValidSkillMd(skillMdContent)) {
@@ -224,6 +255,7 @@ export async function addSkill(
 ): Promise<AddSkillResult> {
   try {
     const sourceInfo = parseSkillSource(source);
+    assertSafePathComponent(sourceInfo.name);
     const globalPath = getGlobalMyceliumPath();
     const basePath = options.global
       ? globalPath
@@ -234,6 +266,9 @@ export async function addSkill(
     const skillsDir = path.join(basePath, "global/skills");
     const manifestPath = path.join(basePath, "manifest.yaml");
     const skillDestPath = path.join(skillsDir, sourceInfo.name);
+    assertContainedPath(basePath, skillsDir);
+    assertContainedPath(basePath, manifestPath);
+    assertContainedPath(skillsDir, skillDestPath);
 
     const manifestExists = await pathExists(manifestPath);
     if (manifestExists) {
@@ -288,12 +323,12 @@ export function parseMcpName(name: string): McpNameInfo {
   }
 
   const trimmedName = name.trim();
-  const validPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+  const validPattern = /^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/;
   if (!validPattern.test(trimmedName)) {
     return {
       name: trimmedName,
       isValid: false,
-      error: `MCP name contains invalid characters: "${trimmedName}". Use only letters, numbers, hyphens, and underscores.`,
+      error: `MCP name contains invalid characters: "${trimmedName}". Use only letters, numbers, dots, slashes, hyphens, and underscores.`,
     };
   }
 
@@ -322,22 +357,22 @@ export async function addMcp(
         : path.join(process.cwd(), ".mycelium");
 
     const mcpsPath = path.join(basePath, "mcps.yaml");
+    assertContainedPath(basePath, mcpsPath);
     await ensureDir(basePath);
 
-    let mcpsConfig: { mcps: Record<string, unknown> } = { mcps: {} };
+    let mcpsConfig: Record<string, unknown> = {};
     const mcpsExists = await pathExists(mcpsPath);
 
     if (mcpsExists) {
-      try {
-        const mcpsContent = await fs.readFile(mcpsPath, "utf-8");
-        mcpsConfig = yamlParse(mcpsContent) || { mcps: {} };
-        if (!mcpsConfig.mcps) mcpsConfig.mcps = {};
-      } catch {
-        mcpsConfig = { mcps: {} };
+      const mcpsContent = await fs.readFile(mcpsPath, "utf-8");
+      const parsed: unknown = yamlParse(mcpsContent);
+      if (parsed !== null && (typeof parsed !== "object" || Array.isArray(parsed))) {
+        throw new Error("Invalid mcps.yaml: expected a mapping of MCP names to configurations");
       }
+      mcpsConfig = (parsed ?? {}) as Record<string, unknown>;
     }
 
-    if (mcpsConfig.mcps[nameInfo.name] && !options.force) {
+    if (Object.hasOwn(mcpsConfig, nameInfo.name) && !options.force) {
       return {
         success: false,
         name: nameInfo.name,
@@ -350,7 +385,7 @@ export async function addMcp(
     if (options.env && Object.keys(options.env).length > 0) mcpEntry.env = options.env;
     if (options.enabled !== undefined) mcpEntry.enabled = options.enabled;
 
-    mcpsConfig.mcps[nameInfo.name] = mcpEntry;
+    Object.defineProperty(mcpsConfig, nameInfo.name, { value: mcpEntry, enumerable: true, configurable: true, writable: true });
     await fs.writeFile(mcpsPath, yamlStringify(mcpsConfig), "utf-8");
 
     return {

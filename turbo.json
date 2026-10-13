@@ -1,8 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["tsconfig.json", "build-package.mjs", "LICENSE"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@mycelish/cli#build": {
+      "dependsOn": ["^build", "@mycelish/dashboard#build"],
       "outputs": ["dist/**"]
     },
     "dev": {

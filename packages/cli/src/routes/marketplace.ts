@@ -9,7 +9,8 @@ import {
   addMarketplace,
   removeMarketplace,
 } from "../core/marketplace-registry.js";
-import { clearAllCaches } from "../core/marketplace-cache.js";
+import { clearAllCaches, fetchMarketplaceText } from "../core/marketplace-cache.js";
+import { assertSafePathComponent, assertContainedPath } from "../core/path-safety.js";
 import { asyncHandler } from "./async-handler.js";
 
 import type { MarketplaceSource, MarketplaceEntry, MarketplaceConfig } from "@mycelish/core";
@@ -109,12 +110,7 @@ export function registerMarketplaceRoutes(app: Express): void {
       if (type === "skill" && !rawUrl.endsWith(".md")) rawUrl += "/SKILL.md";
       else if (!rawUrl.endsWith(".md")) rawUrl += "/README.md";
 
-      const ghRes = await fetch(rawUrl, {
-        signal: AbortSignal.timeout(10000),
-        redirect: "manual",  // Block redirects to prevent SSRF via open redirects
-      });
-      if (!ghRes.ok) { res.status(404).json({ error: "Content not found" }); return; }
-      const content = await ghRes.text();
+      const content = await fetchMarketplaceText(rawUrl);
       res.json({ content });
     } catch {
       res.status(500).json({ error: "Failed to fetch content" });
@@ -127,13 +123,18 @@ export function registerMarketplaceRoutes(app: Express): void {
     const type = (req.query.type as string) || "skill";
     if (!name) { res.status(400).json({ error: "Missing name parameter" }); return; }
 
-    // Sanitize name to prevent path traversal
-    const safeName = path.basename(name);
+    try { assertSafePathComponent(name); } catch {
+      res.status(400).json({ error: "Invalid item name" }); return;
+    }
+    const safeName = name;
     const home = os.homedir();
     const candidates: string[] = [];
 
     if (type === "skill" || type === "agent" || type === "command") {
       const dir = type === "skill" ? "skills" : type === "agent" ? "agents" : "commands";
+      candidates.push(type === "skill"
+        ? path.join(home, ".mycelium", "global", dir, safeName, "SKILL.md")
+        : path.join(home, ".mycelium", "global", dir, `${safeName}.md`));
       candidates.push(
         path.join(home, ".mycelium", dir, safeName, "SKILL.md"),
         path.join(home, ".mycelium", dir, safeName, "README.md"),
@@ -155,6 +156,8 @@ export function registerMarketplaceRoutes(app: Express): void {
 
     for (const candidate of candidates) {
       try {
+        const root = type === "plugin" ? path.join(home, ".claude", "plugins", "cache") : path.join(home, ".mycelium");
+        assertContainedPath(root, candidate);
         const stat = await fs.stat(candidate);
         if (stat.isFile()) {
           const content = await fs.readFile(candidate, "utf-8");
@@ -165,7 +168,9 @@ export function registerMarketplaceRoutes(app: Express): void {
           // Try README.md or SKILL.md inside
           for (const fname of ["README.md", "SKILL.md", "AGENT.md"]) {
             try {
-              const content = await fs.readFile(path.join(candidate, fname), "utf-8");
+              const file = path.join(candidate, fname);
+              assertContainedPath(root, file);
+              const content = await fs.readFile(file, "utf-8");
               res.json({ content });
               return;
             } catch { /* next */ }
@@ -208,7 +213,7 @@ export function registerMarketplaceRoutes(app: Express): void {
   router.post("/audit", asyncHandler(async (req, res) => {
     const { name, source, type, content, fileName } = req.body || {};
 
-    if (content && fileName) {
+    if (typeof content === "string" && typeof fileName === "string" && fileName) {
       const { scanContent } = await import("../core/security-scanner.js");
       const result = scanContent(content, fileName);
       res.json(result);
@@ -220,23 +225,25 @@ export function registerMarketplaceRoutes(app: Express): void {
       return;
     }
 
-    // Sanitize name to prevent path traversal
-    const safeName = String(name).replace(/[/\\..]/g, "");
-    if (!safeName || safeName !== name) {
+    try { assertSafePathComponent(name); } catch {
       res.status(400).json({ success: false, error: "Invalid item name" });
       return;
     }
 
-    const os = await import("node:os");
-    const path = await import("node:path");
-    const skillPath = path.join(os.default.homedir(), ".mycelium", "global", "skills", safeName);
+    const root = path.join(os.homedir(), ".mycelium", "global");
+    const itemType = type || "skill";
+    if (!["skill", "agent", "command"].includes(itemType)) {
+      res.status(400).json({ error: "Unsupported audit type; provide content and fileName" }); return;
+    }
+    const skillPath = itemType === "skill" ? path.join(root, "skills", name) : path.join(root, `${itemType}s`, `${name}.md`);
 
     try {
-      const { scanSkill } = await import("../core/security-scanner.js");
-      const result = await scanSkill(skillPath);
+      assertContainedPath(root, skillPath);
+      const { scanSkill, scanContent } = await import("../core/security-scanner.js");
+      const result = itemType === "skill" ? await scanSkill(skillPath) : scanContent(await fs.readFile(skillPath, "utf-8"), path.basename(skillPath));
       res.json(result);
     } catch (err) {
-      res.status(404).json({ safe: true, findings: [], scannedFiles: 0, duration: 0, error: `Item not found: ${safeName}` });
+      res.status(404).json({ safe: false, findings: [], scannedFiles: 0, duration: 0, error: `Item not found: ${name}` });
     }
   }));
 

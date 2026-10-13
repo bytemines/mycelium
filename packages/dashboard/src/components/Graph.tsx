@@ -1,21 +1,8 @@
-/**
- * Graph - Interactive React Flow visualization with manual layered/radial layout
- * Layout: Skills/Plugins (top) → Tools (middle) → MCPs (bottom)
- * Features: direction switch (vertical/horizontal/radial), edge type picker
- */
-
+/** Interactive React Flow visualization with layered/radial layouts. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ReactFlow,
-  Background,
-  Controls,
-  Node,
-  Edge,
-  Position,
-  useNodesState,
-  useEdgesState,
-  useNodesInitialized,
-  Panel,
+  ReactFlow, Background, Controls, Node, Edge,
+  useNodesState, useEdgesState, useNodesInitialized, Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { cn } from "@/lib/utils";
@@ -23,474 +10,16 @@ import { ToolNode, ResourceNode, PluginNode, AddToolNode } from "./nodes";
 import type { ResourceNodeData, PluginNodeData } from "./nodes";
 import { buildDashboardGraph } from "@/lib/graph-builder";
 import type { DashboardGraphData } from "@/lib/graph-builder";
+import { getLayoutedElements } from "@/lib/graph-layout";
 import {
-  NODE_SIZES,
-  DEFAULT_SIZE,
-  BACKGROUND_GRID,
-  LOCALSTORAGE_KEYS,
-  DEFAULT_EDGE_TYPE,
-  DEFAULT_LAYOUT_DIRECTION,
-  DEFAULT_RADIAL_MODE,
+  BACKGROUND_GRID, LOCALSTORAGE_KEYS, DEFAULT_EDGE_TYPE,
+  DEFAULT_LAYOUT_DIRECTION, DEFAULT_RADIAL_MODE,
 } from "@/lib/graph-config";
 import type { Direction, EdgeType, RadialMode } from "@/lib/graph-config";
 
 // Re-export node components for backwards compatibility
 export { ToolNode, ResourceNode, PluginNode, AddToolNode };
 
-
-// ── Category classifier ──
-
-type Category = "plugin" | "skill" | "tool" | "mcp" | "other";
-
-function getCategory(node: Node): Category {
-  if (node.type === "tool" || node.type === "addTool") return "tool";
-  if (node.type === "plugin") return "plugin";
-  const dataType = node.data?.type;
-  if (dataType === "skill" || dataType === "agent" || dataType === "command" || dataType === "rule") return "skill";
-  if (dataType === "mcp") return "mcp";
-  return "other";
-}
-
-// Row order for layered layouts: top → bottom (DOWN) or left → right (RIGHT)
-const LAYER_ORDER: Category[] = ["plugin", "skill", "tool", "mcp"];
-
-function groupByCategory(nodes: Node[]): Map<Category, Node[]> {
-  const groups = new Map<Category, Node[]>();
-  for (const cat of LAYER_ORDER) groups.set(cat, []);
-  for (const node of nodes) {
-    const cat = getCategory(node);
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat)!.push(node);
-  }
-  return groups;
-}
-
-// ── Manual layered layout — guaranteed 4-row grouping ──
-
-function getLayeredLayout(
-  nodes: Node[],
-  edges: Edge[],
-  direction: "DOWN" | "RIGHT",
-): { nodes: Node[]; edges: Edge[] } {
-  const isHorizontal = direction === "RIGHT";
-  const groups = groupByCategory(nodes);
-  const nodeSpacing = 30;
-  const layerSpacing = 120;
-  const result: Node[] = [];
-
-  // Merge plugins + skills into one row, keep tools, mcps separate
-  const rows: Node[][] = [
-    [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
-    groups.get("tool") ?? [],
-    groups.get("mcp") ?? [],
-  ].filter((r) => r.length > 0);
-
-  // Get actual node size: prefer measured dimensions, fall back to NODE_SIZES config
-  const getSize = (n: Node) => {
-    const measured = n.measured;
-    if (measured?.width && measured?.height) return { width: measured.width, height: measured.height };
-    return NODE_SIZES[n.type || ""] || DEFAULT_SIZE;
-  };
-
-  // Calculate total cross-axis content size per row (sum of node widths/heights)
-  const rowContentSizes = rows.map((row) =>
-    row.reduce((sum, n) => {
-      const size = getSize(n);
-      return sum + (isHorizontal ? size.height : size.width);
-    }, 0),
-  );
-
-  // Row spread = content + uniform gaps
-  const rowSpreads = rows.map((row, ri) =>
-    rowContentSizes[ri] + (row.length - 1) * nodeSpacing,
-  );
-  const maxSpread = Math.max(...rowSpreads);
-
-  let layerOffset = 0;
-
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx];
-    const rowSpread = rowSpreads[rowIdx];
-    // Center this row relative to the widest row
-    const startOffset = (maxSpread - rowSpread) / 2;
-
-    let maxLayerThickness = 0;
-    let crossOffset = startOffset;
-
-    for (const node of row) {
-      const size = getSize(node);
-      const thickness = isHorizontal ? size.width : size.height;
-      const crossSize = isHorizontal ? size.height : size.width;
-      maxLayerThickness = Math.max(maxLayerThickness, thickness);
-
-      result.push({
-        ...node,
-        zIndex: 10, // nodes above edges
-        position: isHorizontal
-          ? { x: layerOffset, y: crossOffset }
-          : { x: crossOffset, y: layerOffset },
-        sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
-        targetPosition: isHorizontal ? Position.Left : Position.Top,
-      });
-
-      crossOffset += crossSize + nodeSpacing;
-    }
-
-    layerOffset += maxLayerThickness + layerSpacing;
-  }
-
-  return { nodes: result, edges };
-}
-
-// ── Shared radial helpers ──
-
-function buildToolAngles(tools: Node[]): Map<string, number> {
-  const m = new Map<string, number>();
-  tools.forEach((t, i) => {
-    m.set(t.id, (i / tools.length) * 2 * Math.PI - Math.PI / 2);
-  });
-  return m;
-}
-
-function buildNodeToTools(edges: Edge[], toolAngles: Map<string, number>): Map<string, string[]> {
-  const m = new Map<string, string[]>();
-  for (const edge of edges) {
-    if (toolAngles.has(edge.source)) {
-      const list = m.get(edge.target) ?? [];
-      list.push(edge.source);
-      m.set(edge.target, list);
-    }
-    if (toolAngles.has(edge.target)) {
-      const list = m.get(edge.source) ?? [];
-      list.push(edge.target);
-      m.set(edge.source, list);
-    }
-  }
-  return m;
-}
-
-function primaryToolAngle(node: Node, nodeToTools: Map<string, string[]>, toolAngles: Map<string, number>): number {
-  const connected = nodeToTools.get(node.id) ?? [];
-  if (connected.length === 0) return Math.PI;
-  const angles = connected.map((tid) => toolAngles.get(tid) ?? 0);
-  const sinSum = angles.reduce((s, a) => s + Math.sin(a), 0);
-  const cosSum = angles.reduce((s, a) => s + Math.cos(a), 0);
-  return Math.atan2(sinSum / angles.length, cosSum / angles.length);
-}
-
-function placeNode(node: Node, cx: number, cy: number, radius: number, angle: number): Node {
-  const nw = NODE_SIZES[node.type || ""]?.width ?? DEFAULT_SIZE.width;
-  const nh = NODE_SIZES[node.type || ""]?.height ?? DEFAULT_SIZE.height;
-  return {
-    ...node,
-    zIndex: 10,
-    position: {
-      x: cx + radius * Math.cos(angle) - nw / 2,
-      y: cy + radius * Math.sin(angle) - nh / 2,
-    },
-    sourcePosition: Position.Bottom,
-    targetPosition: Position.Top,
-  };
-}
-
-// ── Radial Mode A: Hybrid — Category rings + tool-sector sorting ──
-
-// Compute adaptive radii for a set of rings
-function computeAdaptiveRadii(
-  rings: Node[][],
-  prevRadius: number,
-  ringGap = 40,
-  nodeGap = 30,
-  density = 50, // 0=ignore fit constraint, 100=full fit constraint
-): number[] {
-  const fitScale = density / 100; // 0→1
-  const radii: number[] = [];
-  let prev = prevRadius;
-  for (const ringNodes of rings) {
-    if (ringNodes.length === 0) { radii.push(prev); continue; }
-    const maxW = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.width ?? DEFAULT_SIZE.width));
-    const maxH = Math.max(...ringNodes.map((n) => NODE_SIZES[n.type || ""]?.height ?? DEFAULT_SIZE.height));
-    const minForFit = (ringNodes.length * (maxW + nodeGap)) / (2 * Math.PI) * fitScale;
-    const minForGap = prev + Math.max(maxW, maxH) * fitScale + ringGap;
-    const r = Math.max(minForFit, minForGap);
-    radii.push(r);
-    prev = r;
-  }
-  return radii;
-}
-
-// ── Radial Mode: Hybrid — Category rings + tool-sector sorting ──
-
-function getRadialHybrid(nodes: Node[], edges: Edge[], spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
-  const groups = groupByCategory(nodes);
-  const tools = groups.get("tool") ?? [];
-  const toolRadius = tools.length <= 1 ? 0 : center;
-  const toolAngles = buildToolAngles(tools);
-  const nodeToTools = buildNodeToTools(edges, toolAngles);
-
-  const outerRings = [
-    [...(groups.get("plugin") ?? []), ...(groups.get("skill") ?? [])],
-    groups.get("mcp") ?? [],
-  ];
-
-  const ringRadii = computeAdaptiveRadii(outerRings, toolRadius, spacing, spacing / 2, density);
-  const outerR = Math.max(toolRadius, ...ringRadii);
-  const cx = outerR + 200, cy = outerR + 200;
-  const result: Node[] = [];
-
-  // Place tools
-  for (const tool of tools) result.push(placeNode(tool, cx, cy, toolRadius, toolAngles.get(tool.id)!));
-
-  // Place outer rings sorted by primary tool angle
-  for (let ri = 0; ri < outerRings.length; ri++) {
-    if (outerRings[ri].length === 0) continue;
-    const sorted = [...outerRings[ri]].sort(
-      (a, b) => primaryToolAngle(a, nodeToTools, toolAngles) - primaryToolAngle(b, nodeToTools, toolAngles),
-    );
-    sorted.forEach((node, j) => {
-      result.push(placeNode(node, cx, cy, ringRadii[ri], (j / sorted.length) * 2 * Math.PI - Math.PI / 2));
-    });
-  }
-  return { nodes: result, edges };
-}
-
-// ── Radial Mode: Sectors — each CATEGORY gets a quadrant of the circle ──
-// Plugins top-left, Skills bottom-left, MCPs top-right.
-// Tools in center. Within each quadrant, nodes fan out in arcs sorted by
-// their primary tool connection so related nodes cluster.
-
-function getRadialSectors(nodes: Node[], edges: Edge[], spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
-  const groups = groupByCategory(nodes);
-  const tools = groups.get("tool") ?? [];
-  const toolAngles = buildToolAngles(tools);
-  const nodeToTools = buildNodeToTools(edges, toolAngles);
-  const toolRadius = tools.length <= 1 ? 0 : center;
-
-  // Each category gets a fixed quadrant (center angle + sweep)
-  const quadrants: { cat: Category[]; centerAngle: number; label: string }[] = [
-    { cat: ["plugin"],  centerAngle: -Math.PI * 3 / 4, label: "Plugins (top-left)" },     // top-left
-    { cat: ["skill"],   centerAngle: Math.PI * 3 / 4,  label: "Skills (bottom-left)" },    // bottom-left
-    { cat: ["mcp"],     centerAngle: Math.PI / 4,       label: "MCPs (bottom-right)" },     // bottom-right
-  ];
-
-  const quadrantSweep = Math.PI / 2; // 90° per quadrant
-  const halfSweep = quadrantSweep * 0.42; // use 84%, leave gaps between quadrants
-
-  // Collect nodes per quadrant
-  const quadrantNodes: Node[][] = [];
-  for (const q of quadrants) {
-    const qNodes: Node[] = [];
-    for (const cat of q.cat) qNodes.push(...(groups.get(cat) ?? []));
-    quadrantNodes.push(qNodes);
-  }
-
-  // Use ONE consistent radius for all quadrants — the largest needed
-  const maxPerArc = 6;
-  const nodeGap = 40;
-  const maxW = DEFAULT_SIZE.width;
-  const maxNodesInQuadrant = Math.max(...quadrantNodes.map((q) => q.length), 1);
-  const nodesOnFirstArc = Math.min(maxPerArc, maxNodesInQuadrant);
-  const fitScale = density / 100;
-  const minRadiusForFit = (nodesOnFirstArc * (maxW + nodeGap)) / quadrantSweep * fitScale;
-  const baseRadius = Math.max(toolRadius + spacing, minRadiusForFit);
-  const ringSpacing = spacing + 40;
-
-  // Max arcs needed
-  const maxArcs = Math.max(...quadrantNodes.map((q) => Math.ceil(q.length / maxPerArc)), 1);
-  const outerR = baseRadius + maxArcs * ringSpacing + 100;
-  const cx = outerR + 200, cy = outerR + 200;
-  const result: Node[] = [];
-
-  // Place tools in center
-  for (const tool of tools) {
-    result.push(placeNode(tool, cx, cy, toolRadius, toolAngles.get(tool.id)!));
-  }
-
-  // Place each quadrant at the SAME base radius
-  for (let qi = 0; qi < quadrants.length; qi++) {
-    const q = quadrants[qi];
-    const qNodes = quadrantNodes[qi];
-    if (qNodes.length === 0) continue;
-
-    // Sort by primary tool angle for clustering
-    const sorted = [...qNodes].sort(
-      (a, b) => primaryToolAngle(a, nodeToTools, toolAngles) - primaryToolAngle(b, nodeToTools, toolAngles),
-    );
-
-    // Split into arcs of maxPerArc
-    const arcCount = Math.ceil(sorted.length / maxPerArc);
-    for (let arc = 0; arc < arcCount; arc++) {
-      const arcNodes = sorted.slice(arc * maxPerArc, (arc + 1) * maxPerArc);
-      const radius = baseRadius + arc * ringSpacing;
-
-      arcNodes.forEach((node, j) => {
-        const angleOffset = arcNodes.length <= 1
-          ? 0
-          : (j / (arcNodes.length - 1) - 0.5) * 2 * halfSweep;
-        result.push(placeNode(node, cx, cy, radius, q.centerAngle + angleOffset));
-      });
-    }
-  }
-
-  return { nodes: result, edges };
-}
-
-// ── Radial Mode: Force — edge-attracted force simulation with radial band constraints ──
-// Produces an organic layout: connected nodes pull toward each other,
-// nodes repel to avoid overlap, and a radial band constraint keeps category grouping.
-
-function getRadialForce(nodes: Node[], edges: Edge[], spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
-  const groups = groupByCategory(nodes);
-  const tools = groups.get("tool") ?? [];
-  const toolRadius = tools.length <= 1 ? 0 : center;
-
-  // Category → target radius band (density scales the gap)
-  const gap = spacing * (1 + density / 50);
-  const catRadii: Record<string, number> = {
-    tool: toolRadius,
-    plugin: toolRadius + gap,
-    skill: toolRadius + gap,
-    mcp: toolRadius + gap * 2,
-  };
-
-  const outerR = toolRadius + gap * 2 + 200;
-  const cx = outerR + 200, cy = outerR + 200;
-
-  // Initialize particles with positions spread by category ring + jittered angle
-  type Particle = { node: Node; x: number; y: number; vx: number; vy: number; targetR: number; fixed: boolean };
-  const allNodes = [...nodes];
-  const idToIdx = new Map<string, number>();
-  const particles: Particle[] = [];
-
-  // Counters per ring for initial angular spread
-  const ringCounts = new Map<number, number>();
-  const ringIdx = new Map<number, number>();
-
-  for (const node of allNodes) {
-    const cat = getCategory(node);
-    const tr = catRadii[cat] ?? toolRadius + 300;
-    const rc = ringCounts.get(tr) ?? 0;
-    ringCounts.set(tr, rc + 1);
-  }
-  for (const [r] of ringCounts) ringIdx.set(r, 0);
-
-  for (const node of allNodes) {
-    const cat = getCategory(node);
-    const tr = catRadii[cat] ?? toolRadius + 300;
-    const count = ringCounts.get(tr) ?? 1;
-    const idx = ringIdx.get(tr) ?? 0;
-    ringIdx.set(tr, idx + 1);
-    const angle = (idx / count) * 2 * Math.PI - Math.PI / 2;
-    idToIdx.set(node.id, particles.length);
-    particles.push({
-      node,
-      x: cx + tr * Math.cos(angle),
-      y: cy + tr * Math.sin(angle),
-      vx: 0, vy: 0,
-      targetR: tr,
-      fixed: cat === "tool", // tools stay fixed on center ring
-    });
-  }
-
-  // Run simulation: 80 iterations
-  const iterations = 80;
-  const alpha = 0.3; // global cooling factor
-
-  for (let iter = 0; iter < iterations; iter++) {
-    const t = 1 - iter / iterations; // temperature: 1→0
-
-    // 1. Edge attraction — pull connected nodes toward each other
-    for (const edge of edges) {
-      const si = idToIdx.get(edge.source);
-      const ti = idToIdx.get(edge.target);
-      if (si === undefined || ti === undefined) continue;
-      const a = particles[si], b = particles[ti];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const idealDist = Math.abs(a.targetR - b.targetR) * 0.8 + 100;
-      const force = (dist - idealDist) / dist * 0.02 * t;
-      if (!a.fixed) { a.vx += dx * force; a.vy += dy * force; }
-      if (!b.fixed) { b.vx -= dx * force; b.vy -= dy * force; }
-    }
-
-    // 2. Node-node repulsion
-    for (let i = 0; i < particles.length; i++) {
-      if (particles[i].fixed) continue;
-      for (let j = i + 1; j < particles.length; j++) {
-        const dx = particles[j].x - particles[i].x;
-        const dy = particles[j].y - particles[i].y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const minDist = 200;
-        if (dist < minDist) {
-          const force = (minDist - dist) / dist * 0.25 * t;
-          if (!particles[i].fixed) { particles[i].vx -= dx * force; particles[i].vy -= dy * force; }
-          if (!particles[j].fixed) { particles[j].vx += dx * force; particles[j].vy += dy * force; }
-        }
-      }
-    }
-
-    // 3. Apply velocity and radial band constraint
-    for (const p of particles) {
-      if (p.fixed) continue;
-      p.x += p.vx * alpha;
-      p.y += p.vy * alpha;
-      p.vx *= 0.7; // damping
-      p.vy *= 0.7;
-
-      // Pull toward target ring (soft constraint)
-      const dx = p.x - cx, dy = p.y - cy;
-      const currentR = Math.sqrt(dx * dx + dy * dy) || 1;
-      const angle = Math.atan2(dy, dx);
-      const newR = currentR + (p.targetR - currentR) * 0.3;
-      p.x = cx + newR * Math.cos(angle);
-      p.y = cy + newR * Math.sin(angle);
-    }
-  }
-
-  const result = particles.map((p) => {
-    const nw = NODE_SIZES[p.node.type || ""]?.width ?? DEFAULT_SIZE.width;
-    const nh = NODE_SIZES[p.node.type || ""]?.height ?? DEFAULT_SIZE.height;
-    return {
-      ...p.node,
-      zIndex: 10,
-      position: { x: p.x - nw / 2, y: p.y - nh / 2 },
-      sourcePosition: Position.Bottom as Position,
-      targetPosition: Position.Top as Position,
-    };
-  });
-
-  return { nodes: result, edges };
-}
-
-// ── Radial dispatcher ──
-
-function getRadialLayout(nodes: Node[], edges: Edge[], mode: RadialMode = "hybrid", spacing = 60, center = 150, density = 50): { nodes: Node[]; edges: Edge[] } {
-  switch (mode) {
-    case "sectors": return getRadialSectors(nodes, edges, spacing, center, density);
-    case "force": return getRadialForce(nodes, edges, spacing, center, density);
-    case "hybrid":
-    default: return getRadialHybrid(nodes, edges, spacing, center, density);
-  }
-}
-
-// ── Main layout dispatcher ──
-
-async function getLayoutedElements(
-  nodes: Node[],
-  edges: Edge[],
-  direction: Direction = DEFAULT_LAYOUT_DIRECTION,
-  radialMode: RadialMode = DEFAULT_RADIAL_MODE,
-  radialSpacing = 60,
-  radialCenter = 150,
-  radialDensity = 50,
-): Promise<{ nodes: Node[]; edges: Edge[] }> {
-  if (direction === "RADIAL") {
-    return getRadialLayout(nodes, edges, radialMode, radialSpacing, radialCenter, radialDensity);
-  }
-  return getLayeredLayout(nodes, edges, direction);
-}
-
-// Node types registry
 const nodeTypes = {
   tool: ToolNode,
   resource: ResourceNode,
@@ -564,7 +93,7 @@ export function Graph({
     try { localStorage.setItem(LOCALSTORAGE_KEYS.radialMode, mode); } catch {}
   }, []);
 
-  // Stabilize callback refs to prevent unnecessary re-renders and ELK re-layouts
+  // Stabilize callback refs to prevent unnecessary graph rebuilds.
   const onToggleRef = useRef(onToggle);
   onToggleRef.current = onToggle;
   const onPluginToggleRef = useRef(onPluginToggle);
@@ -592,110 +121,78 @@ export function Graph({
     [handleToggle]
   );
 
-  // Build initial nodes and edges from data
   const { initialNodes, initialEdges } = useMemo(
-    () =>
-      buildDashboardGraph(data, mode, showUninstalledTools, stableHandlers),
+    () => buildDashboardGraph(data, mode, showUninstalledTools, stableHandlers),
     [data, mode, showUninstalledTools, stableHandlers]
   );
 
-  // Apply edge type styling
   const styledEdges = useMemo(() => {
     return edges.map((edge) => ({ ...edge, type: edgeType }));
   }, [edges, edgeType]);
 
-  // Track previous node IDs to detect structural vs data-only changes
   const prevNodeIdsRef = useRef<string>("");
-
-  // Apply layout when data or mode changes — only fitView on first render
+  const prevLayoutSettingsRef = useRef<string>("");
   const hasInitialFit = useRef(false);
   const hasMeasuredLayout = useRef(false);
   useEffect(() => {
     if (initialNodes.length > 0) {
-      const newNodeIds = initialNodes.map(n => n.id).sort().join(",");
+      const newNodeIds = JSON.stringify(initialNodes.map(n => n.id).sort());
+      const layoutSettings = JSON.stringify([layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity]);
       const isStructuralChange = newNodeIds !== prevNodeIdsRef.current;
+      const isLayoutChange = layoutSettings !== prevLayoutSettingsRef.current;
       prevNodeIdsRef.current = newNodeIds;
+      prevLayoutSettingsRef.current = layoutSettings;
 
-      if (isStructuralChange) {
-        hasMeasuredLayout.current = false; // reset on structural change
-      }
+      if (isStructuralChange) hasMeasuredLayout.current = false;
 
-      // Data-only change (e.g. toggling a skill inside a plugin): update node data in place
-      // without recalculating layout. Re-layout with initialNodes (which lack .measured
-      // dimensions) would produce positions based on fallback sizes, shifting the graph.
-      if (!isStructuralChange) {
-        setNodes((currentNodes) => {
-          if (currentNodes.length === 0) return currentNodes;
-          return currentNodes.map((existing) => {
-            const updated = initialNodes.find(n => n.id === existing.id);
-            if (!updated) return existing;
-            // Only update if data actually changed
-            if (JSON.stringify(existing.data) === JSON.stringify(updated.data)) return existing;
-            return { ...existing, data: updated.data };
-          });
+      setNodes((currentNodes) => {
+        // Preserve measured sizes and dragged positions on data-only updates.
+        const updatedNodes = isStructuralChange ? initialNodes : currentNodes.map((existing) => {
+          const updated = initialNodes.find(n => n.id === existing.id);
+          if (!updated || JSON.stringify(existing.data) === JSON.stringify(updated.data)) return existing;
+          return { ...existing, data: updated.data };
         });
-        setEdges(initialEdges);
-        return;
+        if (!isStructuralChange && !isLayoutChange) return updatedNodes;
+        return getLayoutedElements(updatedNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).nodes;
+      });
+      setEdges(initialEdges);
+      if (!hasInitialFit.current) {
+        hasInitialFit.current = true;
+        setTimeout(() => fitViewRef.current?.(), 50);
       }
-
-      getLayoutedElements(initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
-        ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-          setNodes(layoutedNodes);
-          setEdges(layoutedEdges);
-          if (!hasInitialFit.current) {
-            hasInitialFit.current = true;
-            setTimeout(() => fitViewRef.current?.(), 50);
-          }
-        }
-      );
     }
   }, [initialNodes, initialEdges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity, setNodes, setEdges]);
 
-  // Second layout pass: re-layout using actual measured node dimensions for uniform spacing.
-  // React Flow measures nodes after first render (node.measured.width/height).
-  // Only runs on structural changes (new/removed nodes), not data-only updates.
+  // Second pass uses React Flow's measured dimensions after structural changes.
   const nodesInitialized = useNodesInitialized();
   useEffect(() => {
-    if (nodesInitialized && nodes.length > 0 && !hasMeasuredLayout.current) {
+    if (nodesInitialized && nodes.length > 0 && !hasMeasuredLayout.current
+      && JSON.stringify(nodes.map(n => n.id).sort()) === prevNodeIdsRef.current) {
       hasMeasuredLayout.current = true;
-      getLayoutedElements(nodes, edges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity).then(
-        ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-          setNodes(layoutedNodes);
-          setEdges(layoutedEdges);
-        }
-      );
+      const layout = getLayoutedElements(nodes, edges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity);
+      setNodes(layout.nodes);
     }
-    // Only re-run when nodesInitialized flips true — other deps are stable refs or unchanged
-  }, [nodesInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodesInitialized, nodes, edges, layoutDirection, radialMode, radialSpacing, radialCenter, radialDensity, setNodes]);
 
-  // Re-layout handler
+  // Explicit buttons also allow resetting a dragged layout without changing settings.
   const onLayout = useCallback(
     (direction: Direction) => {
       setLayoutDirection(direction);
-      getLayoutedElements(nodes, edges, direction, radialMode, radialSpacing, radialCenter, radialDensity).then(
-        ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-          setNodes(layoutedNodes);
-          setEdges(layoutedEdges);
-          setTimeout(() => fitViewRef.current?.(), 50);
-        }
-      );
+      const layout = getLayoutedElements(nodes, edges, direction, radialMode, radialSpacing, radialCenter, radialDensity);
+      setNodes(layout.nodes);
+      setTimeout(() => fitViewRef.current?.(), 50);
     },
-    [nodes, edges, radialMode, radialSpacing, radialCenter, radialDensity, setNodes, setEdges, setLayoutDirection]
+    [nodes, edges, radialMode, radialSpacing, radialCenter, radialDensity, setNodes, setLayoutDirection]
   );
 
-  // Radial mode switch handler
   const onRadialModeChange = useCallback(
     (mode: RadialMode) => {
       setRadialMode(mode);
-      getLayoutedElements(nodes, edges, "RADIAL", mode, radialSpacing, radialCenter, radialDensity).then(
-        ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-          setNodes(layoutedNodes);
-          setEdges(layoutedEdges);
-          setTimeout(() => fitViewRef.current?.(), 50);
-        }
-      );
+      const layout = getLayoutedElements(nodes, edges, "RADIAL", mode, radialSpacing, radialCenter, radialDensity);
+      setNodes(layout.nodes);
+      setTimeout(() => fitViewRef.current?.(), 50);
     },
-    [nodes, edges, radialSpacing, radialCenter, radialDensity, setNodes, setEdges, setRadialMode]
+    [nodes, edges, radialSpacing, radialCenter, radialDensity, setNodes, setRadialMode]
   );
 
   const onNodeDragStop = useCallback(() => {}, []);
@@ -704,9 +201,7 @@ export function Graph({
     (_event: React.MouseEvent, node: Node) => {
       onNodeClick?.(node);
       if (node.type === "plugin") {
-        onPluginClickRef.current?.(
-          (node.data as unknown as PluginNodeData).name
-        );
+        onPluginClickRef.current?.((node.data as unknown as PluginNodeData).name);
       } else if (node.type === "resource") {
         const rd = node.data as unknown as ResourceNodeData;
         if (rd.type === "mcp") onMcpClick?.(rd.name);

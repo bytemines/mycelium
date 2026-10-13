@@ -13,15 +13,17 @@ vi.mock("../../core/config-merger.js", () => ({
   loadAndMergeAllConfigs: vi.fn().mockResolvedValue(mockMergedConfig),
 }));
 
-const mockSyncResult = {
-  configPath: "/test/config.json",
-  backupPath: "/test/config.json.bak",
-  sectionsUpdated: ["mcps"],
-  success: true,
-};
-
 vi.mock("../../core/sync-writer.js", () => ({
-  syncToTool: vi.fn().mockResolvedValue(mockSyncResult),
+  syncToTool: vi.fn(),
+}));
+
+vi.mock("../../commands/sync.js", () => ({
+  syncAll: vi.fn().mockImplementation(async (_root, tools) => ({
+    success: true,
+    tools: Object.entries(tools).filter(([, config]) => (config as { enabled: boolean }).enabled)
+      .map(([tool]) => ({ tool, status: "synced" })),
+    errors: [], warnings: [],
+  })),
 }));
 
 const mockDoctorResult = {
@@ -43,15 +45,6 @@ vi.mock("../../core/global-tracer.js", () => ({
     }),
   }),
 }));
-
-// Helper to call a registered tool handler via the server internals
-async function callTool(server: any, name: string, args: Record<string, unknown> = {}) {
-  // McpServer stores tools internally; we access via the tool method
-  // The SDK's McpServer doesn't expose a public call method, so we test
-  // by verifying registration doesn't throw and the handler logic works.
-  // We'll test the handlers directly by re-importing and calling the logic.
-  return undefined;
-}
 
 describe("registerConfigTools", () => {
   beforeEach(() => {
@@ -162,6 +155,7 @@ describe("mycelium_sync handler", () => {
     const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
     const { registerConfigTools } = await import("./config-tools.js");
     const { syncToTool } = await import("../../core/sync-writer.js");
+    const { syncAll } = await import("../../commands/sync.js");
     const { ALL_TOOL_IDS } = await import("@mycelish/core");
 
     const server = new McpServer({ name: "test", version: "0.0.1" });
@@ -174,7 +168,12 @@ describe("mycelium_sync handler", () => {
     const result = await handlers["mycelium_sync"]({ tool: undefined });
     const parsed = JSON.parse(result.content[0].text);
 
-    expect(vi.mocked(syncToTool)).toHaveBeenCalledTimes(ALL_TOOL_IDS.length);
+    expect(syncAll).toHaveBeenCalledOnce();
+    expect(syncAll).toHaveBeenCalledWith(process.cwd(), Object.fromEntries(
+      ALL_TOOL_IDS.map(id => [id, { enabled: true }]),
+    ));
+    expect(syncToTool).not.toHaveBeenCalled();
+    expect(result.isError).toBe(false);
     for (const id of ALL_TOOL_IDS) {
       expect(parsed[id]).toEqual({ success: true });
     }
@@ -183,7 +182,8 @@ describe("mycelium_sync handler", () => {
   it("syncs only specified tool when tool param provided", async () => {
     const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
     const { registerConfigTools } = await import("./config-tools.js");
-    const { syncToTool } = await import("../../core/sync-writer.js");
+    const { syncAll } = await import("../../commands/sync.js");
+    const { ALL_TOOL_IDS } = await import("@mycelish/core");
 
     const server = new McpServer({ name: "test", version: "0.0.1" });
     const handlers: Record<string, Function> = {};
@@ -195,17 +195,67 @@ describe("mycelium_sync handler", () => {
     const result = await handlers["mycelium_sync"]({ tool: "claude-code" });
     const parsed = JSON.parse(result.content[0].text);
 
-    expect(vi.mocked(syncToTool)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(syncToTool)).toHaveBeenCalledWith("claude-code", expect.any(Object), undefined, expect.any(Object));
-    expect(parsed["claude-code"]).toEqual({ success: true });
+    expect(syncAll).toHaveBeenCalledOnce();
+    expect(syncAll).toHaveBeenCalledWith(process.cwd(), Object.fromEntries(
+      ALL_TOOL_IDS.map(id => [id, { enabled: id === "claude-code" }]),
+    ));
+    expect(parsed).toEqual({ "claude-code": { success: true } });
+  });
+
+  it("surfaces failed tool results without hiding successful tools", async () => {
+    const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
+    const { registerConfigTools } = await import("./config-tools.js");
+    const { syncAll } = await import("../../commands/sync.js");
+    vi.mocked(syncAll).mockResolvedValueOnce({
+      success: false,
+      tools: [
+        { tool: "claude-code", status: "synced", skillsCount: 0, mcpsCount: 0, agentsCount: 0, rulesCount: 0, commandsCount: 0 },
+        { tool: "cursor", status: "error", skillsCount: 0, mcpsCount: 0, agentsCount: 0, rulesCount: 0, commandsCount: 0, error: "write failed" },
+      ],
+      errors: ["cursor: write failed"], warnings: [],
+    });
+    const server = new McpServer({ name: "test", version: "0.0.1" });
+    const handlers: Record<string, Function> = {};
+    (vi.spyOn(server, "registerTool") as any).mockImplementation((name: string, _opts: any, handler: any) => {
+      handlers[name] = handler;
+    });
+    registerConfigTools(server);
+    const result = await handlers["mycelium_sync"]({});
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      "claude-code": { success: true }, cursor: { success: false, error: "write failed" },
+    });
+    expect(result.isError).toBe(true);
+  });
+
+  it("rejects unknown tool IDs through SDK validation before syncing", async () => {
+    const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { registerConfigTools } = await import("./config-tools.js");
+    const { syncAll } = await import("../../commands/sync.js");
+    const server = new McpServer({ name: "test", version: "0.0.1" });
+    const client = new Client({ name: "test", version: "0.0.1" });
+    registerConfigTools(server);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const result = await client.callTool({ name: "mycelium_sync", arguments: { tool: "unknown-tool" } });
+      expect(result.isError).toBe(true);
+      expect(syncAll).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 
   it("handles sync errors gracefully", async () => {
     const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
     const { registerConfigTools } = await import("./config-tools.js");
-    const { syncToTool } = await import("../../core/sync-writer.js");
+    const { syncAll } = await import("../../commands/sync.js");
+    const { getTracer } = await import("../../core/global-tracer.js");
 
-    vi.mocked(syncToTool).mockRejectedValueOnce(new Error("write failed"));
+    vi.mocked(syncAll).mockRejectedValueOnce(new Error("write failed"));
 
     const server = new McpServer({ name: "test", version: "0.0.1" });
     const handlers: Record<string, Function> = {};
@@ -218,6 +268,10 @@ describe("mycelium_sync handler", () => {
     const parsed = JSON.parse(result.content[0].text);
 
     expect(parsed["claude-code"]).toEqual({ success: false, error: "write failed" });
+    expect(result.isError).toBe(true);
+    expect(getTracer().createTrace("mcp").error).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "mcp", op: "sync", error: "write failed" }),
+    );
   });
 });
 

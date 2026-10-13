@@ -5,10 +5,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/bytemines/mycelium/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen?logo=github" alt="CI" /></a>
+  <a href="https://github.com/bytemines/mycelium/actions/workflows/ci.yml"><img src="https://github.com/bytemines/mycelium/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@mycelish/cli"><img src="https://img.shields.io/npm/v/@mycelish/cli?color=cb3837&logo=npm" alt="npm" /></a>
   <img src="https://img.shields.io/badge/tools-8%20supported-blueviolet" alt="8 Tools" />
-  <img src="https://img.shields.io/badge/tests-775%20passing-brightgreen" alt="775 Tests" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
 </p>
 
@@ -19,6 +18,8 @@
 ---
 
 ## 🚀 Quick Start
+
+Requires **Node.js 22.13 or newer** (`node:sqlite` without an experimental flag).
 
 ```bash
 npm install -g @mycelish/cli
@@ -32,6 +33,11 @@ mycelium sync              # Push config to all tools
 mycelium sync --watch      # Auto-sync on changes
 mycelium serve             # Launch visual dashboard
 ```
+
+The dashboard/API binds to **127.0.0.1:3378** and is a local, single-user tool, not
+an authenticated remote service. Browser Host/Origin checks protect the local API;
+do not expose it through an untrusted proxy. `mycelium mcp` is a separate stdio
+integration for AI tools.
 
 ---
 

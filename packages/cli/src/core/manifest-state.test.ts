@@ -79,6 +79,14 @@ describe("manifest-state", () => {
   });
 
   describe("getDisabledItems", () => {
+    it("keeps same-name skill and MCP states independent when typed", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({
+        skills: { shared: { state: "disabled" } }, mcps: { shared: { state: "enabled" } },
+      }));
+      const { getDisabledItems } = await import("./manifest-state.js");
+      expect(await getDisabledItems(undefined, "skill")).toEqual(new Set(["shared"]));
+      expect(await getDisabledItems(undefined, "mcp")).toEqual(new Set());
+    });
     it("returns disabled and deleted items from global manifest", async () => {
       const yaml = await import("yaml");
       const manifest = {
@@ -122,6 +130,18 @@ describe("manifest-state", () => {
   });
 
   describe("sectionForType", () => {
+    it("does not register inherited object keys as items", async () => {
+      const { findItemType } = await import("./manifest-state.js");
+      expect(findItemType({ version: "1.0.0", skills: {}, mcps: {} }, "constructor")).toBeNull();
+    });
+
+    it("finds an explicitly registered prototype-named MCP in its own section", async () => {
+      const { findItemType } = await import("./manifest-state.js");
+      const config = { state: "enabled" as const };
+      expect(findItemType({ version: "1.0.0", skills: {}, mcps: { constructor: config } }, "constructor"))
+        .toEqual({ type: "mcp", config });
+    });
+
     it("maps all item types to section keys", async () => {
       const { sectionForType } = await import("./manifest-state.js");
       expect(sectionForType("skill")).toBe("skills");

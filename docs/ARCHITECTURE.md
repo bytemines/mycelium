@@ -6,7 +6,10 @@
 
 **Non-destructive overlay.** Mycelium never owns tool config files. It writes only the sections it manages (MCPs, skills, agents, rules, commands, hooks) and preserves everything else. Tools remain fully functional without Mycelium installed.
 
-**CLI-first, dashboard-optional.** All operations work through `mycelium` CLI commands. The dashboard is a read-heavy visualization layer that calls the same core functions, served via an Express API on port 3378.
+**CLI-first, dashboard-optional.** All operations work through `mycelium` CLI commands.
+The dashboard calls the same core functions through an Express API bound to
+`127.0.0.1:3378`. It assumes one trusted local user; Host/Origin checks are not a
+remote authentication system. The stdio MCP integration is separate.
 
 **Git as source of truth.** The canonical configuration lives in `~/.mycelium/`, which is a git repository. Multi-PC sync uses `git push`/`git pull` rather than a proprietary sync service. Machine-specific differences (binary paths, local secrets) are handled through overrides and env templates that stay out of git.
 
@@ -44,12 +47,18 @@ Configuration merges three levels with clear precedence: **Project > Machine > G
 The sync process is designed to be safe and reversible using **read-preserve-write**:
 
 1. **Read** the tool's existing config file in full, preserving user-set properties that Mycelium doesn't manage.
-2. **Replace only the Mycelium-managed section** (e.g., `mcpServers` key in JSON, `[mcp.servers.*]` sections in TOML). All other content is preserved byte-for-byte.
+2. **Reconcile explicitly managed names**, preserving unmanaged MCP entries and
+   unrelated settings. JSON/JSONC formatting may change; byte-for-byte preservation
+   is not guaranteed. Known disabled/deleted names are explicitly removed.
 3. **Write** the merged result back, maintaining both Mycelium-managed and user-managed properties.
 
 For tools with a native CLI (Claude Code, Codex, Gemini), Mycelium prefers the CLI path (`claude mcp add-json`) over direct file editing. This prevents the tool from overwriting Mycelium's changes on restart. The `ToolAdapter` abstraction routes each operation through CLI when available, falling back to file editing otherwise.
 
-Snapshots are taken before any destructive write, stored in `~/.mycelium/snapshots/`. The `mycelium snapshot restore` command rolls back to any previous state.
+Selective snapshots are stored in `~/.mycelium/snapshots/` and created explicitly
+with `mycelium migrate --snapshot <name>`. `mycelium migrate --restore <name>` restores
+captured global configuration and skill-link metadata, not all directory contents or
+project state. Uncaptured ordinary directories remain intact. Routine sync does not
+automatically take a full-state snapshot; error trace snapshots are diagnostic records.
 
 ## Tool Registry & Auto-Adapter
 

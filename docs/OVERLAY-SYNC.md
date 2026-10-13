@@ -24,7 +24,10 @@ tool/skills/my-skill → ~/.mycelium/skills/my-skill
 
 ### MCPs — Section Injection
 
-MCP configs are injected into each tool's native config file (JSON, TOML, or YAML) using section markers. Only the managed section is replaced on each sync.
+MCPs are reconciled by explicitly managed name. JSON/JSONC and TOML updates preserve
+unmanaged MCP entries and unrelated settings; explicit tombstones remove known names.
+Managed entries are rebuilt from their declared configuration. JSON rewriting may
+change formatting, so this is not byte-for-byte preservation.
 
 ```json
 {
@@ -43,11 +46,17 @@ Agents, rules, and commands are synced as files into each tool's directory:
 - **Rules**: Copied into each tool's rules directory (VS Code exception: symlinked)
 - **Commands**: Symlinked from `~/.mycelium/commands/` into each tool's commands directory
 
+Copied files have a small ownership record containing source identity and content
+hash. Unowned files, user-edited copies, and original backups are preserved; only
+verified unchanged managed copies can be updated or removed automatically.
+
 ## Key Guarantees
 
 - **Read-only scan**: `mycelium migrate` never modifies source tool configs
-- **Snapshot before write**: Every sync creates a snapshot you can restore
-- **Overlay, not overwrite**: Symlinks and injected sections are clearly marked
+- **Selective snapshots**: Create one explicitly with `mycelium migrate --snapshot <name>`;
+  ordinary sync does not create a full-state snapshot. Trace snapshots on errors are diagnostics.
+- **Overlay, not blanket overwrite**: Managed names and verified ownership delimit changes;
+  malformed configurations fail rather than being replaced with empty objects.
 - **Clean removal**: `mycelium migrate --clear` removes only mycelium-managed entries
 
 ## Portable vs Non-Portable

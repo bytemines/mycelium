@@ -8,7 +8,8 @@ import { MARKETPLACE_SOURCES as MS } from "@mycelish/core";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { cachedFetch, type CacheOptions } from "./marketplace-cache.js";
+import { cachedFetch, fetchMarketplaceText, type CacheOptions } from "./marketplace-cache.js";
+import { assertSafePathComponent, assertContainedPath } from "./path-safety.js";
 import { computeContentHash } from "./content-hash.js";
 import {
   MARKETPLACE_FETCH_LIMIT,
@@ -187,9 +188,7 @@ export async function fetchMcpServers(query: string): Promise<McpRegistryServer[
   const url = query
     ? `${MCP_REGISTRY_URL}/v0.1/servers?search=${encodeURIComponent(query)}&limit=${MARKETPLACE_FETCH_LIMIT}`
     : `${MCP_REGISTRY_URL}/v0.1/servers?limit=${MARKETPLACE_FETCH_LIMIT}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`MCP Registry failed: ${res.statusText}`);
-  const data = (await res.json()) as { servers: McpRegistryServer[] };
+  const data = JSON.parse(await fetchMarketplaceText(url)) as { servers: McpRegistryServer[] };
   return data.servers || [];
 }
 
@@ -267,20 +266,18 @@ export async function searchGlama(query: string, options?: CacheOptions): Promis
 // ============================================================================
 
 async function fetchGitHubTree(owner: string, repo: string, options?: CacheOptions): Promise<{ path: string; type: string }[]> {
+  assertSafePathComponent(owner);
+  assertSafePathComponent(repo);
   return cachedFetch(`github-${owner}-${repo}`, async () => {
     const headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
     const ghToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
     if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
 
-    const res = await fetch(
+    const text = await fetchMarketplaceText(
       `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`,
       { headers }
     );
-    if (!res.ok) {
-      const hint = res.status === 403 ? " (rate limited — try again later or set GITHUB_TOKEN)" : "";
-      throw new Error(`GitHub API ${res.status} for ${owner}/${repo}${hint}`);
-    }
-    const body = (await res.json()) as { tree: { path: string; type: string }[] };
+    const body = JSON.parse(text) as { tree: { path: string; type: string }[] };
     return body.tree;
   }, options);
 }
@@ -482,6 +479,10 @@ export async function installGitHubRepoItem(
   repo: string,
   entry: MarketplaceEntry
 ): Promise<{ success: boolean; path?: string; error?: string; contentHash?: string }> {
+  assertSafePathComponent(entry.name);
+  assertSafePathComponent(owner);
+  assertSafePathComponent(repo);
+  if (!["skill", "agent", "command"].includes(entry.type)) throw new Error("Unsupported item type");
   const itemType = entry.type as "skill" | "agent" | "command";
   let remotePath: string;
   let localDir: string;
@@ -504,11 +505,11 @@ export async function installGitHubRepoItem(
   }
 
   const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${remotePath}`;
-  const ghRes = await fetch(rawUrl);
-  if (!ghRes.ok) throw new Error(`Download failed: ${ghRes.statusText}`);
-  const content = await ghRes.text();
-  await fs.mkdir(localDir, { recursive: true });
   const filePath = path.join(localDir, fileName);
+  assertContainedPath(globalDir, filePath);
+  const content = await fetchMarketplaceText(rawUrl);
+  await fs.mkdir(localDir, { recursive: true });
+  assertContainedPath(globalDir, filePath);
   await fs.writeFile(filePath, content, "utf-8");
   return { success: true, path: filePath, contentHash: computeContentHash(content) };
 }

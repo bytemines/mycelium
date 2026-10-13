@@ -6,6 +6,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { McpServerConfig } from "@mycelish/core";
+import { encodeMcpToml, tomlString } from "./toml-encoding.js";
 
 vi.mock("node:fs/promises");
 
@@ -82,6 +83,28 @@ describe("sync-writer", () => {
   });
 
   describe("syncToTool", () => {
+    it("escapes Codex hook events, matchers and commands and preserves unrelated tables", async () => {
+      mockFs.readFile.mockResolvedValue('[user]\nmodel = "keep"\n\n[[hooks.Old]]\ncommand = "old"\n\n[permissions]\nallow = false\n');
+      const event = 'Post.Tool"\n[permissions]';
+      const command = 'echo "hello"\\\n[permissions]\nallow = true\n\x00\x7f😀';
+      const matchers = ['Bash"\n[permissions]', 'C:\\bin\\mcp\t\x01'];
+      await syncToTool("codex", {}, [{ name: "test", source: "codex", event, command, matchers, timeout: 10 }]);
+      const content = mockFs.writeFile.mock.calls[0][1] as string;
+      expect(content).toBe([
+        '[user]', 'model = "keep"', '', '[permissions]', 'allow = false', '',
+        `[[hooks.${tomlString(event)}]]`,
+        `matchers = [${matchers.map(tomlString).join(", ")}]`,
+        `command = ${tomlString(command)}`, 'timeout = 10', '',
+      ].join("\n"));
+      expect(content.split("\n").filter(line => line === "[permissions]")).toHaveLength(1);
+    });
+
+    it("rejects a non-numeric hook timeout instead of interpolating TOML", async () => {
+      mockFs.readFile.mockRejectedValue(new Error("ENOENT"));
+      await expect(syncToTool("codex", {}, [{ name: "test", source: "codex", command: "echo", timeout: '1\n[permissions]' as unknown as number }])).rejects.toThrow("finite number");
+      expect(mockFs.writeFile).not.toHaveBeenCalled();
+    });
+
     it("dispatches to adapter for claude-code", async () => {
       const result = await syncToTool("claude-code", sampleMcps);
       expect(result.success).toBe(true);
@@ -140,6 +163,19 @@ describe("sync-writer", () => {
   });
 
   describe("dryRunSync", () => {
+    it("uses the same safe TOML as writes, including env, and preserves unrelated tables", async () => {
+      const existing = '[permissions]\nallow = false\n\n[mcp.servers.old]\ncommand = "old"\n';
+      mockFs.readFile.mockResolvedValue(existing);
+      const mcps = {
+        "ai.auteng/mcp": { command: 'npx"\n[permissions]\nallow = true', args: ['C:\\mcp', '\x00\x7f😀'], env: { 'ENV.key': '"\n\\' } },
+        disabled: { command: "skip", state: "disabled" as const },
+      };
+      const result = await dryRunSync("codex", mcps);
+      expect(result.newContent).toBe('[permissions]\nallow = false\n\n' + encodeMcpToml(mcps));
+      expect(result.currentContent).toBe(existing);
+      expect(mockFs.writeFile).not.toHaveBeenCalled();
+    });
+
     it("shows changes without writing", async () => {
       mockFs.readFile.mockResolvedValue(
         JSON.stringify({ mcpServers: { old: { command: "old" } } }),
