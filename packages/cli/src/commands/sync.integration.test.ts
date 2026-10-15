@@ -23,6 +23,8 @@ vi.mock("../core/file-syncer.js", () => ({
 }));
 vi.mock("../core/machine-overrides.js", () => ({
   loadMachineOverrides: vi.fn().mockResolvedValue({ mcps: {} }),
+  // sync re-detects overrides on every run (self-healing paths) — mock it too
+  rescanOverrides: vi.fn().mockResolvedValue({ hostname: "test", detectedAt: "", updatedAt: "", mcps: {} }),
   applyMachineOverrides: vi.fn(mcps => mcps),
 }));
 vi.mock("../core/plugin-takeover.js", () => ({
