@@ -180,45 +180,95 @@ export async function listPlugins(
 
   try {
     const cacheDir = path.join(CLAUDE_PLUGINS_DIR, "cache");
-    const entries = await fs.readdir(cacheDir);
+    const marketplaceDirs = await fs.readdir(cacheDir);
 
-    for (const entry of entries) {
-      const pluginJsonPath = path.join(cacheDir, entry, "plugin.json");
+    for (const mpDir of marketplaceDirs) {
+      if (marketplace && mpDir !== marketplace) continue;
+      const mpPath = path.join(cacheDir, mpDir);
+      const mpStat = await fs.stat(mpPath).catch(() => null);
+      if (!mpStat?.isDirectory()) continue;
+
+      let pluginDirs: string[];
       try {
-        const raw = await fs.readFile(pluginJsonPath, "utf-8");
-        const meta = JSON.parse(raw) as {
-          name: string;
-          marketplace?: string;
-          version?: string;
-          description?: string;
-          author?: string;
-          skills?: string[];
-          agents?: string[];
-          commands?: string[];
-          installedAt?: string;
-          lastUpdated?: string;
-        };
+        pluginDirs = await fs.readdir(mpPath);
+      } catch { continue; }
 
-        if (marketplace && meta.marketplace !== marketplace) continue;
+      for (const pluginDir of pluginDirs) {
+        const pluginPath = path.join(mpPath, pluginDir);
+        const pluginStat = await fs.stat(pluginPath).catch(() => null);
+        if (!pluginStat?.isDirectory()) continue;
 
-        plugins.push({
-          name: meta.name || entry,
-          marketplace: meta.marketplace || "unknown",
-          version: meta.version || "0.0.0",
-          description: meta.description || "",
-          author: meta.author,
-          enabled: true,
-          skills: meta.skills || [],
-          agents: meta.agents || [],
-          commands: meta.commands || [],
-          hooks: [],
-          libs: [],
-          installPath: path.join(cacheDir, entry),
-          installedAt: meta.installedAt,
-          lastUpdated: meta.lastUpdated,
-        });
-      } catch {
-        // Skip invalid plugin dirs
+        // Find the latest version directory
+        let versionDirs: string[];
+        try {
+          versionDirs = await fs.readdir(pluginPath);
+        } catch { continue; }
+
+        // Try each version dir (typically just one)
+        for (const versionDir of versionDirs) {
+          const versionPath = path.join(pluginPath, versionDir);
+          const vStat = await fs.stat(versionPath).catch(() => null);
+          if (!vStat?.isDirectory()) continue;
+
+          // Look for plugin.json in .claude-plugin/ or at version root
+          const candidates = [
+            path.join(versionPath, ".claude-plugin", "plugin.json"),
+            path.join(versionPath, "plugin.json"),
+          ];
+
+          for (const pluginJsonPath of candidates) {
+            try {
+              const raw = await fs.readFile(pluginJsonPath, "utf-8");
+              const meta = JSON.parse(raw) as {
+                name: string;
+                marketplace?: string;
+                version?: string;
+                description?: string;
+                author?: string;
+                skills?: string[];
+                agents?: string[];
+                commands?: string[];
+                installedAt?: string;
+                lastUpdated?: string;
+              };
+
+              // Scan skill/agent/command directories for actual items
+              const skillsDir = path.join(versionPath, "skills");
+              const agentsDir = path.join(versionPath, "agents");
+              const commandsDir = path.join(versionPath, "commands");
+
+              const listDir = async (dir: string) => {
+                try {
+                  return (await fs.readdir(dir)).filter(n => !n.startsWith("."));
+                } catch { return []; }
+              };
+
+              const skills = meta.skills?.length ? meta.skills : await listDir(skillsDir);
+              const agents = meta.agents?.length ? meta.agents : await listDir(agentsDir);
+              const commands = meta.commands?.length ? meta.commands : await listDir(commandsDir);
+
+              plugins.push({
+                name: meta.name || pluginDir,
+                marketplace: meta.marketplace || mpDir,
+                version: meta.version || versionDir,
+                description: meta.description || "",
+                author: meta.author,
+                enabled: true,
+                skills,
+                agents,
+                commands,
+                hooks: [],
+                libs: [],
+                installPath: versionPath,
+                installedAt: meta.installedAt,
+                lastUpdated: meta.lastUpdated,
+              });
+              break; // Found plugin.json, no need to check other candidates
+            } catch {
+              // Try next candidate
+            }
+          }
+        }
       }
     }
   } catch {

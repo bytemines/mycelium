@@ -176,26 +176,57 @@ describe("removeMarketplace", () => {
 // ============================================================================
 
 describe("listPlugins", () => {
-  it("lists plugins from cache directory", async () => {
-    mockFs.readdir.mockResolvedValue(["plugin-a", "plugin-b"] as any);
+  const dirStat = { isDirectory: () => true };
+
+  // Helper to set up the 3-level cache structure:
+  // cache/{marketplace}/{plugin}/{version}/.claude-plugin/plugin.json
+  function setupCacheMocks(structure: Record<string, Record<string, { version: string; meta: Record<string, unknown> }>>) {
+    const marketplaces = Object.keys(structure);
+
+    mockFs.readdir.mockImplementation(async (dirPath: any) => {
+      const p = String(dirPath);
+      // Top-level cache dir → marketplace dirs
+      if (p.endsWith("/cache")) return marketplaces as any;
+      // Marketplace dir → plugin dirs
+      for (const mp of marketplaces) {
+        if (p.endsWith(`/cache/${mp}`)) return Object.keys(structure[mp]) as any;
+        // Plugin dir → version dirs
+        for (const [plugin, info] of Object.entries(structure[mp])) {
+          if (p.endsWith(`/${plugin}`)) return [info.version] as any;
+        }
+      }
+      return [] as any;
+    });
+
+    mockFs.stat.mockResolvedValue(dirStat as any);
+
     mockFs.readFile.mockImplementation(async (filePath: any) => {
       const p = String(filePath);
-      if (p.includes("plugin-a"))
-        return JSON.stringify({
-          name: "plugin-a",
-          marketplace: "store-1",
-          version: "1.0.0",
-          description: "Plugin A",
-          skills: ["skill-1"],
-        });
-      if (p.includes("plugin-b"))
-        return JSON.stringify({
-          name: "plugin-b",
-          marketplace: "store-2",
-          version: "2.0.0",
-          description: "Plugin B",
-        });
+      for (const mp of marketplaces) {
+        for (const [plugin, info] of Object.entries(structure[mp])) {
+          if (p.includes(`/${plugin}/${info.version}/`)) {
+            return JSON.stringify(info.meta);
+          }
+        }
+      }
       throw new Error("ENOENT");
+    });
+  }
+
+  it("lists plugins from cache directory", async () => {
+    setupCacheMocks({
+      "store-1": {
+        "plugin-a": {
+          version: "1.0.0",
+          meta: { name: "plugin-a", marketplace: "store-1", version: "1.0.0", description: "Plugin A", skills: ["skill-1"] },
+        },
+      },
+      "store-2": {
+        "plugin-b": {
+          version: "2.0.0",
+          meta: { name: "plugin-b", marketplace: "store-2", version: "2.0.0", description: "Plugin B" },
+        },
+      },
     });
 
     const plugins = await listPlugins();
@@ -205,14 +236,19 @@ describe("listPlugins", () => {
   });
 
   it("filters by marketplace", async () => {
-    mockFs.readdir.mockResolvedValue(["plugin-a", "plugin-b"] as any);
-    mockFs.readFile.mockImplementation(async (filePath: any) => {
-      const p = String(filePath);
-      if (p.includes("plugin-a"))
-        return JSON.stringify({ name: "plugin-a", marketplace: "store-1" });
-      if (p.includes("plugin-b"))
-        return JSON.stringify({ name: "plugin-b", marketplace: "store-2" });
-      throw new Error("ENOENT");
+    setupCacheMocks({
+      "store-1": {
+        "plugin-a": {
+          version: "1.0.0",
+          meta: { name: "plugin-a", marketplace: "store-1" },
+        },
+      },
+      "store-2": {
+        "plugin-b": {
+          version: "2.0.0",
+          meta: { name: "plugin-b", marketplace: "store-2" },
+        },
+      },
     });
 
     const plugins = await listPlugins("store-1");
@@ -233,7 +269,15 @@ describe("listPlugins", () => {
 
 describe("getPluginDetails", () => {
   it("returns plugin by name", async () => {
-    mockFs.readdir.mockResolvedValue(["my-plugin"] as any);
+    const dirStat = { isDirectory: () => true };
+    mockFs.readdir.mockImplementation(async (dirPath: any) => {
+      const p = String(dirPath);
+      if (p.endsWith("/cache")) return ["store-1"] as any;
+      if (p.endsWith("/store-1")) return ["my-plugin"] as any;
+      if (p.endsWith("/my-plugin")) return ["1.0.0"] as any;
+      return [] as any;
+    });
+    mockFs.stat.mockResolvedValue(dirStat as any);
     mockFs.readFile.mockResolvedValue(
       JSON.stringify({ name: "my-plugin", version: "1.0.0", description: "desc" })
     );

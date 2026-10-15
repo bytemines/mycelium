@@ -231,10 +231,14 @@ export async function loadMachineConfig(): Promise<Partial<MergedConfig>> {
     commands: await loadFileItems(path.join(hostDir, "commands")),
   };
 
-  // Try hostname.yaml (flat MCP entries)
+  // Try hostname.yaml — supports both nested { mcps: { ... } } and flat { name: { command, ... } }
   const yamlContent = await readFileIfExists(path.join(machinesDir, `${hostname}.yaml`));
   if (yamlContent) {
-    const mcps = parseConfig<Record<string, McpServerConfig>>(yamlContent, `machines/${hostname}.yaml`) ?? {};
+    const parsed = parseConfig<Record<string, unknown>>(yamlContent, `machines/${hostname}.yaml`) ?? {};
+    // If the YAML has a `mcps` key with an object value, treat it as nested format
+    const mcps = (parsed.mcps && typeof parsed.mcps === "object" && !Array.isArray(parsed.mcps))
+      ? parsed.mcps as Record<string, McpServerConfig>
+      : parsed as Record<string, McpServerConfig>;
     return { mcps, skills: await loadSkillItems(path.join(hostDir, "skills")), ...fileItems };
   }
 
