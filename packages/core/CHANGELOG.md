@@ -1,5 +1,31 @@
 # @mycelish/core
 
+## 0.3.8
+
+### Patch Changes
+
+- # 0.3.8
+
+  ## 🩺 Self-healing MCP command paths
+  - **`mycelium sync` re-detects machine overrides on every run.** Each MCP command
+    is re-resolved via `which`, so a machine that installs a runtime binary (`uv`,
+    `npx`, …) _after_ its first sync now converges on the next one — instead of
+    keeping another machine's absolute path (e.g. macOS `/opt/homebrew/bin/uvx`)
+    baked into its tool configs. Opt out with `--no-rescan`.
+  - **`mycelium pull` detects overrides from the right file.** It now reads
+    `global/mcps.yaml` (where the config actually lives) instead of a nonexistent
+    root-level `mcps.yaml`, so its auto-detection is no longer dead code. The
+    legacy root path still works as a fallback.
+
+  ## 🗂 Marketplace cache scan
+  - The registry understands the versioned per-marketplace cache layout
+    (`marketplace/plugin/version/`), discovers `.claude-plugin/plugin.json`, and
+    filters by marketplace at the directory level instead of per-plugin metadata.
+
+  ## 🧾 Machine config format
+  - `machines/<hostname>.yaml` accepts both the nested `{ mcps: … }` shape written
+    by override rescans and the legacy flat name→entry mapping.
+
 ## 0.3.7
 
 ### Patch Changes
