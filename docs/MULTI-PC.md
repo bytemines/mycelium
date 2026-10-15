@@ -38,6 +38,14 @@ For example, if shared config references `/opt/homebrew/bin/mcp-server` but the 
 
 Machine override files are `.gitignore`d — each machine keeps its own.
 
+`mycelium sync` re-detects these overrides on **every** run (each MCP command is
+re-resolved with `which`), so a machine that installs a binary — `uv`, `npx`, … —
+after its first sync self-heals on the next one instead of keeping another
+machine's absolute path (e.g. `/opt/homebrew/bin/uvx` from a Mac) baked into its
+tool configs. Use `mycelium sync --no-rescan` to apply only the saved overrides.
+Install MCP runtime binaries (`uv`/`uvx`, `node`/`npx`) **before** the first sync
+on a new machine so paths resolve correctly from the start.
+
 ## Environment Templates
 
 Secrets should not be committed. Mycelium tracks `.env.template` (git-tracked) with variable names, while `.env.local` (gitignored) holds actual values.

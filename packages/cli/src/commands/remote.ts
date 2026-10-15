@@ -91,8 +91,11 @@ export const pullCommand = new Command("pull")
       }
 
       // Detect machine overrides
-      const mcpsPath = path.join(MYCELIUM_DIR, "mcps.yaml");
-      const mcpsContent = await readFileIfExists(mcpsPath);
+      const mcpsPath = path.join(MYCELIUM_DIR, "global", "mcps.yaml");
+      const legacyMcpsPath = path.join(MYCELIUM_DIR, "mcps.yaml");
+      const mcpsContent =
+        (await readFileIfExists(mcpsPath)) ??
+        (await readFileIfExists(legacyMcpsPath));
       if (mcpsContent) {
         // Simple extraction of command fields from mcps.yaml
         const mcps = parseMcpsForOverrides(mcpsContent);

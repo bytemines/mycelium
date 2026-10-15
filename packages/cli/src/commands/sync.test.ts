@@ -69,6 +69,27 @@ vi.mock("../core/tool-adapter.js", () => ({
   })),
 }));
 
+const { mockRescanOverrides, mockLoadMachineOverrides } = vi.hoisted(() => {
+  const mockRescanOverrides = vi.fn().mockImplementation(async () => ({
+    hostname: "test-host",
+    detectedAt: "",
+    updatedAt: "",
+    mcps: { massive: { command: "/usr/local/bin/uvx", detectedAt: "" } },
+  }));
+  const mockLoadMachineOverrides = vi.fn().mockImplementation(async () => ({
+    hostname: "test-host",
+    detectedAt: "",
+    updatedAt: "",
+    mcps: {},
+  }));
+  return { mockRescanOverrides, mockLoadMachineOverrides };
+});
+vi.mock("../core/machine-overrides.js", () => ({
+  rescanOverrides: mockRescanOverrides,
+  loadMachineOverrides: mockLoadMachineOverrides,
+  applyMachineOverrides: vi.fn((mcps) => mcps),
+}));
+
 // Import the module under test (doesn't exist yet - tests will fail)
 import { syncAll, syncTool, loadEnvFile } from "./sync.js";
 
@@ -198,6 +219,46 @@ describe("Sync Command", () => {
         FILE_ONLY: "value", SHARED: "", EXPLICIT: "override",
       });
       expect(supplied).toEqual({ SHARED: "", EXPLICIT: "override" });
+    });
+
+    it("re-detects machine overrides by default (self-healing command paths)", async () => {
+      // Re-establish implementations: afterEach(vi.restoreAllMocks) clears
+      // factory-set implementations between tests.
+      mockRescanOverrides.mockImplementation(async () => ({
+        hostname: "test-host",
+        detectedAt: "",
+        updatedAt: "",
+        mcps: { massive: { command: "/usr/local/bin/uvx", detectedAt: "" } },
+      }));
+      const enabledTools: Record<ToolId, { enabled: boolean }> = {
+        "claude-code": { enabled: true },
+        codex: { enabled: false },
+        "gemini-cli": { enabled: false },
+        opencode: { enabled: false },
+        openclaw: { enabled: false },
+      };
+      await syncAll("/test/project", enabledTools);
+      expect(mockRescanOverrides).toHaveBeenCalledTimes(1);
+      expect(mockLoadMachineOverrides).not.toHaveBeenCalled();
+    });
+
+    it("uses saved overrides without re-detecting when rescan is false", async () => {
+      mockLoadMachineOverrides.mockImplementation(async () => ({
+        hostname: "test-host",
+        detectedAt: "",
+        updatedAt: "",
+        mcps: {},
+      }));
+      const enabledTools: Record<ToolId, { enabled: boolean }> = {
+        "claude-code": { enabled: true },
+        codex: { enabled: false },
+        "gemini-cli": { enabled: false },
+        opencode: { enabled: false },
+        openclaw: { enabled: false },
+      };
+      await syncAll("/test/project", enabledTools, {}, { rescan: false });
+      expect(mockLoadMachineOverrides).toHaveBeenCalledTimes(1);
+      expect(mockRescanOverrides).not.toHaveBeenCalled();
     });
 
     it("syncs to all enabled tools", async () => {

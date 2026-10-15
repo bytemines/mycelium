@@ -283,16 +283,20 @@ export async function syncAll(
   const mergedConfig = { ...await loadAndMergeAllConfigs(projectRoot) };
   log.info({ scope: "config", op: "merge", msg: "Loaded and merged config", configLevel: "all" });
 
-  // Apply machine-level overrides to MCP commands
-  if (options.rescan) {
+  // Apply machine-level overrides to MCP commands.
+  // Rescan by default: command paths are re-resolved via `which` on every sync,
+  // so a machine that installs a binary (uv, npx, …) AFTER its first sync
+  // self-heals instead of keeping another machine's absolute path baked into
+  // its tool configs. Pass --no-rescan to apply only the saved overrides.
+  if (options.rescan === false) {
+    const overrides = await loadMachineOverrides();
+    mergedConfig.mcps = applyMachineOverrides(mergedConfig.mcps, overrides);
+  } else {
     const overrides = await rescanOverrides(mergedConfig.mcps);
     const overrideCount = Object.keys(overrides.mcps).length;
     if (overrideCount > 0) {
       result.warnings.push(`Rescanned: ${overrideCount} MCP command override(s) detected`);
     }
-    mergedConfig.mcps = applyMachineOverrides(mergedConfig.mcps, overrides);
-  } else {
-    const overrides = await loadMachineOverrides();
     mergedConfig.mcps = applyMachineOverrides(mergedConfig.mcps, overrides);
   }
 
@@ -435,7 +439,8 @@ export const syncCommand = new Command("sync")
   .option("-w, --watch", "Watch for config changes and auto-sync")
   .option("--dry-run", "Show what would change without writing")
   .option("--restore", "Restore tool configs from backups")
-  .option("--rescan", "Force re-detect machine overrides")
+  .option("--rescan", "(default) Re-detect machine overrides via `which`")
+  .option("--no-rescan", "Use saved machine overrides without re-detecting")
   .action(async (options: SyncOptions) => {
     const projectRoot = process.cwd();
 
